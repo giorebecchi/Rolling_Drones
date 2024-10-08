@@ -16,9 +16,9 @@
   <component name="MacroExpansionManager">
     <option name="directoryName" value="6dg2jkr4" />
   </component>
-  <component name="ProjectColorInfo"><![CDATA[{
-  "associatedIndex": 0
-}]]></component>
+  <component name="ProjectColorInfo">{
+  &quot;associatedIndex&quot;: 0
+}</component>
   <component name="ProjectId" id="2n98isoZ9hUtfSIwztIf3gYxhda" />
   <component name="ProjectViewState">
     <option name="hideEmptyMiddlePackages" value="true" />
@@ -30,12 +30,14 @@
     "RunOnceActivity.ShowReadmeOnStart": "true",
     "RunOnceActivity.rust.reset.selective.auto.import": "true",
     "SHARE_PROJECT_CONFIGURATION_FILES": "true",
-    "last_opened_file_path": "/Users/giovannirebecchi/Desktop/Rolling_Drones",
+    "git-widget-placeholder": "hell",
+    "last_opened_file_path": "C:/Users/Massimo/Desktop/Rolling_Drones",
     "node.js.detected.package.eslint": "true",
     "node.js.detected.package.tslint": "true",
     "node.js.selected.package.eslint": "(autodetect)",
     "node.js.selected.package.tslint": "(autodetect)",
     "nodejs_package_manager_path": "npm",
+    "org.rust.cargo.project.model.impl.CargoExternalSystemProjectAware.subscribe.first.balloon": "",
     "org.rust.first.attach.projects": "true",
     "vue.rearranger.settings.migration": "true"
   }
@@ -52,6 +54,7 @@
       <option name="presentableId" value="Default" />
       <updated>1728374061847</updated>
       <workItem from="1728374063350" duration="580000" />
+      <workItem from="1728396561801" duration="850000" />
     </task>
     <servers />
   </component>
