@@ -3,6 +3,9 @@
   <component name="AutoImportSettings">
     <option name="autoReloadType" value="ALL" />
   </component>
+  <component name="CargoProjects">
+    <cargoProject FILE="$PROJECT_DIR$/cargo/Cargo.toml" />
+  </component>
   <component name="ChangeListManager">
     <list default="true" id="19429245-7ff7-4fbd-9bb4-ed50939e2d6c" name="Changes" comment="" />
     <option name="SHOW_DIALOG" value="false" />
@@ -16,9 +19,9 @@
   <component name="MacroExpansionManager">
     <option name="directoryName" value="6dg2jkr4" />
   </component>
-  <component name="ProjectColorInfo"><![CDATA[{
-  "associatedIndex": 0
-}]]></component>
+  <component name="ProjectColorInfo">{
+  &quot;associatedIndex&quot;: 0
+}</component>
   <component name="ProjectId" id="2n98isoZ9hUtfSIwztIf3gYxhda" />
   <component name="ProjectViewState">
     <option name="hideEmptyMiddlePackages" value="true" />
@@ -30,6 +33,7 @@
     "RunOnceActivity.ShowReadmeOnStart": "true",
     "RunOnceActivity.rust.reset.selective.auto.import": "true",
     "SHARE_PROJECT_CONFIGURATION_FILES": "true",
+    "git-widget-placeholder": "trytest",
     "last_opened_file_path": "/Users/giovannirebecchi/Desktop/Rolling_Drones",
     "node.js.detected.package.eslint": "true",
     "node.js.detected.package.tslint": "true",
@@ -52,10 +56,36 @@
       <option name="presentableId" value="Default" />
       <updated>1728374061847</updated>
       <workItem from="1728374063350" duration="580000" />
+      <workItem from="1728376428878" duration="50000" />
+      <workItem from="1728388056352" duration="621000" />
+      <workItem from="1728398566394" duration="335000" />
     </task>
     <servers />
   </component>
   <component name="TypeScriptGeneratedFilesManager">
     <option name="version" value="3" />
+  </component>
+  <component name="Vcs.Log.Tabs.Properties">
+    <option name="TAB_STATES">
+      <map>
+        <entry key="MAIN">
+          <value>
+            <State>
+              <option name="FILTERS">
+                <map>
+                  <entry key="branch">
+                    <value>
+                      <list>
+                        <option value="HEAD" />
+                      </list>
+                    </value>
+                  </entry>
+                </map>
+              </option>
+            </State>
+          </value>
+        </entry>
+      </map>
+    </option>
   </component>
 </project>
