@@ -5,3 +5,80 @@ version = 3
 [[package]]
 name = "Rolling_Drones"
 version = "0.1.0"
+dependencies = [
+ "wg_2024",
+]
+
+[[package]]
+name = "crossbeam-channel"
+version = "0.5.13"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "33480d6946193aa8033910124896ca395333cae7e2d1113d1fef6c3272217df2"
+dependencies = [
+ "crossbeam-utils",
+]
+
+[[package]]
+name = "crossbeam-utils"
+version = "0.8.20"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "22ec99545bb0ed0ea7bb9b8e1e9122ea386ff8a48c0922e43f36d45ab09e0e80"
+
+[[package]]
+name = "wg_2024"
+version = "0.1.0"
+source = "git+https://github.com/WGL-2024/WGL_repo_2024.git#377011178fb158b9b1c240a2ea3b92b3c8bc1fa4"
+dependencies = [
+ "wg_internal",
+]
+
+[[package]]
+name = "wg_config"
+version = "0.1.0"
+source = "git+https://github.com/WGL-2024/WGL_repo_2024.git#377011178fb158b9b1c240a2ea3b92b3c8bc1fa4"
+
+[[package]]
+name = "wg_controller"
+version = "0.1.0"
+source = "git+https://github.com/WGL-2024/WGL_repo_2024.git#377011178fb158b9b1c240a2ea3b92b3c8bc1fa4"
+dependencies = [
+ "crossbeam-channel",
+ "wg_network",
+ "wg_packet",
+]
+
+[[package]]
+name = "wg_drone"
+version = "0.1.0"
+source = "git+https://github.com/WGL-2024/WGL_repo_2024.git#377011178fb158b9b1c240a2ea3b92b3c8bc1fa4"
+dependencies = [
+ "crossbeam-channel",
+ "wg_controller",
+ "wg_network",
+ "wg_packet",
+]
+
+[[package]]
+name = "wg_internal"
+version = "0.1.0"
+source = "git+https://github.com/WGL-2024/WGL_repo_2024.git#377011178fb158b9b1c240a2ea3b92b3c8bc1fa4"
+dependencies = [
+ "wg_config",
+ "wg_controller",
+ "wg_drone",
+ "wg_network",
+ "wg_packet",
+]
+
+[[package]]
+name = "wg_network"
+version = "0.1.0"
+source = "git+https://github.com/WGL-2024/WGL_repo_2024.git#377011178fb158b9b1c240a2ea3b92b3c8bc1fa4"
+
+[[package]]
+name = "wg_packet"
+version = "0.1.0"
+source = "git+https://github.com/WGL-2024/WGL_repo_2024.git#377011178fb158b9b1c240a2ea3b92b3c8bc1fa4"
+dependencies = [
+ "wg_network",
+]

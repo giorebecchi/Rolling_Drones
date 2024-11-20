@@ -4,3 +4,4 @@ version = "0.1.0"
 edition = "2021"
 
 [dependencies]
+wg_2024 = { git = "https://github.com/WGL-2024/WGL_repo_2024.git" }

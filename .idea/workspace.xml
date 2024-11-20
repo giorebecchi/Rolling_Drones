@@ -3,13 +3,20 @@
   <component name="AutoImportSettings">
     <option name="autoReloadType" value="ALL" />
   </component>
+  <component name="CargoProjects">
+    <cargoProject FILE="$PROJECT_DIR$/Cargo.toml" />
+  </component>
   <component name="ChangeListManager">
-    <list default="true" id="19429245-7ff7-4fbd-9bb4-ed50939e2d6c" name="Changes" comment="" />
+    <list default="true" id="19429245-7ff7-4fbd-9bb4-ed50939e2d6c" name="Changes" comment="">
+      <change beforePath="$PROJECT_DIR$/.idea/Rolling_Drones.iml" beforeDir="false" afterPath="$PROJECT_DIR$/.idea/Rolling_Drones.iml" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/.idea/workspace.xml" beforeDir="false" afterPath="$PROJECT_DIR$/.idea/workspace.xml" afterDir="false" />
+    </list>
     <option name="SHOW_DIALOG" value="false" />
     <option name="HIGHLIGHT_CONFLICTS" value="true" />
     <option name="HIGHLIGHT_NON_ACTIVE_CHANGELIST" value="false" />
     <option name="LAST_RESOLUTION" value="IGNORE" />
   </component>
+  <component name="ExecutionTargetManager" SELECTED_TARGET="RsBuildProfile:dev" />
   <component name="Git.Settings">
     <option name="RECENT_GIT_ROOT_PATH" value="$PROJECT_DIR$" />
   </component>
@@ -30,13 +37,14 @@
     "RunOnceActivity.ShowReadmeOnStart": "true",
     "RunOnceActivity.rust.reset.selective.auto.import": "true",
     "SHARE_PROJECT_CONFIGURATION_FILES": "true",
-    "git-widget-placeholder": "hell",
+    "git-widget-placeholder": "main",
     "last_opened_file_path": "C:/Users/Massimo/Desktop/Rolling_Drones",
     "node.js.detected.package.eslint": "true",
     "node.js.detected.package.tslint": "true",
     "node.js.selected.package.eslint": "(autodetect)",
     "node.js.selected.package.tslint": "(autodetect)",
     "nodejs_package_manager_path": "npm",
+    "org.rust.cargo.project.model.PROJECT_DISCOVERY": "true",
     "org.rust.cargo.project.model.impl.CargoExternalSystemProjectAware.subscribe.first.balloon": "",
     "org.rust.first.attach.projects": "true",
     "vue.rearranger.settings.migration": "true"
