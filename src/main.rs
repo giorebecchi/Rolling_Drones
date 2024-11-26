@@ -1,6 +1,7 @@
+mod network_initializer;
+mod tests;
+
 pub fn main(){
-    println!("Hello, world!");
-    println!("Hello from another branch");
-    println!("ciao sono filippo");
-    
+    // network_initializer::file_reader::read();
+    tests::example::test();
 }
