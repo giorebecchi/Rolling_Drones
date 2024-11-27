@@ -1,4 +1,3 @@
-mod network_initializer;
 mod tests;
 
 pub fn main(){

@@ -1,5 +1,6 @@
 #![allow(unused)]
 
+use rand::Rng;
 use crossbeam_channel::{select_biased, unbounded, Receiver, Sender};
 use std::collections::HashMap;
 use std::{fs,thread};
@@ -91,7 +92,8 @@ impl SimulationController {
     fn pdr(&mut self, id : NodeId) {
         for (idd, sender) in self.drones.iter() {
             if idd == &id {
-                sender.send(DroneCommand::SetPacketDropRate(3.4)).unwrap()
+                let rand= rand::thread_rng().gen_range(0.0..=100.0);
+                sender.send(DroneCommand::SetPacketDropRate(rand)).unwrap()
             }
         }
     }
@@ -102,7 +104,7 @@ pub fn parse_config(file: &str) -> Config {
 }
 
 pub fn test() {
-    let config = parse_config("src/network_initializer/input.toml");
+    let config = parse_config("src/tests/input.toml");
     let mut controller_drones = HashMap::new();
     let (node_event_send, node_event_recv) = unbounded();
 
