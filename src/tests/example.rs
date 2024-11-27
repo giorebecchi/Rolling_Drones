@@ -37,6 +37,9 @@ impl Drone for MyDrone {
                         if let DroneCommand::Crash = command {
                             println!("drone {} crashed", self.id);
                             break;
+                        }else if let DroneCommand::SetPacketDropRate(x) = command {
+                            println!("set_packet_drop_rate {}", x);
+                            break;
                         }
                         self.handle_command(command);
                     }
@@ -63,7 +66,7 @@ impl MyDrone {
     fn handle_command(&mut self, command: DroneCommand) {
         match command {
             DroneCommand::AddSender(_node_id, _sender) => todo!(),
-            DroneCommand::SetPacketDropRate(_pdr) => todo!(),
+            DroneCommand::SetPacketDropRate(_pdr) => unreachable!(),
             DroneCommand::Crash => unreachable!(),
         }
     }
@@ -76,6 +79,20 @@ impl SimulationController {
     fn crash_all(&mut self) {
         for (_, sender) in self.drones.iter() {
             sender.send(DroneCommand::Crash).unwrap();
+        }
+    }
+    fn crash(&mut self, id : NodeId) {
+        for (idd, sender) in self.drones.iter() {
+            if idd == &id {
+                sender.send(DroneCommand::Crash).unwrap();
+            }
+        }
+    }
+    fn pdr(&mut self, id : NodeId) {
+        for (idd, sender) in self.drones.iter() {
+            if idd == &id {
+                sender.send(DroneCommand::SetPacketDropRate(3.4)).unwrap()
+            }
         }
     }
 }
@@ -130,7 +147,9 @@ pub fn test() {
         drones: controller_drones,
         node_event_recv,
     };
-    controller.crash_all();
+    controller.crash(1);
+    controller.crash(2);
+    controller.pdr(3);
 
     while let Some(handle) = handles.pop() {
         handle.join().unwrap();
