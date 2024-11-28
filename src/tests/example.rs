@@ -92,7 +92,8 @@ impl SimulationController {
     fn pdr(&mut self, id : NodeId) {
         for (idd, sender) in self.drones.iter() {
             if idd == &id {
-                let rand= rand::thread_rng().gen_range(0.0..=100.0);
+                let mut rng=rand::rng();
+                let rand= rng.random_range(0.0..=100.0);
                 sender.send(DroneCommand::SetPacketDropRate(rand)).unwrap()
             }
         }
