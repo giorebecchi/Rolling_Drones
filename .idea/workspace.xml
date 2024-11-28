@@ -4,14 +4,10 @@
     <option name="autoReloadType" value="ALL" />
   </component>
   <component name="CargoProjects">
-    <cargoProject FILE="$PROJECT_DIR$/Cargo.toml" />
-    <cargoProject FILE="$PROJECT_DIR$/src/Network Initializer/NetInitFile/Cargo.toml" />
-  </component>
+  <cargoProject FILE="$PROJECT_DIR$/Cargo.toml" />
+</component>
   <component name="ChangeListManager">
     <list default="true" id="19429245-7ff7-4fbd-9bb4-ed50939e2d6c" name="Changes" comment="">
-      <change afterPath="$PROJECT_DIR$/src/network_initializer/file_reader.rs" afterDir="false" />
-      <change afterPath="$PROJECT_DIR$/src/network_initializer/input.toml" afterDir="false" />
-      <change afterPath="$PROJECT_DIR$/src/network_initializer/mod.rs" afterDir="false" />
       <change beforePath="$PROJECT_DIR$/Cargo.lock" beforeDir="false" afterPath="$PROJECT_DIR$/Cargo.lock" afterDir="false" />
       <change beforePath="$PROJECT_DIR$/Cargo.toml" beforeDir="false" afterPath="$PROJECT_DIR$/Cargo.toml" afterDir="false" />
       <change beforePath="$PROJECT_DIR$/src/main.rs" beforeDir="false" afterPath="$PROJECT_DIR$/src/main.rs" afterDir="false" />
