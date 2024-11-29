@@ -37,9 +37,11 @@ impl Drone for MyDrone {
                     if let Ok(command) = command {
                         if let DroneCommand::Crash = command {
                             println!("drone {} crashed", self.id);
+
                             break;
                         }else if let DroneCommand::SetPacketDropRate(x) = command {
-                            println!("set_packet_drop_rate {}", x);
+                            self.pdr=x;
+                            println!("set_packet_drop_rate {}", self.pdr);
                             break;
                         }
                         self.handle_command(command);
@@ -93,7 +95,7 @@ impl SimulationController {
         for (idd, sender) in self.drones.iter() {
             if idd == &id {
                 let mut rng=rand::rng();
-                let rand= rng.random_range(0.0..=100.0);
+                let rand= rng.random_range(0.0..=1.0);
                 sender.send(DroneCommand::SetPacketDropRate(rand)).unwrap()
             }
         }
