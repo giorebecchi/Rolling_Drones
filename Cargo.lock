@@ -3762,7 +3762,7 @@ dependencies = [
 [[package]]
 name = "wg_2024"
 version = "0.1.0"
-source = "git+https://github.com/WGL-2024/WGL_repo_2024.git#459e015026304d4275f296f396092afa5973ad56"
+source = "git+https://github.com/WGL-2024/WGL_repo_2024.git#3f14068f5141a15564e035b11ab09d3827b0f012"
 dependencies = [
  "wg_internal",
 ]
@@ -3770,7 +3770,7 @@ dependencies = [
 [[package]]
 name = "wg_config"
 version = "0.1.0"
-source = "git+https://github.com/WGL-2024/WGL_repo_2024.git#459e015026304d4275f296f396092afa5973ad56"
+source = "git+https://github.com/WGL-2024/WGL_repo_2024.git#3f14068f5141a15564e035b11ab09d3827b0f012"
 dependencies = [
  "serde",
  "wg_network",
@@ -3779,7 +3779,7 @@ dependencies = [
 [[package]]
 name = "wg_controller"
 version = "0.1.0"
-source = "git+https://github.com/WGL-2024/WGL_repo_2024.git#459e015026304d4275f296f396092afa5973ad56"
+source = "git+https://github.com/WGL-2024/WGL_repo_2024.git#3f14068f5141a15564e035b11ab09d3827b0f012"
 dependencies = [
  "crossbeam-channel",
  "wg_network",
@@ -3789,7 +3789,7 @@ dependencies = [
 [[package]]
 name = "wg_drone"
 version = "0.1.0"
-source = "git+https://github.com/WGL-2024/WGL_repo_2024.git#459e015026304d4275f296f396092afa5973ad56"
+source = "git+https://github.com/WGL-2024/WGL_repo_2024.git#3f14068f5141a15564e035b11ab09d3827b0f012"
 dependencies = [
  "crossbeam-channel",
  "wg_controller",
@@ -3800,7 +3800,7 @@ dependencies = [
 [[package]]
 name = "wg_internal"
 version = "0.1.0"
-source = "git+https://github.com/WGL-2024/WGL_repo_2024.git#459e015026304d4275f296f396092afa5973ad56"
+source = "git+https://github.com/WGL-2024/WGL_repo_2024.git#3f14068f5141a15564e035b11ab09d3827b0f012"
 dependencies = [
  "wg_config",
  "wg_controller",
@@ -3812,12 +3812,12 @@ dependencies = [
 [[package]]
 name = "wg_network"
 version = "0.1.0"
-source = "git+https://github.com/WGL-2024/WGL_repo_2024.git#459e015026304d4275f296f396092afa5973ad56"
+source = "git+https://github.com/WGL-2024/WGL_repo_2024.git#3f14068f5141a15564e035b11ab09d3827b0f012"
 
 [[package]]
 name = "wg_packet"
 version = "0.1.0"
-source = "git+https://github.com/WGL-2024/WGL_repo_2024.git#459e015026304d4275f296f396092afa5973ad56"
+source = "git+https://github.com/WGL-2024/WGL_repo_2024.git#3f14068f5141a15564e035b11ab09d3827b0f012"
 dependencies = [
  "wg_network",
 ]

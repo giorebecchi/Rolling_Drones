@@ -5,14 +5,14 @@ use crossbeam_channel::{select_biased, unbounded, Receiver, Sender};
 use std::collections::HashMap;
 use std::{fs,thread};
 use wg_2024::config::Config;
-use wg_2024::controller::{DroneCommand,NodeEvent};
+use wg_2024::controller::{DroneCommand,DroneEvent};
 use wg_2024::drone::{Drone};
 use wg_2024::network::{NodeId, SourceRoutingHeader};
 use wg_2024::packet::{Ack, Nack,NackType, Packet, PacketType};
 
 struct MyDrone {
     id: NodeId,
-    controller_send: Sender<NodeEvent>,
+    controller_send: Sender<DroneEvent>,
     controller_recv: Receiver<DroneCommand>,
     packet_recv: Receiver<Packet>,
     pdr: f32,
@@ -21,7 +21,7 @@ struct MyDrone {
 
 impl Drone for MyDrone {
     fn new(id: NodeId,
-           controller_send: Sender<NodeEvent>,
+           controller_send: Sender<DroneEvent>,
            controller_recv: Receiver<DroneCommand>,
            packet_recv: Receiver<Packet>,
            packet_send: HashMap<NodeId, Sender<Packet>>,
@@ -198,7 +198,7 @@ impl MyDrone {
 struct SimulationController {
     drones: HashMap<NodeId, Sender<DroneCommand>>,
     packet_channel: HashMap<NodeId, Sender<Packet>>,
-    node_event_recv: Receiver<NodeEvent>,
+    node_event_recv: Receiver<DroneEvent>,
 }
 
 
