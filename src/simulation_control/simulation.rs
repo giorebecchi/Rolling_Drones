@@ -3,7 +3,7 @@ use bevy::{
     prelude::*
 };
 use bevy::winit::WinitSettings;
-use crate::simulation_control::buttons::{button_system, button_setup, CrashEvent};
+use crate::simulation_control::buttons::{button_system,button_setup, CrashEvent};
 use crate::simulation_control::colorful_name::{title_setup, update_text_color};
 use crate::simulation_control::drone_image::{image_setup,update_image_on_crash};
 use crate::simulation_control::text_output::{setup_ui,update_text_on_crash};
@@ -19,6 +19,7 @@ pub fn simulate() {
         .add_systems(Update,update_image_on_crash)
         .add_systems(Update, update_text_color)
         .insert_resource(WinitSettings::desktop_app())
+        .add_systems(Update,button_system)
         .add_event::<CrashEvent>()
         .add_systems(Startup,setup_ui)
         .add_systems(Update,update_text_on_crash)

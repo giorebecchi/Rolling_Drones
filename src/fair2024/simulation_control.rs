@@ -8,7 +8,7 @@ use wg_2024::config::Config;
 use wg_2024::controller::{DroneCommand,NodeEvent};
 use wg_2024::drone::{Drone};
 use wg_2024::network::{NodeId, SourceRoutingHeader};
-use wg_2024::packet::{Ack, Packet, PacketType};
+use wg_2024::packet::{Ack, Nack,NackType, Packet, PacketType};
 
 struct MyDrone {
     id: NodeId,
@@ -42,23 +42,24 @@ impl Drone for MyDrone {
                     if let Ok(command) = command {
                         match command.clone() {
                         DroneCommand::Crash => {
-                            println!("drone {} crashed", self.id);
-                            break;
+                                println!("drone {} crashed", self.id);
+                                self.handle_command(command);
+                                break;
                         },
                         DroneCommand::SetPacketDropRate(x) => {
-                            self.pdr = x;
-                            println!("set_packet_drop_rate {}", self.pdr);
-                                break;
+                                // self.pdr = x;
+                                println!("set_packet_drop_rate {}", self.pdr);
+                                // break;
                         },
                         DroneCommand::AddSender(id, send_pack) => {
-                            self.packet_send.insert(id, send_pack);
-                            println!("added sender");
-                                break;
+                                self.packet_send.insert(id, send_pack);
+                                println!("added sender");
+                                // break;
                         },
                         DroneCommand::RemoveSender(id) => {
                                 self.packet_send.remove(&id);
                                 println!("removed sender {}", id);
-                                break;
+                                //break;
                             }
 
                     }
@@ -82,24 +83,118 @@ impl Drone for MyDrone {
     }
 }
 impl MyDrone {
-    fn handle_packet(&mut self, packet: Packet) {
-        match packet.pack_type {
-            PacketType::Nack(_nack) => todo!(),
-            PacketType::Ack(_ack) => todo!(),
-            PacketType::MsgFragment(_fragment) => todo!(),
-            PacketType::FloodRequest(_flood_request) => todo!(),
-            PacketType::FloodResponse(_flood_response) => todo!(),
-        }
-    }
     fn handle_command(&mut self, command: DroneCommand) {
         match command {
-            DroneCommand::AddSender(_node_id, _sender) => todo!(),
-            DroneCommand::SetPacketDropRate(_pdr) => todo!(),
-            DroneCommand::Crash => unreachable!(),
-            DroneCommand::RemoveSender(_node_id) => todo!(),
+            DroneCommand::AddSender(node_id, sender) => {
+                self.packet_send.insert(node_id, sender);
+                println!("Added sender for neighbor {}", node_id);
+            }
+            DroneCommand::SetPacketDropRate(pdr) => {
+                self.pdr = pdr;
+                println!("Set packet drop rate to {}", pdr);
+            }
+            DroneCommand::Crash => {
+                self.handle_crash();
+            }
+            DroneCommand::RemoveSender(node_id) => {
+                if self.packet_send.remove(&node_id).is_some() {
+                    println!("Removed sender for neighbor {}", node_id);
+                } else {
+                    println!("Sender for neighbor {} was not found", node_id);
+                }
+            }
         }
     }
+    fn handle_packet(&mut self, packet: Packet) {
+        match packet.pack_type{
+            PacketType::Ack(ack)=>{
+
+            }
+            PacketType::Nack(nack)=>{
+
+            }
+            PacketType::FloodRequest(fl)=>{
+
+            }
+            PacketType::FloodResponse(fr)=>{
+
+            }
+            PacketType::MsgFragment(msg_fragment)=>{
+
+            }
+
+        }
+    }
+    fn handle_crash(&mut self) {
+            println!("Drone {} entering crashing state", self.id);
+
+            // Process remaining packets
+            while let Ok(packet) = self.packet_recv.try_recv() {
+                match packet.pack_type {
+                    PacketType::Ack(_) | PacketType::Nack(_) | PacketType::FloodResponse(_) => {
+                        println!("Forwarding packet during crash: {:?}", packet);
+                        self.forward_packet(packet);
+                    }
+                    PacketType::FloodRequest(_) => {
+                        println!("Dropping FloodRequest during crash");
+                    }
+                    _ => {
+                        println!("Sending ErrorInRouting Nack for {:?}", packet);
+                        let nack = Packet {
+                            pack_type: PacketType::Nack(Nack{
+                                fragment_index: 0,
+                                nack_type: NackType::ErrorInRouting(self.id),
+                            }),
+                            routing_header: packet.routing_header,
+                            session_id: packet.session_id,
+                            // Fill in additional fields as needed
+                        };
+                        //self.send_nack(nack);
+                    }
+                }
+            }
+
+            // Clean up internal state
+            self.packet_send.clear();
+            println!("Drone {} has completed crash process", self.id);
+    }
+    fn forward_packet(&self, mut packet: Packet) {
+        // Check if there are more hops in the routing header
+        if packet.routing_header.hop_index < packet.routing_header.hops.len() {
+            // Get the next hop
+            let next_hop = packet.routing_header.hops[packet.routing_header.hop_index];
+
+            // Increment the hop index
+            packet.routing_header.hop_index += 1;
+
+            // Send the packet to the next hop
+            if let Some(sender) = self.packet_send.get(&next_hop) {
+                if let Err(e) = sender.send(packet.clone()) {
+                    println!(
+                        "Failed to send packet to next hop {}: {:?}",
+                        next_hop, e
+                    );
+                } else {
+                    println!(
+                        "Packet forwarded to next hop {}: {:?}",
+                        next_hop, packet
+                    );
+                }
+            } else {
+                println!(
+                    "No sender found for next hop {}. Packet could not be forwarded.",
+                    next_hop
+                );
+            }
+        } else {
+            println!("Packet has reached the final destination: {:?}", packet);
+        }
+    }
+
+
+
 }
+
 struct SimulationController {
     drones: HashMap<NodeId, Sender<DroneCommand>>,
     packet_channel: HashMap<NodeId, Sender<Packet>>,
@@ -115,10 +210,27 @@ impl SimulationController {
         }
     }
     fn crash(&mut self, id : NodeId) {
-        for (idd, sender) in self.drones.iter() {
-            if idd == &id {
-                sender.send(DroneCommand::Crash).unwrap();
+        if let Some(drone_sender) = self.drones.get(&id) {
+            // Notify the crashing drone
+            drone_sender.send(DroneCommand::Crash).unwrap();
+
+            // Notify all neighbors to remove the crashing drone as a sender
+            if let Some(packet_channel) = self.packet_channel.get(&id) {
+                for (&neighbor_id, neighbor_channel) in self.drones.iter() {
+                    if neighbor_id != id {
+                        neighbor_channel
+                            .send(DroneCommand::RemoveSender(id))
+                            .unwrap_or_else(|err| {
+                                println!(
+                                    "Failed to send RemoveSender command to neighbor {}: {:?}",
+                                    neighbor_id, err
+                                );
+                            });
+                    }
+                }
             }
+        } else {
+            println!("No drone with ID {:?}", id);
         }
     }
     fn pdr(&mut self, id : NodeId) {
@@ -225,6 +337,5 @@ pub fn test() {
         handle.join().unwrap();
 
     }
-
 }
 
