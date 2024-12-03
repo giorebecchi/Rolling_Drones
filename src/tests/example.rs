@@ -6,9 +6,9 @@ use std::collections::HashMap;
 use std::{fs,thread};
 use wg_2024::config::Config;
 use wg_2024::controller::{DroneCommand,NodeEvent};
-use wg_2024::drone::{Drone, DroneOptions};
-use wg_2024::network::NodeId;
-use wg_2024::packet::{Packet, PacketType};
+use wg_2024::drone::{Drone};
+use wg_2024::network::{NodeId, SourceRoutingHeader};
+use wg_2024::packet::{Ack, Packet, PacketType};
 
 struct MyDrone {
     id: NodeId,
@@ -20,13 +20,18 @@ struct MyDrone {
 }
 
 impl Drone for MyDrone {
-    fn new(options: DroneOptions) -> Self {
+    fn new(id: NodeId,
+           controller_send: Sender<NodeEvent>,
+           controller_recv: Receiver<DroneCommand>,
+           packet_recv: Receiver<Packet>,
+           packet_send: HashMap<NodeId, Sender<Packet>>,
+           pdr: f32) -> Self {
         Self {
-            id: options.id,
-            controller_send: options.controller_send,
-            controller_recv: options.controller_recv,
-            packet_recv: options.packet_recv,
-            pdr: options.pdr,
+            id,
+            controller_send,
+            controller_recv,
+            packet_recv,
+            pdr,
             packet_send: HashMap::new(),
         }
     }
@@ -35,20 +40,40 @@ impl Drone for MyDrone {
             select_biased!{
                 recv(self.controller_recv) -> command => {
                     if let Ok(command) = command {
-                        if let DroneCommand::Crash = command {
+                        match command.clone() {
+                        DroneCommand::Crash => {
                             println!("drone {} crashed", self.id);
-
                             break;
-                        }else if let DroneCommand::SetPacketDropRate(x) = command {
-                            self.pdr=x;
+                        },
+                        DroneCommand::SetPacketDropRate(x) => {
+                            self.pdr = x;
                             println!("set_packet_drop_rate {}", self.pdr);
-                            break;
-                        }
+                                break;
+                        },
+                        DroneCommand::AddSender(id, send_pack) => {
+                            self.packet_send.insert(id, send_pack);
+                            println!("added sender");
+                                break;
+                        },
+                        DroneCommand::RemoveSender(id) => {
+                                self.packet_send.remove(&id);
+                                println!("removed sender {}", id);
+                                break;
+                            }
+
+                    }
                         self.handle_command(command);
                     }
                 }
                 recv(self.packet_recv) -> packet => {
                     if let Ok(packet) = packet {
+                        match packet.clone().pack_type{
+                            PacketType::Ack(ack)=>{
+                                println!("drone has received ack {:?}",ack);
+                                break;
+                            }
+                            _=>println!("Not yet done")
+                        }
                         self.handle_packet(packet);
                     }
                 },
@@ -69,15 +94,20 @@ impl MyDrone {
     fn handle_command(&mut self, command: DroneCommand) {
         match command {
             DroneCommand::AddSender(_node_id, _sender) => todo!(),
-            DroneCommand::SetPacketDropRate(_pdr) => unreachable!(),
+            DroneCommand::SetPacketDropRate(_pdr) => todo!(),
             DroneCommand::Crash => unreachable!(),
+            DroneCommand::RemoveSender(_node_id) => todo!(),
         }
     }
 }
 struct SimulationController {
     drones: HashMap<NodeId, Sender<DroneCommand>>,
+    packet_channel: HashMap<NodeId, Sender<Packet>>,
     node_event_recv: Receiver<NodeEvent>,
 }
+
+
+
 impl SimulationController {
     fn crash_all(&mut self) {
         for (_, sender) in self.drones.iter() {
@@ -100,6 +130,34 @@ impl SimulationController {
             }
         }
     }
+    fn add_sender(&mut self,drone_id : NodeId, packet: Packet) {
+        if let Some(sender) = self.drones.get(&drone_id) {
+            let (sender_packet,_)=unbounded::<Packet>();
+            sender.send(DroneCommand::AddSender(drone_id, sender_packet)).unwrap();
+        } else {
+            println!("No drone with ID {:?}", drone_id);
+        }
+    }
+    fn remove_sender(&mut self, drone_id: NodeId, sender_id: NodeId) {
+        if let Some(sender) = self.drones.get(&drone_id) {
+            sender
+                .send(DroneCommand::RemoveSender(sender_id))
+                .unwrap_or_else(|err| println!("Failed to send RemoveSender command: {:?}", err));
+        } else {
+            println!("No drone with ID {:?}", drone_id);
+        }
+    }
+    fn ack(&mut self, id: NodeId) {
+        if let Some(sender) = self.packet_channel.get(&id) {
+            let packet = Packet {
+                pack_type: PacketType::Ack(Ack { fragment_index: 233748 }),
+                routing_header: SourceRoutingHeader { hops: Vec::new(), hop_index: 0 },
+                session_id: 0,
+            };
+            sender.send(packet).unwrap();
+        }
+    }
+
 }
 pub fn parse_config(file: &str) -> Config {
     let file_str = fs::read_to_string(file).unwrap();
@@ -109,6 +167,7 @@ pub fn parse_config(file: &str) -> Config {
 pub fn test() {
     let config = parse_config("src/tests/input.toml");
     let mut controller_drones = HashMap::new();
+    let mut packet_drones = HashMap::new();
     let (node_event_send, node_event_recv) = unbounded();
 
     let mut packet_channels = HashMap::new();
@@ -126,6 +185,7 @@ pub fn test() {
         // controller
         let (controller_drone_send, controller_drone_recv) = unbounded();
         controller_drones.insert(drone.id, controller_drone_send);
+        packet_drones.insert(drone.id, packet_channels[&drone.id].0.clone());
         let node_event_send = node_event_send.clone();
         // packet
         let packet_recv = packet_channels[&drone.id].1.clone();
@@ -136,28 +196,35 @@ pub fn test() {
             .collect();
 
         handles.push(thread::spawn(move || {
-            let mut drone = MyDrone::new(DroneOptions {
-                id: drone.id,
-                controller_recv: controller_drone_recv,
-                controller_send: node_event_send,
-                packet_recv,
-                packet_send,
-                pdr: drone.pdr,
-            });
+            let mut drone = MyDrone::new(drone.id,node_event_send,controller_drone_recv,packet_recv,packet_send,drone.pdr);
+
 
             drone.run();
         }));
     }
     let mut controller = SimulationController {
         drones: controller_drones,
-        node_event_recv,
+        node_event_recv: node_event_recv.clone(),
+        packet_channel: packet_drones,
     };
+    let my_packet=Packet{
+        pack_type: PacketType::Ack(Ack{fragment_index:0345}),
+        routing_header: SourceRoutingHeader{hop_index:0,hops:Vec::new()},
+        session_id: 0,
+    };
+
+
     controller.crash(1);
-    controller.crash(2);
-    controller.pdr(3);
+    // controller.add_sender(2,my_packet);
+    controller.remove_sender(2,3);
+    controller.ack(3);
+    ///ATTENTO!!!! Devi dare per forza un comando a tutti e tre i droni se vuoi che la simulazione finisca.
+    /// In caso contrario la simulazione si fermerà al run del drone successivo che non ha ancora ricevuto un comando!
 
     while let Some(handle) = handles.pop() {
         handle.join().unwrap();
+
     }
+
 }
 

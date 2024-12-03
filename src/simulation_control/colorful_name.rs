@@ -1,6 +1,6 @@
 use bevy::asset::AssetServer;
 use bevy::color::Color;
-use bevy::prelude::{default, Camera2dBundle, Commands, Component, PositionType, Query, Res, Style, Text, TextBundle, TextStyle, Time, Val, With};
+use bevy::prelude::{default, Camera, Camera2dBundle, Commands, Component, PositionType, Query, Res, Style, Text, TextBundle, TextStyle, Time, Val, With};
 
 
 // Marker component for animated color-changing text
@@ -20,7 +20,13 @@ pub fn update_text_color(time: Res<Time>, mut query: Query<&mut Text, With<Anima
 }
 pub fn title_setup(mut commands: Commands, asset_server: Res<AssetServer>){
     // Spawn a single 2D camera
-    commands.spawn(Camera2dBundle::default());
+    commands.spawn(Camera2dBundle{
+        camera: Camera {
+            order: 1, // Set the priority explicitly to avoid ambiguity
+            ..Default::default()
+        },
+        ..Default::default()
+    });
 
     // Add animated text
     commands.spawn((

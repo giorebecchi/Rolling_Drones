@@ -8,8 +8,17 @@
   </component>
   <component name="ChangeListManager">
     <list default="true" id="19429245-7ff7-4fbd-9bb4-ed50939e2d6c" name="Changes" comment="">
+      <change afterPath="$PROJECT_DIR$/assets/images/Rolling_Drone.png" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/assets/images/Rolling_Drone_with_X.png" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/src/simulation_control/drone_image.rs" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/src/simulation_control/text_output.rs" afterDir="false" />
       <change beforePath="$PROJECT_DIR$/.idea/workspace.xml" beforeDir="false" afterPath="$PROJECT_DIR$/.idea/workspace.xml" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/Cargo.lock" beforeDir="false" afterPath="$PROJECT_DIR$/Cargo.lock" afterDir="false" />
       <change beforePath="$PROJECT_DIR$/src/main.rs" beforeDir="false" afterPath="$PROJECT_DIR$/src/main.rs" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/src/simulation_control/buttons.rs" beforeDir="false" afterPath="$PROJECT_DIR$/src/simulation_control/buttons.rs" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/src/simulation_control/colorful_name.rs" beforeDir="false" afterPath="$PROJECT_DIR$/src/simulation_control/colorful_name.rs" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/src/simulation_control/mod.rs" beforeDir="false" afterPath="$PROJECT_DIR$/src/simulation_control/mod.rs" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/src/simulation_control/simulation.rs" beforeDir="false" afterPath="$PROJECT_DIR$/src/simulation_control/simulation.rs" afterDir="false" />
       <change beforePath="$PROJECT_DIR$/src/tests/example.rs" beforeDir="false" afterPath="$PROJECT_DIR$/src/tests/example.rs" afterDir="false" />
     </list>
     <option name="SHOW_DIALOG" value="false" />
@@ -26,6 +35,11 @@
     </option>
   </component>
   <component name="Git.Settings">
+    <option name="RECENT_BRANCH_BY_REPOSITORY">
+      <map>
+        <entry key="$PROJECT_DIR$" value="Giovanni" />
+      </map>
+    </option>
     <option name="RECENT_GIT_ROOT_PATH" value="$PROJECT_DIR$" />
   </component>
   <component name="GitHubPullRequestSearchHistory">{
@@ -55,10 +69,11 @@
   &quot;keyToString&quot;: {
     &quot;ASKED_SHARE_PROJECT_CONFIGURATION_FILES&quot;: &quot;true&quot;,
     &quot;Cargo.Run Rolling_Drones.executor&quot;: &quot;Run&quot;,
+    &quot;Cargo.Test simulation_control::drone_image::main.executor&quot;: &quot;Run&quot;,
     &quot;RunOnceActivity.ShowReadmeOnStart&quot;: &quot;true&quot;,
     &quot;RunOnceActivity.rust.reset.selective.auto.import&quot;: &quot;true&quot;,
     &quot;SHARE_PROJECT_CONFIGURATION_FILES&quot;: &quot;true&quot;,
-    &quot;git-widget-placeholder&quot;: &quot;Filippo&quot;,
+    &quot;git-widget-placeholder&quot;: &quot;Giovanni&quot;,
     &quot;last_opened_file_path&quot;: &quot;C:/Users/Massimo/Desktop/Rolling_Drones&quot;,
     &quot;node.js.detected.package.eslint&quot;: &quot;true&quot;,
     &quot;node.js.detected.package.tslint&quot;: &quot;true&quot;,
@@ -76,7 +91,14 @@
     ]
   }
 }</component>
-  <component name="RunManager">
+  <component name="RecentsManager">
+    <key name="MoveFile.RECENT_KEYS">
+      <recent name="$PROJECT_DIR$/assets/images" />
+      <recent name="$PROJECT_DIR$/assets/image" />
+      <recent name="$PROJECT_DIR$/assets/fonts" />
+    </key>
+  </component>
+  <component name="RunManager" selected="Cargo.Run Rolling_Drones">
     <configuration name="Run Rolling_Drones" type="CargoCommandRunConfiguration" factoryName="Cargo Command" temporary="true">
       <option name="buildProfileId" value="dev" />
       <option name="command" value="run --package Rolling_Drones --bin Rolling_Drones" />
@@ -95,9 +117,28 @@
         <option name="CARGO.BUILD_TASK_PROVIDER" enabled="true" />
       </method>
     </configuration>
+    <configuration name="Test simulation_control::drone_image::main" type="CargoCommandRunConfiguration" factoryName="Cargo Command" temporary="true">
+      <option name="buildProfileId" value="test" />
+      <option name="command" value="test --package Rolling_Drones --bin Rolling_Drones simulation_control::drone_image::main -- --exact" />
+      <option name="workingDirectory" value="file://$PROJECT_DIR$" />
+      <envs />
+      <option name="emulateTerminal" value="true" />
+      <option name="channel" value="DEFAULT" />
+      <option name="requiredFeatures" value="true" />
+      <option name="allFeatures" value="false" />
+      <option name="withSudo" value="false" />
+      <option name="buildTarget" value="REMOTE" />
+      <option name="backtrace" value="SHORT" />
+      <option name="isRedirectInput" value="false" />
+      <option name="redirectInputPath" value="" />
+      <method v="2">
+        <option name="CARGO.BUILD_TASK_PROVIDER" enabled="true" />
+      </method>
+    </configuration>
     <recent_temporary>
       <list>
         <item itemvalue="Cargo.Run Rolling_Drones" />
+        <item itemvalue="Cargo.Test simulation_control::drone_image::main" />
       </list>
     </recent_temporary>
   </component>
@@ -118,6 +159,8 @@
       <workItem from="1732799827036" duration="37000" />
       <workItem from="1732884945460" duration="196000" />
       <workItem from="1732885167448" duration="1625000" />
+      <workItem from="1733143898944" duration="840000" />
+      <workItem from="1733145151372" duration="8795000" />
     </task>
     <servers />
   </component>
