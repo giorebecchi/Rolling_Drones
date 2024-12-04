@@ -322,6 +322,10 @@ impl SimulationController {
     fn add_sender(&mut self, dst_id: NodeId, nghb_id: NodeId, sender: Sender<Packet>) {
         if let Some(drone_sender) = self.drones.get(&dst_id) {
             // Send the AddSender command to the target drone
+            //Domanda per gio
+            //Come fa a mandare il comando al drone??
+            //perchè non sto capendo come funziona
+            //avrei tenuto
             if let Err(err) = drone_sender.send(DroneCommand::AddSender(nghb_id, sender)) {
                 println!(
                     "Failed to send AddSender command to drone {}: {:?}",
