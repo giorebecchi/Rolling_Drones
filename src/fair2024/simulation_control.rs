@@ -156,9 +156,6 @@ impl MyDrone {
         self.packet_send.clear();
         println!("Drone {} has completed crash process", self.id);
     }
-    fn send_nack(&mut self,nack:Packet){
-
-    }
     fn handle_packet(&mut self, mut packet: Packet) {
         match packet.clone().pack_type{
             PacketType::Ack(ack)=>{
@@ -178,40 +175,47 @@ impl MyDrone {
 
             }
             PacketType::MsgFragment(msg_fragment)=>{
-
-                let mut rng=rand::rng();
-                let rand=rng.random_range(0.0..=1.0);
-                let mut next_hop=packet.routing_header.hops[packet.routing_header.hop_index+1];
-                if let Some(sender)=self.packet_send.get(&next_hop){
-                    if rand<=self.pdr{
-                        println!("dropped");
-                        let mut vec=Vec::new();
-                        for node_id in (0..packet.routing_header.hop_index).rev(){
-                            vec.push(packet.routing_header.hops[node_id]);
-                        }
-                        let nack=Nack{
-                            fragment_index:0,
-                            nack_type:NackType::DestinationIsDrone,
-                        };
-                        let mut pack=Packet{
-                           pack_type: PacketType::Nack(nack.clone()),
-                            routing_header: SourceRoutingHeader{
-                                hop_index:0,
-                                hops:vec.clone(),
-                            },
-                            session_id: 1,
-                        };
-                        if let Some(sender)=self.packet_send.get(&pack.routing_header.hops[1]){
-                            sender.send(pack).unwrap();
-                        }else{
-                            packet.routing_header.hop_index+=1;
-                            println!("ack, hop_index: {}",packet.routing_header.hop_index);
-                            sender.send(packet).unwrap();
-                        }
-                    }
+                self.handle_msgFragment(packet.clone());
+            }
+        }
+    }
+    fn is_dropped(&self)->bool{
+        let mut rng=rand::rng();
+        let rand :f32 = (rng.random_range(0.0..=1.0) as f32 * 100.0).round() / 100.0;
+        if rand<=self.pdr{
+            return true;
+        }
+        false
+    }
+    fn handle_msgFragment(&mut self, mut packet: Packet) {
+        let mut next_hop = packet.routing_header.hops[packet.routing_header.hop_index + 1];
+        if let Some(sender) = self.packet_send.get(&next_hop) {
+            if self.is_dropped() {
+                println!("dropped");
+                let mut vec = Vec::new();
+                for node_id in (0..packet.routing_header.hop_index).rev() {
+                    vec.push(packet.routing_header.hops[node_id]);
+                }
+                let nack = Nack {
+                    fragment_index: 0,
+                    nack_type: NackType::DestinationIsDrone,
+                };
+                let mut pack = Packet {
+                    pack_type: PacketType::Nack(nack.clone()),
+                    routing_header: SourceRoutingHeader {
+                        hop_index: 0,
+                        hops: vec.clone(),
+                    },
+                    session_id: 1,
+                };
+                if let Some(sender) = self.packet_send.get(&pack.routing_header.hops[pack.routing_header.hop_index]) {
+                    sender.send(pack).unwrap();
+                } else {
+                    packet.routing_header.hop_index += 1;
+                    println!("ack, hop_index: {}", packet.routing_header.hop_index);
+                    sender.send(packet).unwrap();
                 }
             }
-
         }
     }
     fn forward_packet(&self, mut packet: Packet) {
@@ -246,8 +250,6 @@ impl MyDrone {
             println!("Packet has reached the final destination: {:?}", packet);
         }
     }
-
-
 
 }
 
