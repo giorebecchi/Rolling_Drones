@@ -320,12 +320,18 @@ impl SimulationController {
         }
     }
     fn add_sender(&mut self, dst_id: NodeId, nghb_id: NodeId, sender: Sender<Packet>) {
+        //Domanda per gio
+        //Come fa a mandare il comando al drone??
+        //perchè non sto capendo come funziona
+        //avrei tenuto
+        // if let Some(drone_sender) = self.drones.get(&dst_id) {
+        //     drone_sender.send(DroneCommand::AddSender(nghb_id, sender)).unwrap();
+        // } else {
+        //     println!("No drone with ID {:?}", dst_id);
+        // }
+
         if let Some(drone_sender) = self.drones.get(&dst_id) {
             // Send the AddSender command to the target drone
-            //Domanda per gio
-            //Come fa a mandare il comando al drone??
-            //perchè non sto capendo come funziona
-            //avrei tenuto
             if let Err(err) = drone_sender.send(DroneCommand::AddSender(nghb_id, sender)) {
                 println!(
                     "Failed to send AddSender command to drone {}: {:?}",
@@ -435,8 +441,11 @@ pub fn test() {
         routing_header: SourceRoutingHeader{hop_index:0,hops: vec![2,3]},
         session_id: 0,
     };
+    let (sender_5, sium)= unbounded();
 
     controller.msg_fragment(my_packet);
+    controller.add_sender(2, 5, sender_5);
+    controller.remove_sender(2, 5);
     // controller.crash(1);
     // controller.ack(my_packet);
     // controller.ack(my_packet2);
