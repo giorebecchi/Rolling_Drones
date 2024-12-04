@@ -106,8 +106,15 @@ impl MyDrone {
         }
     }
     pub fn add_sender(&mut self, node_id: NodeId, sender: Sender<Packet>) {
-        self.packet_send.insert(node_id, sender);
-        println!("Added sender for neighbor {}", node_id);
+        if self.packet_send.contains_key(&node_id) {
+            println!("The drone {} is already a neighbour", node_id);
+        }else {
+            self.packet_send.insert(node_id, sender);
+            println!("Added sender for neighbor {}", node_id);
+        }
+        //domanda per gio
+        //deve sempre aggiungere il sender che gli passiamo o solo se il collegamento non esisteva in precedenza?
+        //perchè nel caso in cui il collegamento fosse gia presente aggiorna il sender e mette quello nuovo
     }
     pub fn set_pdr(&mut self, pdr: f32) {
         self.pdr = pdr;
@@ -303,16 +310,19 @@ impl SimulationController {
     fn pdr(&mut self, id : NodeId) {
         for (idd, sender) in self.drones.iter() {
             if idd == &id {
-                let mut rng=rand::rng();
-                let rand= rng.random_range(0.0..=1.0);
+                let mut rng = rand::thread_rng();
+                // Use `gen_range` to generate a number in the range [0.0, 1.0]
+                let mut rand : f32 = rng.gen_range(0.0..=1.0);
+                // Round to two decimal places
+                rand = (rand * 100.0).round() / 100.0;
                 sender.send(DroneCommand::SetPacketDropRate(rand)).unwrap()
             }
         }
     }
-    fn add_sender(&mut self, dst_id: NodeId, sender: Sender<Packet>) {
+    fn add_sender(&mut self, dst_id: NodeId, nghb_id: NodeId, sender: Sender<Packet>) {
         if let Some(drone_sender) = self.drones.get(&dst_id) {
             // Send the AddSender command to the target drone
-            if let Err(err) = drone_sender.send(DroneCommand::AddSender(dst_id, sender)) {
+            if let Err(err) = drone_sender.send(DroneCommand::AddSender(nghb_id, sender)) {
                 println!(
                     "Failed to send AddSender command to drone {}: {:?}",
                     dst_id, err

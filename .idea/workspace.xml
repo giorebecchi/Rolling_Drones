@@ -8,14 +8,8 @@
   </component>
   <component name="ChangeListManager">
     <list default="true" id="19429245-7ff7-4fbd-9bb4-ed50939e2d6c" name="Changes" comment="">
-      <change afterPath="$PROJECT_DIR$/src/fair2024/mod.rs" afterDir="false" />
-      <change afterPath="$PROJECT_DIR$/src/fair2024/simulation_control.rs" afterDir="false" />
       <change beforePath="$PROJECT_DIR$/.idea/workspace.xml" beforeDir="false" afterPath="$PROJECT_DIR$/.idea/workspace.xml" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/src/main.rs" beforeDir="false" afterPath="$PROJECT_DIR$/src/main.rs" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/src/simulation_control/simulation.rs" beforeDir="false" afterPath="$PROJECT_DIR$/src/simulation_control/simulation.rs" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/src/tests/example.rs" beforeDir="false" />
-      <change beforePath="$PROJECT_DIR$/src/tests/input.toml" beforeDir="false" afterPath="$PROJECT_DIR$/src/fair2024/input.toml" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/src/tests/mod.rs" beforeDir="false" />
+      <change beforePath="$PROJECT_DIR$/src/fair2024/simulation_control.rs" beforeDir="false" afterPath="$PROJECT_DIR$/src/fair2024/simulation_control.rs" afterDir="false" />
     </list>
     <option name="SHOW_DIALOG" value="false" />
     <option name="HIGHLIGHT_CONFLICTS" value="true" />
@@ -69,7 +63,7 @@
     "RunOnceActivity.ShowReadmeOnStart": "true",
     "RunOnceActivity.rust.reset.selective.auto.import": "true",
     "SHARE_PROJECT_CONFIGURATION_FILES": "true",
-    "git-widget-placeholder": "main",
+    "git-widget-placeholder": "Filippo2",
     "last_opened_file_path": "C:/Users/Massimo/Desktop/Rolling_Drones",
     "node.js.detected.package.eslint": "true",
     "node.js.detected.package.tslint": "true",
