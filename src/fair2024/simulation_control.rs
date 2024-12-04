@@ -112,9 +112,6 @@ impl MyDrone {
             self.packet_send.insert(node_id, sender);
             println!("Added sender for neighbor {}", node_id);
         }
-        //domanda per gio
-        //deve sempre aggiungere il sender che gli passiamo o solo se il collegamento non esisteva in precedenza?
-        //perchè nel caso in cui il collegamento fosse gia presente aggiorna il sender e mette quello nuovo
     }
     pub fn set_pdr(&mut self, pdr: f32) {
         self.pdr = pdr;
@@ -320,16 +317,6 @@ impl SimulationController {
         }
     }
     fn add_sender(&mut self, dst_id: NodeId, nghb_id: NodeId, sender: Sender<Packet>) {
-        //Domanda per gio
-        //Come fa a mandare il comando al drone??
-        //perchè non sto capendo come funziona
-        //avrei tenuto
-        // if let Some(drone_sender) = self.drones.get(&dst_id) {
-        //     drone_sender.send(DroneCommand::AddSender(nghb_id, sender)).unwrap();
-        // } else {
-        //     println!("No drone with ID {:?}", dst_id);
-        // }
-
         if let Some(drone_sender) = self.drones.get(&dst_id) {
             // Send the AddSender command to the target drone
             if let Err(err) = drone_sender.send(DroneCommand::AddSender(nghb_id, sender)) {
