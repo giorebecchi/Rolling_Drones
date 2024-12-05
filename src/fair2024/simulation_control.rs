@@ -12,7 +12,7 @@ use wg_2024::network::{NodeId, SourceRoutingHeader};
 use wg_2024::packet::{Ack, FloodRequest, Fragment, Nack, NackType, Packet, PacketType};
 use crate::fair2024::drone::*;
 
-
+#[derive(Clone)]
 struct SimulationController {
     drones: HashMap<NodeId, Sender<DroneCommand>>,
     packet_channel: HashMap<NodeId, Sender<Packet>>,
@@ -26,14 +26,15 @@ impl SimulationController {
         select_biased! {
             recv(self.node_event_recv) -> command =>{
                 if let Ok(command) = command {
-                    match command.clone(){
-                        DroneEvent::PacketSent(packet) => {
+
+                    match command{
+                        DroneEvent::PacketSent(ref packet) => {
                             println!("drone sent :");
                         }
-                        DroneEvent::PacketDropped(packet) => {
+                        DroneEvent::PacketDropped(ref packet) => {
                             println!("drone dropped :");
                         }
-                        DroneEvent::ControllerShortcut(controller_shortcut) => {
+                        DroneEvent::ControllerShortcut(ref controller_shortcut) => {
                             println!("packet sent to destination");
                         }
                     }
@@ -236,11 +237,16 @@ pub fn test() {
             drone.run();
         }));
     }
+
+
     let mut controller = SimulationController {
         drones: controller_drones,
         node_event_recv: node_event_recv.clone(),
         packet_channel: packet_drones,
     };
+    controller.run();
+
+
     let my_packet=Packet{
         pack_type: PacketType::MsgFragment(Fragment{
             fragment_index: 1,
@@ -259,8 +265,8 @@ pub fn test() {
     // let (sender_5, sium)= unbounded();
 
     // controller.crash(2);
-    // controller.msg_fragment(my_packet);
-    controller.initiate_flood(my_packet2);
+    controller.msg_fragment(my_packet);
+    // controller.initiate_flood(my_packet2);
 
     // controller.msg_fragment(my_packet);
     // controller.add_sender(2, 5, sender_5);
