@@ -1,65 +1,64 @@
 Tasks for Drones and Simulation Controller
 
 
-### Drone-Specific Tasks
+###Drone-Specific Tasks
 
-1. **Initialization**
+    Initialization
 
-- Distribute drone implementations (`impl`) evenly across drones as per specifications. done
-- Set up Rust channels for communication between drones. done
-- Configure Packet Drop Rate (PDR) from the network initialization file (0-1 scale). done
+    Distribute drone implementations (impl) evenly across drones as per specifications. 🟢
+    Set up Rust channels for communication between drones. 🟢
+    Configure Packet Drop Rate (PDR) from the network initialization file (0-1 scale). 🟢
 
-2. **Packet Handling**
+    Packet Handling
 
-- Implement source routing for message forwarding:
-- Verify the `hops[hop_index]` matches the drone's ID. to do
-- Increment the `hop_index` and forward the packet to the next hop or terminate appropriately. done
-- Handle packet drops based on PDR and send `Nack` with type `Dropped` if necessary. done
-- Prioritize handling simulation controller commands over other messages. to do...
-- Handle `MsgFragment`, `Ack`, `Nack`, and flood-related packets according to protocol rules. done
+    Implement source routing for message forwarding:
+        Verify the hops[hop_index] matches the drone's ID. 🔴
+        Increment the hop_index and forward the packet to the next hop or terminate appropriately. 🟢
+        Handle packet drops based on PDR and send Nack with type Dropped if necessary. 🟢
+        Prioritize handling simulation controller commands over other messages. 🔴
+        Handle MsgFragment, Ack, Nack, and flood-related packets according to protocol rules. 🟢
 
-3. **Flooding Protocol**
+    Flooding Protocol
 
-- Participate in the **Network Discovery Protocol**:
-- Add the drone to the `path_trace` in `FloodRequest`. to do
-- Forward the `FloodRequest` to neighbors or create a `FloodResponse` as required. to do
-- Return topology information through `FloodResponse` packets. to do
+    Participate in the Network Discovery Protocol:
+        Add the drone to the path_trace in FloodRequest. 🔴
+        Forward the FloodRequest to neighbors or create a FloodResponse as required. 🔴
+        Return topology information through FloodResponse packets. 🔴
 
-4. **Simulation Events**
+    Simulation Events
 
-- Emit `PacketSent` and `PacketDropped` events to the simulation controller. to do 
-- Use the simulation controller for error handling of lost `Ack`, `Nack`, and `FloodResponse` to do
-packets.
+    Emit PacketSent and PacketDropped events to the simulation controller. 🔴
+    Use the simulation controller for error handling of lost Ack, Nack, and FloodResponse packets. 🔴
 
-5. **Error Handling**
+    Error Handling
 
-- Send appropriate `Nack` types for routing or processing errors:
-- `ErrorInRouting` to do
-- `UnexpectedRecipient` to do 
-- `DestinationIsDrone` to do
+    Send appropriate Nack types for routing or processing errors:
+        ErrorInRouting 🔴
+        UnexpectedRecipient 🔴
+        DestinationIsDrone 🔴
 
-### Simulation Controller-Specific Tasks
+Simulation Controller-Specific Tasks
 
-1. **Communication Management**
+    Communication Management
 
-- Create and maintain unbounded Rust channels for all nodes. done
-- Issue commands to drones:
-- `Crash`, `RemoveSender`, `AddSender`, `SetPacketDropRate`. done
-- Receive and process events from drones (`PacketSent`, `PacketDropped`, `ControllerShortcut`). to do
+    Create and maintain unbounded Rust channels for all nodes. 🟢
+    Issue commands to drones:
+        Crash, RemoveSender, AddSender, SetPacketDropRate. 🟢
+    Receive and process events from drones (PacketSent, PacketDropped, ControllerShortcut). 🔴
 
-2. **Validation and Network Maintenance**
+    Validation and Network Maintenance
 
-- Ensure the network remains connected after any command: to test
-- Validate client-drone and server-drone connectivity rules. to test
+    Ensure the network remains connected after any command: 🟠
+    Validate client-drone and server-drone connectivity rules. 🟠
 
-3. **Drone Crashes**
+    Drone Crashes
 
-- Implement drone crash behavior:
-- Remove senders from crashed drones. done
-- Process and forward remaining packets in the crash state. done
-- Send `ErrorInRouting` `Nack` for other packets. done
-- Listen to Crash Drone should send back an error. to do
+    Implement drone crash behavior:
+        Remove senders from crashed drones. 🟢
+        Process and forward remaining packets in the crash state. 🟢
+        Send ErrorInRouting Nack for other packets. 🟢
+        Listen to Crash Drone should send back an error. 🔴
 
-4. **Packet Routing**
+    Packet Routing
 
-- Directly forward lost `Ack`, `Nack`, and `FloodResponse` packets to their destination. done
+    Directly forward lost Ack, Nack, and FloodResponse packets to their destination. 🟢
