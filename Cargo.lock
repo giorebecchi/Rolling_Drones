@@ -3054,7 +3054,7 @@ checksum = "c8478de76992f2825a1052cc2ae9d1401cdb62687761d4100ddd69a73dc3dc48"
 dependencies = [
  "rand_chacha",
  "rand_core 0.9.0-beta.1",
- "zerocopy 0.8.11",
+ "zerocopy 0.8.13",
 ]
 
 [[package]]
@@ -3080,7 +3080,7 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "a98fa0b8309344136abe6244130311e76997e546f76fae8054422a7539b43df7"
 dependencies = [
  "getrandom 0.3.0-rc.0",
- "zerocopy 0.8.11",
+ "zerocopy 0.8.13",
 ]
 
 [[package]]
@@ -3762,7 +3762,7 @@ dependencies = [
 [[package]]
 name = "wg_2024"
 version = "0.1.0"
-source = "git+https://github.com/WGL-2024/WGL_repo_2024.git#3f14068f5141a15564e035b11ab09d3827b0f012"
+source = "git+https://github.com/WGL-2024/WGL_repo_2024.git#f88f1f263ba5e0d356bac60b694f787bcc8c7107"
 dependencies = [
  "wg_internal",
 ]
@@ -3770,7 +3770,7 @@ dependencies = [
 [[package]]
 name = "wg_config"
 version = "0.1.0"
-source = "git+https://github.com/WGL-2024/WGL_repo_2024.git#3f14068f5141a15564e035b11ab09d3827b0f012"
+source = "git+https://github.com/WGL-2024/WGL_repo_2024.git#f88f1f263ba5e0d356bac60b694f787bcc8c7107"
 dependencies = [
  "serde",
  "wg_network",
@@ -3779,7 +3779,7 @@ dependencies = [
 [[package]]
 name = "wg_controller"
 version = "0.1.0"
-source = "git+https://github.com/WGL-2024/WGL_repo_2024.git#3f14068f5141a15564e035b11ab09d3827b0f012"
+source = "git+https://github.com/WGL-2024/WGL_repo_2024.git#f88f1f263ba5e0d356bac60b694f787bcc8c7107"
 dependencies = [
  "crossbeam-channel",
  "wg_network",
@@ -3789,7 +3789,7 @@ dependencies = [
 [[package]]
 name = "wg_drone"
 version = "0.1.0"
-source = "git+https://github.com/WGL-2024/WGL_repo_2024.git#3f14068f5141a15564e035b11ab09d3827b0f012"
+source = "git+https://github.com/WGL-2024/WGL_repo_2024.git#f88f1f263ba5e0d356bac60b694f787bcc8c7107"
 dependencies = [
  "crossbeam-channel",
  "wg_controller",
@@ -3800,26 +3800,38 @@ dependencies = [
 [[package]]
 name = "wg_internal"
 version = "0.1.0"
-source = "git+https://github.com/WGL-2024/WGL_repo_2024.git#3f14068f5141a15564e035b11ab09d3827b0f012"
+source = "git+https://github.com/WGL-2024/WGL_repo_2024.git#f88f1f263ba5e0d356bac60b694f787bcc8c7107"
 dependencies = [
  "wg_config",
  "wg_controller",
  "wg_drone",
  "wg_network",
  "wg_packet",
+ "wg_tests",
 ]
 
 [[package]]
 name = "wg_network"
 version = "0.1.0"
-source = "git+https://github.com/WGL-2024/WGL_repo_2024.git#3f14068f5141a15564e035b11ab09d3827b0f012"
+source = "git+https://github.com/WGL-2024/WGL_repo_2024.git#f88f1f263ba5e0d356bac60b694f787bcc8c7107"
 
 [[package]]
 name = "wg_packet"
 version = "0.1.0"
-source = "git+https://github.com/WGL-2024/WGL_repo_2024.git#3f14068f5141a15564e035b11ab09d3827b0f012"
+source = "git+https://github.com/WGL-2024/WGL_repo_2024.git#f88f1f263ba5e0d356bac60b694f787bcc8c7107"
 dependencies = [
  "wg_network",
+]
+
+[[package]]
+name = "wg_tests"
+version = "0.1.0"
+source = "git+https://github.com/WGL-2024/WGL_repo_2024.git#f88f1f263ba5e0d356bac60b694f787bcc8c7107"
+dependencies = [
+ "crossbeam-channel",
+ "wg_drone",
+ "wg_network",
+ "wg_packet",
 ]
 
 [[package]]
@@ -4430,9 +4442,9 @@ checksum = "b9cc00251562a284751c9973bace760d86c0276c471b4be569fe6b068ee97a56"
 
 [[package]]
 name = "xml-rs"
-version = "0.8.23"
+version = "0.8.24"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "af310deaae937e48a26602b730250b4949e125f468f11e6990be3e5304ddd96f"
+checksum = "ea8b391c9a790b496184c29f7f93b9ed5b16abb306c05415b68bcc16e4d06432"
 
 [[package]]
 name = "zerocopy"
@@ -4446,11 +4458,11 @@ dependencies = [
 
 [[package]]
 name = "zerocopy"
-version = "0.8.11"
+version = "0.8.13"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "cce3b5629d87654b53a49002acc2ce64aa5aa7255f5c718374a37ac7fd98c218"
+checksum = "67914ab451f3bfd2e69e5e9d2ef3858484e7074d63f204fd166ec391b54de21d"
 dependencies = [
- "zerocopy-derive 0.8.11",
+ "zerocopy-derive 0.8.13",
 ]
 
 [[package]]
@@ -4466,9 +4478,9 @@ dependencies = [
 
 [[package]]
 name = "zerocopy-derive"
-version = "0.8.11"
+version = "0.8.13"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "74a82c26c3986af2623ec9eb890ff4aa19c006e30a1133dc9bd1830ec1612e20"
+checksum = "7988d73a4303ca289df03316bc490e934accf371af6bc745393cf3c2c5c4f25d"
 dependencies = [
  "proc-macro2",
  "quote",
