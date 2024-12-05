@@ -12,7 +12,7 @@ pub struct MyDrone {
     controller_recv: Receiver<DroneCommand>,
     packet_recv: Receiver<Packet>,
     pdr: f32,
-    pub(crate) packet_send: HashMap<NodeId, Sender<Packet>>,
+    packet_send: HashMap<NodeId, Sender<Packet>>,
 }
 
 impl Drone for MyDrone {
@@ -74,7 +74,12 @@ impl Drone for MyDrone {
                             PacketType::MsgFragment(msg)=>{
                                 println!("drone {} has received msg fragment {:?}", self.id,msg);
                             }
-                            _=>println!("not yet done"),
+                            PacketType::FloodRequest(flood_request)=>{
+                                println!("drone {} has received flood request {:?}",self.id,flood_request);
+                            }
+                            PacketType::FloodResponse(flood_response)=>{
+                                println!("drone {} has received flood response {:?}",self.id,flood_response);
+                            }
                         }
                         self.handle_packet(packet);
                     }
