@@ -24,7 +24,8 @@ struct SimulationController {
 
 impl SimulationController {
     fn run(&mut self) {
-        select_biased! {
+        loop{
+            select_biased! {
             recv(self.node_event_recv) -> command =>{
                 if let Ok(command) = command {
 
@@ -43,6 +44,7 @@ impl SimulationController {
                 }
 
             }
+        }
         }
 
     }
@@ -261,7 +263,7 @@ pub fn test() {
             length: 1,
             data: [1;128],
         }),
-        routing_header: SourceRoutingHeader{hop_index:0,hops: vec![1,3,2]},
+        routing_header: SourceRoutingHeader{hop_index:0,hops: vec![0,1,3,2]},
         session_id: 0,
     };
     let my_packet2=Packet{
@@ -278,7 +280,7 @@ pub fn test() {
     }
     // controller.initiate_flood(my_packet2);
 
-    // controller.msg_fragment(my_packet);
+    //controller.msg_fragment(my_packet);
     // controller.add_sender(2, 5, sender_5);
     // controller.remove_sender(2, 5);
     // controller.crash(1);
