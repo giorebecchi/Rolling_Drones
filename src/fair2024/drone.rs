@@ -190,7 +190,15 @@ impl MyDrone {
     }
     fn handle_msg_fragment(&mut self, mut packet: Packet) {
         if packet.routing_header.hop_index + 1 >= packet.routing_header.hops.len(){
+            let p = create_nack(packet,NackType::DestinationIsDrone);
+            self.send_nack(p);
             println!("Packet at its destination");
+            return;
+        }
+
+        if self.id != packet.routing_header.hops[packet.routing_header.hop_index]{
+            let p = create_nack(packet,NackType::UnexpectedRecipient(self.id));
+            self.send_nack(p);
             return;
         }
         let next_hop = packet.routing_header.hops[packet.routing_header.hop_index + 1];
@@ -211,6 +219,10 @@ impl MyDrone {
                     sender.send(packet).unwrap();
                 }
             }
+        }else{
+            let p = create_nack(packet, NackType::ErrorInRouting(next_hop));
+            self.send_nack(p);
+            return;
         }
     }
     fn forward_packet(&self, mut packet: Packet) {
