@@ -8,8 +8,7 @@
   </component>
   <component name="ChangeListManager">
     <list default="true" id="19429245-7ff7-4fbd-9bb4-ed50939e2d6c" name="Changes" comment="">
-      <change beforePath="$PROJECT_DIR$/.idea/workspace.xml" beforeDir="false" afterPath="$PROJECT_DIR$/.idea/workspace.xml" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/src/fair2024/drone.rs" beforeDir="false" afterPath="$PROJECT_DIR$/src/fair2024/drone.rs" afterDir="false" />
+
       <change beforePath="$PROJECT_DIR$/src/fair2024/simulation_control.rs" beforeDir="false" afterPath="$PROJECT_DIR$/src/fair2024/simulation_control.rs" afterDir="false" />
     </list>
     <option name="SHOW_DIALOG" value="false" />
@@ -57,16 +56,14 @@
   "keyToString": {
     "ASKED_SHARE_PROJECT_CONFIGURATION_FILES": "true",
     "Cargo.Run Rolling_Drones.executor": "Run",
+
     "Cargo.Test fair2024::simulation_control::tests::test_generic_chain_fragment_ack.executor": "Run",
     "Cargo.Test fair2024::simulation_control::tests::test_generic_chain_fragment_drop.executor": "Run",
     "Cargo.Test fair2024::simulation_control::tests::test_generic_fragment_drop_with_my_drone.executor": "Run",
     "Cargo.Test fair2024::simulation_control::tests::test_generic_fragment_forward.executor": "Run",
     "Cargo.Test simulation_control::drone_image::main.executor": "Run",
     "Cargo.Test simulation_control::tests.executor": "Run",
-    "RunOnceActivity.ShowReadmeOnStart": "true",
-    "RunOnceActivity.rust.reset.selective.auto.import": "true",
-    "SHARE_PROJECT_CONFIGURATION_FILES": "true",
-    "git-widget-placeholder": "max",
+
     "last_opened_file_path": "C:/Users/Massimo/Desktop/Rolling_Drones",
     "node.js.detected.package.eslint": "true",
     "node.js.detected.package.tslint": "true",
@@ -93,7 +90,40 @@
       <recent name="$PROJECT_DIR$/assets/fonts" />
     </key>
   </component>
-  <component name="RunManager" selected="Cargo.Test fair2024::simulation_control::tests::test_generic_chain_fragment_ack">
+
+      <option name="workingDirectory" value="file://$PROJECT_DIR$" />
+      <envs />
+      <option name="emulateTerminal" value="true" />
+      <option name="channel" value="DEFAULT" />
+      <option name="requiredFeatures" value="true" />
+      <option name="allFeatures" value="false" />
+      <option name="withSudo" value="false" />
+      <option name="buildTarget" value="REMOTE" />
+      <option name="backtrace" value="SHORT" />
+      <option name="isRedirectInput" value="false" />
+      <option name="redirectInputPath" value="" />
+      <method v="2">
+        <option name="CARGO.BUILD_TASK_PROVIDER" enabled="true" />
+      </method>
+    </configuration>
+    <configuration name="Test fair2024::simulation_control::test" type="CargoCommandRunConfiguration" factoryName="Cargo Command" temporary="true">
+      <option name="buildProfileId" value="test" />
+      <option name="command" value="test --package Rolling_Drones --bin Rolling_Drones fair2024::simulation_control::test -- --exact" />
+      <option name="workingDirectory" value="file://$PROJECT_DIR$" />
+      <envs />
+      <option name="emulateTerminal" value="true" />
+      <option name="channel" value="DEFAULT" />
+      <option name="requiredFeatures" value="true" />
+      <option name="allFeatures" value="false" />
+      <option name="withSudo" value="false" />
+      <option name="buildTarget" value="REMOTE" />
+      <option name="backtrace" value="SHORT" />
+      <option name="isRedirectInput" value="false" />
+      <option name="redirectInputPath" value="" />
+      <method v="2">
+        <option name="CARGO.BUILD_TASK_PROVIDER" enabled="true" />
+      </method>
+    </configuration>
     <configuration name="Test fair2024::simulation_control::tests::test_generic_chain_fragment_ack" type="CargoCommandRunConfiguration" factoryName="Cargo Command" temporary="true">
       <option name="buildProfileId" value="test" />
       <option name="command" value="test --package Rolling_Drones --bin Rolling_Drones fair2024::simulation_control::tests::test_generic_chain_fragment_ack -- --exact" />
@@ -112,26 +142,9 @@
         <option name="CARGO.BUILD_TASK_PROVIDER" enabled="true" />
       </method>
     </configuration>
-    <configuration name="Test fair2024::simulation_control::tests::test_generic_chain_fragment_drop" type="CargoCommandRunConfiguration" factoryName="Cargo Command" temporary="true">
-      <option name="command" value="test --package Rolling_Drones --bin Rolling_Drones fair2024::simulation_control::tests::test_generic_chain_fragment_drop -- --exact" />
-      <option name="workingDirectory" value="file://$PROJECT_DIR$" />
-      <envs />
-      <option name="emulateTerminal" value="true" />
-      <option name="channel" value="DEFAULT" />
-      <option name="requiredFeatures" value="true" />
-      <option name="allFeatures" value="false" />
-      <option name="withSudo" value="false" />
-      <option name="buildTarget" value="REMOTE" />
-      <option name="backtrace" value="SHORT" />
-      <option name="isRedirectInput" value="false" />
-      <option name="redirectInputPath" value="" />
-      <method v="2">
-        <option name="CARGO.BUILD_TASK_PROVIDER" enabled="true" />
-      </method>
-    </configuration>
-    <configuration name="Test fair2024::simulation_control::tests::test_generic_fragment_drop_with_my_drone" type="CargoCommandRunConfiguration" factoryName="Cargo Command" temporary="true">
+    <configuration name="Test tests::tests::tests::test_generic_chain_fragment_drop" type="CargoCommandRunConfiguration" factoryName="Cargo Command" temporary="true">
       <option name="buildProfileId" value="test" />
-      <option name="command" value="test --package Rolling_Drones --bin Rolling_Drones fair2024::simulation_control::tests::test_generic_fragment_drop_with_my_drone -- --exact" />
+      <option name="command" value="test --package Rolling_Drones --bin Rolling_Drones tests::tests::tests::test_generic_chain_fragment_drop -- --exact" />
       <option name="workingDirectory" value="file://$PROJECT_DIR$" />
       <envs />
       <option name="emulateTerminal" value="true" />
@@ -147,25 +160,8 @@
         <option name="CARGO.BUILD_TASK_PROVIDER" enabled="true" />
       </method>
     </configuration>
-    <configuration name="Test fair2024::simulation_control::tests::test_generic_fragment_forward" type="CargoCommandRunConfiguration" factoryName="Cargo Command" temporary="true">
-      <option name="command" value="test --package Rolling_Drones --bin Rolling_Drones fair2024::simulation_control::tests::test_generic_fragment_forward -- --exact" />
-      <option name="workingDirectory" value="file://$PROJECT_DIR$" />
-      <envs />
-      <option name="emulateTerminal" value="true" />
-      <option name="channel" value="DEFAULT" />
-      <option name="requiredFeatures" value="true" />
-      <option name="allFeatures" value="false" />
-      <option name="withSudo" value="false" />
-      <option name="buildTarget" value="REMOTE" />
-      <option name="backtrace" value="SHORT" />
-      <option name="isRedirectInput" value="false" />
-      <option name="redirectInputPath" value="" />
-      <method v="2">
-        <option name="CARGO.BUILD_TASK_PROVIDER" enabled="true" />
-      </method>
-    </configuration>
-    <configuration name="Test simulation_control::tests" type="CargoCommandRunConfiguration" factoryName="Cargo Command" temporary="true">
-      <option name="command" value="test --package Rolling_Drones --bin Rolling_Drones fair2024::simulation_control::tests" />
+    <configuration name="Test tests::tests::tests::test_generic_fragment_forward" type="CargoCommandRunConfiguration" factoryName="Cargo Command" temporary="true">
+      <option name="command" value="test --package Rolling_Drones --bin Rolling_Drones tests::tests::tests::test_generic_fragment_forward -- --exact" />
       <option name="workingDirectory" value="file://$PROJECT_DIR$" />
       <envs />
       <option name="emulateTerminal" value="true" />
@@ -183,11 +179,11 @@
     </configuration>
     <recent_temporary>
       <list>
+        <item itemvalue="Cargo.Test tests::tests::tests::test_generic_chain_fragment_drop" />
+        <item itemvalue="Cargo.Run Rolling_Drones" />
+        <item itemvalue="Cargo.Test tests::tests::tests::test_generic_fragment_forward" />
+        <item itemvalue="Cargo.Test fair2024::simulation_control::test" />
         <item itemvalue="Cargo.Test fair2024::simulation_control::tests::test_generic_chain_fragment_ack" />
-        <item itemvalue="Cargo.Test fair2024::simulation_control::tests::test_generic_chain_fragment_drop" />
-        <item itemvalue="Cargo.Test fair2024::simulation_control::tests::test_generic_fragment_forward" />
-        <item itemvalue="Cargo.Test simulation_control::tests" />
-        <item itemvalue="Cargo.Test fair2024::simulation_control::tests::test_generic_fragment_drop_with_my_drone" />
       </list>
     </recent_temporary>
   </component>

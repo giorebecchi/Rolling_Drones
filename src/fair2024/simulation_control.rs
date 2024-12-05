@@ -4,11 +4,12 @@ use rand::Rng;
 use crossbeam_channel::{select_biased, unbounded, Receiver, RecvError, Sender, TryRecvError};
 use std::collections::HashMap;
 use std::{fs,thread};
+use wg_2024::packet::NodeType;
 use wg_2024::config::Config;
 use wg_2024::controller::{DroneCommand,DroneEvent};
 use wg_2024::drone::{Drone};
 use wg_2024::network::{NodeId, SourceRoutingHeader};
-use wg_2024::packet::{Ack, Fragment, Nack, NackType, Packet, PacketType};
+use wg_2024::packet::{Ack, FloodRequest, Fragment, Nack, NackType, Packet, PacketType};
 use crate::fair2024::drone::*;
 
 
@@ -178,21 +179,19 @@ impl SimulationController {
             sender.send(packet).unwrap();
         }
     }
-    fn initiate_flood(&mut self, mut packet: Packet){
-        if let PacketType::FloodRequest(mut flood_request)=packet.clone().pack_type{
-            flood_request.initiator_id=4; //add your client/server id!
-            let next_hop=packet.clone().routing_header.hops[packet.routing_header.hop_index+1];
-            if let Some(sender) = self.packet_channel.get(&next_hop) {
-                println!("Sent Flood packet to : {}", next_hop);
-                sender.send(packet).unwrap();
-            }else{
-                println!("No sender found for hop {}", next_hop);
+    fn initiate_flood(&mut self, packet: Packet){
+        if let PacketType::FloodRequest(flood_request)=packet.clone().pack_type {
+            for node_neighbours in packet.clone().routing_header.hops{
+                if let Some(sender) = self.packet_channel.get(&node_neighbours) {
+                    sender.send(packet.clone()).unwrap();
+                }else{
+                    println!("No sender found for neighbours {:?}", node_neighbours);
+                }
             }
         }else{
-            println!("called function initiate_flood with a wrong packet type : {:?}",packet.pack_type);
+            println!("Unexpected error occured, message wasn't a flood request");
         }
     }
-
 }
 pub fn parse_config(file: &str) -> Config {
     let file_str = fs::read_to_string(file).unwrap();
@@ -253,14 +252,15 @@ pub fn test() {
         session_id: 0,
     };
     let my_packet2=Packet{
-        pack_type: PacketType::Ack(Ack{fragment_index:345}),
-        routing_header: SourceRoutingHeader{hop_index:0,hops: vec![2,3]},
+        pack_type: PacketType::FloodRequest(FloodRequest{flood_id:1 , initiator_id:4, path_trace: vec![(1, NodeType::Drone)]}),
+        routing_header: SourceRoutingHeader{hop_index:0,hops: vec![3,2]},
         session_id: 0,
     };
     // let (sender_5, sium)= unbounded();
 
-    controller.crash(2);
-    controller.msg_fragment(my_packet);
+    // controller.crash(2);
+    // controller.msg_fragment(my_packet);
+    controller.initiate_flood(my_packet2);
 
     // controller.msg_fragment(my_packet);
     // controller.add_sender(2, 5, sender_5);
