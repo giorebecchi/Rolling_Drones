@@ -208,6 +208,12 @@ impl MyDrone {
         let next_hop = packet.routing_header.hops[packet.routing_header.hop_index + 1];
         if let Some(_) = self.packet_send.get(&next_hop) {
             if self.is_dropped() {
+
+                //////////////////////////////
+                let event = DroneEvent::PacketDropped(packet.clone());
+                self.controller_send.send(event).unwrap();
+                /////////////////////////////
+
                 println!("dropped");
                 let pack = create_nack(packet.clone(),NackType::Dropped);
                 if let Some(sender) = self.packet_send.get(&pack.routing_header.hops[pack.routing_header.hop_index]) {
@@ -217,12 +223,20 @@ impl MyDrone {
                     return;
                 }
             }else {
+
+                //////////////////////////////
+                let event = DroneEvent::PacketSent(packet.clone());
+                self.controller_send.send(event).unwrap();
+                /////////////////////////////
+
                 if let Some(sender)=self.packet_send.get(&next_hop) {
                     println!("Message sent to {}", packet.routing_header.hops[packet.routing_header.hop_index+1]);
                     packet.routing_header.hop_index += 1;
                     sender.send(packet).unwrap();
                 }
+
             }
+
         }else{
             let p = create_nack(packet, NackType::ErrorInRouting(next_hop));
             self.send_nack(p);
@@ -245,6 +259,12 @@ impl MyDrone {
                         "Failed to send packet to next hop {}: {:?}",
                         next_hop, e
                     );
+
+                    //////////////////////////////
+                    let event = DroneEvent::ControllerShortcut(packet.clone());
+                    self.controller_send.send(event).unwrap();
+                    /////////////////////////////
+
                 } else {
                     println!(
                         "Packet forwarded to next hop {}: {:?}",
@@ -256,12 +276,23 @@ impl MyDrone {
                     "No sender found for next hop {}. Packet could not be forwarded.",
                     next_hop
                 );
+                //////////////////////////////
+                let event = DroneEvent::ControllerShortcut(packet.clone());
+                self.controller_send.send(event).unwrap();
+                /////////////////////////////
+
             }
         } else {
             if packet.routing_header.hop_index>=packet.routing_header.hops.len()-1 {
                 println!("Error, The final destination of packet: {:?} is drone: {}",packet.clone(),self.id);
                 // let nack=create_nack(packet.clone(),NackType::DestinationIsDrone);
                 // self.send_nack(nack);
+
+                //////////////////////////////
+                let event = DroneEvent::ControllerShortcut(packet.clone());
+                self.controller_send.send(event).unwrap();
+                /////////////////////////////
+
                 return;
             }
             println!("Packet has reached the final destination: {:?}", packet);
