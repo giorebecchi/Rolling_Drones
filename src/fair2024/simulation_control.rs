@@ -124,6 +124,20 @@ impl SimulationController {
             sender.send(packet).unwrap();
         }
     }
+    fn initiate_flood(&mut self, mut packet: Packet){
+        if let PacketType::FloodRequest(mut flood_request)=packet.clone().pack_type{
+            flood_request.initiator_id=4; //add your client/server id!
+            let next_hop=packet.clone().routing_header.hops[packet.routing_header.hop_index+1];
+            if let Some(sender) = self.packet_channel.get(&next_hop) {
+                println!("Sent Flood packet to : {}", next_hop);
+                sender.send(packet).unwrap();
+            }else{
+                println!("No sender found for hop {}", next_hop);
+            }
+        }else{
+            println!("called function initiate_flood with a wrong packet type : {:?}",packet.pack_type);
+        }
+    }
 
 }
 pub fn parse_config(file: &str) -> Config {
