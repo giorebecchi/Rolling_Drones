@@ -24,9 +24,9 @@ struct SimulationController {
 impl SimulationController {
     fn run(&mut self) {
         select_biased! {
-            recv(self.node_event_recv()) -> command =>{
+            recv(self.node_event_recv) -> command =>{
                 if let Ok(command) = command {
-                    match command{
+                    match command.clone(){
                         DroneEvent::PacketSent(packet) => {
                             println!("drone sent :");
                         }

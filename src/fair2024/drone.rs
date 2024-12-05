@@ -1,6 +1,4 @@
-use std::collections::HashMap;
-use bevy::reflect::List;
-use bevy::utils::tracing::Value;
+use std::collections::{HashMap, HashSet};
 use crossbeam_channel::{select_biased, Receiver, Sender};
 use rand::Rng;
 use wg_2024::controller::{DroneCommand, DroneEvent};
@@ -14,6 +12,7 @@ pub struct MyDrone {
     controller_recv: Receiver<DroneCommand>,
     packet_recv: Receiver<Packet>,
     pdr: f32,
+    already_visited: HashSet<(NodeId,u64)>,
     packet_send: HashMap<NodeId, Sender<Packet>>,
 }
 
@@ -30,6 +29,7 @@ impl Drone for MyDrone {
             controller_recv,
             packet_recv,
             pdr,
+            already_visited: HashSet::new(),
             packet_send,
         }
     }
@@ -77,7 +77,7 @@ impl Drone for MyDrone {
                                 println!("drone {} has received msg fragment {:?}", self.id,msg);
                             }
                             PacketType::FloodRequest(flood_request)=>{
-                                println!("drone {} has received flood request {:?}",self.id,flood_request);
+                                //println!("drone {} has received flood request {:?}",self.id,flood_request);
                             }
                             PacketType::FloodResponse(flood_response)=>{
                                println!("drone {} has received flood response {:?}",self.id,flood_response);
@@ -158,28 +158,28 @@ impl MyDrone {
     fn handle_packet(&mut self, packet: Packet) {
         match packet.clone().pack_type{
             PacketType::Ack(ack)=>{
-                println!("Received ack: {:?}",ack);
+                // println!("Received ack: {:?}",ack);
                 self.forward_packet(packet.clone());
 
             }
             PacketType::Nack(nack)=>{
-                println!("Received Nack: {:?}",nack);
+                //println!("Received Nack: {:?}",nack);
                 self.forward_packet(packet.clone());
                 //Add SimulationControl Event log
 
             }
             PacketType::FloodRequest(fl)=>{
-               // println!("Received Flood Request: {:?}",fl);
+                // println!("Received Flood Request: {:?}",fl);
                 self.handle_flood_request(packet);
 
             }
             PacketType::FloodResponse(fr)=>{
-               // println!("Received Flood Response: {:?}",fr);
+                // println!("Received Flood Response: {:?}",fr);
                 self.forward_packet(packet.clone());
 
             }
             PacketType::MsgFragment(msg_fragment)=>{
-                println!("Received MsgFragment: {:?}",msg_fragment);
+                //println!("Received MsgFragment: {:?}",msg_fragment);
                 self.handle_msg_fragment(packet.clone());
             }
         }
@@ -195,14 +195,15 @@ impl MyDrone {
     fn handle_msg_fragment(&mut self, mut packet: Packet) {
         if packet.routing_header.hop_index + 1 >= packet.routing_header.hops.len(){
             let p = create_nack(packet,NackType::DestinationIsDrone);
+            println!("Packet at its wrong destination: {}",self.id);
             self.send_nack(p);
-            println!("Packet at its destination");
             return;
         }
 
         if self.id != packet.routing_header.hops[packet.routing_header.hop_index]{
             let p = create_nack(packet,NackType::UnexpectedRecipient(self.id));
             self.send_nack(p);
+            println!("Packet received by the wrong drone: {}",self.id);
             return;
         }
         let next_hop = packet.routing_header.hops[packet.routing_header.hop_index + 1];
@@ -270,37 +271,66 @@ impl MyDrone {
 
     fn handle_flood_request(&mut self, mut packet : Packet){
         if let PacketType::FloodRequest(mut flood) = packet.pack_type{
-            for (node_id, _) in flood.path_trace.clone() {
-                if self.id == node_id {
-                    println!("error, already received!!");
-                    self.forward_packet(self.create_flood_response(packet.session_id,flood));
-                    return;
-                }
-            }
-            flood.path_trace.push((self.id, NodeType::Drone));
-            let new_packet = Packet{
-                pack_type : PacketType::FloodRequest(flood.clone()),
-                routing_header: packet.routing_header,
-                session_id: packet.session_id,
-            };
-            let (previous,_)=flood.path_trace[flood.path_trace.len()-2];
-            if self.packet_send.clone().len() == 1{
+            if self.already_visited.contains(&(flood.initiator_id, flood.flood_id)){
+                println!("error, already received!!");
                 self.forward_packet(self.create_flood_response(packet.session_id,flood));
                 return;
-            }else{
-                for (idd,neighbour) in self.packet_send.clone(){
-                    if idd==previous{
+            }else {
+                self.already_visited.insert((flood.initiator_id, flood.flood_id));
+                flood.path_trace.push((self.id, NodeType::Drone));
+                let new_packet = Packet{
+                    pack_type : PacketType::FloodRequest(flood.clone()),
+                    routing_header: packet.routing_header,
+                    session_id: packet.session_id,
+                };
+                let (previous, _) = flood.path_trace[flood.path_trace.len() - 2];
+                for (idd, neighbour) in self.packet_send.clone() {
+                    if idd == previous {
                         //don't send to previous
-                        println!("not sent to {}, because it was the previous", previous);
-                    }else{
-                        println!("sent flood request to : {}", idd);
+                        // println!("not sent to {}, because it was the previous", previous);
+                    } else {
+                        //println!("sent flood request to : {}", idd);
                         neighbour.send(new_packet.clone()).unwrap();
                     }
                 }
             }
         }else{
-            println!("error not a flood request")
+            println!("error not a floodrequest!!");
         }
+
+
+        // if let PacketType::FloodRequest(mut flood) = packet.pack_type{
+        //     for (node_id, _) in flood.path_trace.clone() {
+        //         if self.id == node_id {
+        //             //println!("error, already received!!");
+        //             self.forward_packet(self.create_flood_response(packet.session_id,flood));
+        //             return;
+        //         }
+        //     }
+        //     flood.path_trace.push((self.id, NodeType::Drone));
+        //     let new_packet = Packet{
+        //         pack_type : PacketType::FloodRequest(flood.clone()),
+        //         routing_header: packet.routing_header,
+        //         session_id: packet.session_id,
+        //     };
+        //     let (previous,_)=flood.path_trace[flood.path_trace.len()-2];
+        //     if self.packet_send.clone().len() == 1{
+        //         self.forward_packet(self.create_flood_response(packet.session_id,flood));
+        //         return;
+        //     }else{
+        //         for (idd,neighbour) in self.packet_send.clone(){
+        //             if idd==previous{
+        //                 //don't send to previous
+        //                // println!("not sent to {}, because it was the previous", previous);
+        //             }else{
+        //                 //println!("sent flood request to : {}", idd);
+        //                 neighbour.send(new_packet.clone()).unwrap();
+        //             }
+        //         }
+        //     }
+        // }else{
+        //     println!("error not a flood request")
+        // }
     }
     fn create_flood_response(&self, s_id: u64, mut flood : FloodRequest )->Packet{
         let mut src_header=Vec::new();
