@@ -246,14 +246,12 @@ pub fn test() {
         packet_channel: packet_drones,
     }));
 
-    // Spawn a thread for the SimulationController
     let controller_clone = Arc::clone(&controller);
     let controller_handle = thread::spawn(move || {
         let mut controller = controller_clone.lock().unwrap();
         controller.run()
     });
 
-    // controller.run();
 
 
     let my_packet=Packet{
