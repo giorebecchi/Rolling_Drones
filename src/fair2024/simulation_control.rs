@@ -1,7 +1,7 @@
 #![allow(unused)]
 
 use rand::Rng;
-use crossbeam_channel::{select_biased, unbounded, Receiver, Sender};
+use crossbeam_channel::{select_biased, unbounded, Receiver, RecvError, Sender, TryRecvError};
 use std::collections::HashMap;
 use std::{fs,thread};
 use wg_2024::packet::NodeType;
@@ -22,6 +22,60 @@ struct SimulationController {
 
 
 impl SimulationController {
+    fn run(&mut self) {
+        select_biased! {
+            recv(self.node_event_recv()) -> command =>{
+                if let Ok(command) = command {
+                    match command{
+                        DroneEvent::PacketSent(packet) => {
+                            println!("drone sent :");
+                        }
+                        DroneEvent::PacketDropped(packet) => {
+                            println!("drone dropped :");
+                        }
+                        DroneEvent::ControllerShortcut(controller_shortcut) => {
+                            println!("packet sent to destination");
+                        }
+                    }
+                    self.handle_event(command.clone());
+                }
+
+            }
+        }
+
+    }
+
+    fn handle_event(&mut self, command: DroneEvent) {
+        match command {
+            DroneEvent::PacketSent(packet) => {
+                self.print_packet(packet);
+            }
+            DroneEvent::PacketDropped(packet) => {
+                self.print_packet(packet);
+            }
+            DroneEvent::ControllerShortcut(packet) => {
+                self.send_to_destination(packet);
+            }
+        }
+    }
+    fn print_packet(&mut self, packet: Packet) {
+        println!("source id: {:#?}", packet.routing_header.hops[0]);
+        println!("destination id: {:#?}", packet.routing_header.hops[packet.routing_header.hops.len() - 1]);
+        println!("path: {:#?}", packet.routing_header.hops);
+    }
+    fn send_to_destination(&mut self, packet: Packet) {
+        let addr = packet.routing_header.hops[packet.routing_header.hops.len() - 1];
+        self.print_packet(packet.clone());
+
+        if let Some(sender) = self.packet_channel.get(&addr) {
+            sender.send(packet).unwrap();
+        }
+
+    }
+
+
+
+
     fn crash_all(&mut self) {
         for (_, sender) in self.drones.iter() {
             sender.send(DroneCommand::Crash).unwrap();
