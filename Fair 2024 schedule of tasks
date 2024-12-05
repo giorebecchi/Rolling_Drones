@@ -15,15 +15,15 @@ Tasks for Drones and Simulation Controller
         Verify the hops[hop_index] matches the drone's ID. 🔴
         Increment the hop_index and forward the packet to the next hop or terminate appropriately. 🟢
         Handle packet drops based on PDR and send Nack with type Dropped if necessary. 🟢
-        Prioritize handling simulation controller commands over other messages. 🔴
+        Prioritize handling simulation controller commands over other messages. 🟢
         Handle MsgFragment, Ack, Nack, and flood-related packets according to protocol rules. 🟢
 
     Flooding Protocol
 
     Participate in the Network Discovery Protocol:
-        Add the drone to the path_trace in FloodRequest. 🔴
-        Forward the FloodRequest to neighbors or create a FloodResponse as required. 🔴
-        Return topology information through FloodResponse packets. 🔴
+        Add the drone to the path_trace in FloodRequest. 🟢
+        Forward the FloodRequest to neighbors or create a FloodResponse as required. 🟢
+        Return topology information through FloodResponse packets. 🟢
 
     Simulation Events
 
@@ -33,9 +33,9 @@ Tasks for Drones and Simulation Controller
     Error Handling
 
     Send appropriate Nack types for routing or processing errors:
-        ErrorInRouting 🔴
-        UnexpectedRecipient 🔴
-        DestinationIsDrone 🔴
+        ErrorInRouting 🟢
+        UnexpectedRecipient 🟢
+        DestinationIsDrone 🟢
 
 Simulation Controller-Specific Tasks
 
@@ -44,7 +44,7 @@ Simulation Controller-Specific Tasks
     Create and maintain unbounded Rust channels for all nodes. 🟢
     Issue commands to drones:
         Crash, RemoveSender, AddSender, SetPacketDropRate. 🟢
-    Receive and process events from drones (PacketSent, PacketDropped, ControllerShortcut). 🔴
+    Receive and process events from drones (PacketSent, PacketDropped, ControllerShortcut). 🟢
 
     Validation and Network Maintenance
 
