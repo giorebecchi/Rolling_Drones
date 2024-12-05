@@ -26,6 +26,7 @@ impl SimulationController {
         select_biased! {
             recv(self.node_event_recv) -> command =>{
                 if let Ok(command) = command {
+
                     match command{
                         DroneEvent::PacketSent(ref packet) => {
                             println!("drone sent :");
