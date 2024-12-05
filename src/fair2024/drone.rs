@@ -221,7 +221,7 @@ impl MyDrone {
             }
         }else{
             let p = create_nack(packet, NackType::ErrorInRouting(next_hop));
-            self.send_nack(next_hop);
+            self.send_nack(p);
             return;
         }
     }
