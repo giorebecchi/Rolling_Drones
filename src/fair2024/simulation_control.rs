@@ -4,6 +4,7 @@ use rand::Rng;
 use crossbeam_channel::{select_biased, unbounded, Receiver, RecvError, Sender, TryRecvError};
 use std::collections::HashMap;
 use std::{fs,thread};
+use std::sync::{Arc,Mutex};
 use wg_2024::packet::NodeType;
 use wg_2024::config::Config;
 use wg_2024::controller::{DroneCommand,DroneEvent};
@@ -190,7 +191,7 @@ impl SimulationController {
                 }
             }
         }else{
-            println!("Unexpected error occured, message wasn't a flood request");
+            println!("Unexpected error occurred, message wasn't a flood request");
         }
     }
 }
@@ -239,12 +240,20 @@ pub fn test() {
     }
 
 
-    let mut controller = SimulationController {
+    let controller = Arc::new(Mutex::new(SimulationController {
         drones: controller_drones,
         node_event_recv: node_event_recv.clone(),
         packet_channel: packet_drones,
-    };
-    controller.run();
+    }));
+
+    // Spawn a thread for the SimulationController
+    let controller_clone = Arc::clone(&controller);
+    let controller_handle = thread::spawn(move || {
+        let mut controller = controller_clone.lock().unwrap();
+        controller.run()
+    });
+
+    // controller.run();
 
 
     let my_packet=Packet{
@@ -265,7 +274,10 @@ pub fn test() {
     // let (sender_5, sium)= unbounded();
 
     // controller.crash(2);
-    controller.msg_fragment(my_packet);
+    {
+        let mut controller = controller.lock().unwrap();
+        controller.msg_fragment(my_packet);
+    }
     // controller.initiate_flood(my_packet2);
 
     // controller.msg_fragment(my_packet);
@@ -284,5 +296,6 @@ pub fn test() {
         handle.join().unwrap();
 
     }
+    controller_handle.join().unwrap();
 }
 
