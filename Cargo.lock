@@ -8,6 +8,7 @@ version = "0.1.0"
 dependencies = [
  "bevy",
  "crossbeam-channel",
+ "lazy_static",
  "rand 0.9.0-beta.1",
  "serde",
  "toml",

@@ -10,3 +10,4 @@ serde = { version = "1.0.215", features = ["derive"] }
 crossbeam-channel = "0.5.13"
 rand = "0.9.0-beta.0"
 bevy = "0.14.2"
+lazy_static = "1.5.0"
