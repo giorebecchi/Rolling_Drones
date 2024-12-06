@@ -1,3 +1,5 @@
+use std::sync::Arc;
+use std::sync::Mutex;
 use std::collections::{HashMap, HashSet};
 use crossbeam_channel::{select_biased, Receiver, Sender};
 use rand::Rng;
@@ -5,7 +7,10 @@ use wg_2024::controller::{DroneCommand, DroneEvent};
 use wg_2024::drone::Drone;
 use wg_2024::network::{NodeId, SourceRoutingHeader};
 use wg_2024::packet::{FloodRequest, FloodResponse, Nack, NackType, NodeType, Packet, PacketType};
+use lazy_static::lazy_static;
 
+
+lazy_static! { static ref CONSOLE_MUTEX: Arc<Mutex<()>> = Arc::new(Mutex::new(())); }
 pub struct MyDrone {
     id: NodeId,
     controller_send: Sender<DroneEvent>,
@@ -39,6 +44,7 @@ impl Drone for MyDrone {
             select_biased!{
                 recv(self.controller_recv) -> command => {
                     if let Ok(command) = command {
+                        let _lock = CONSOLE_MUTEX.lock().unwrap();
                         match command.clone() {
                         DroneCommand::Crash => {
                                 println!("drone {} crashed", self.id);
@@ -262,9 +268,19 @@ impl MyDrone {
                     );
 
                     //////////////////////////////
-                    let event = DroneEvent::ControllerShortcut(packet.clone());
-                    self.controller_send.send(event).unwrap();
-                    /////////////////////////////
+
+                    match packet.pack_type{
+                        PacketType::Ack(_) => {
+                            let event = DroneEvent::ControllerShortcut(packet.clone());
+                            self.controller_send.send(event).unwrap();
+                        }
+                        PacketType::Nack(_) => {
+                            let event = DroneEvent::ControllerShortcut(packet.clone());
+                            self.controller_send.send(event).unwrap();
+                        }
+                        (_) => {}
+                    }
+                    ///////////////////////////////
 
                 } else {
                     println!(
@@ -278,10 +294,19 @@ impl MyDrone {
                     next_hop
                 );
                 //////////////////////////////
-                let event = DroneEvent::ControllerShortcut(packet.clone());
-                self.controller_send.send(event).unwrap();
-                /////////////////////////////
 
+                match packet.pack_type{
+                    PacketType::Ack(_) => {
+                        let event = DroneEvent::ControllerShortcut(packet.clone());
+                        self.controller_send.send(event).unwrap();
+                    }
+                    PacketType::Nack(_) => {
+                        let event = DroneEvent::ControllerShortcut(packet.clone());
+                        self.controller_send.send(event).unwrap();
+                    }
+                    (_) => {}
+                }
+                ///////////////////////////////
             }
         } else {
             if packet.routing_header.hop_index>=packet.routing_header.hops.len()-1 {
@@ -290,9 +315,19 @@ impl MyDrone {
                 // self.send_nack(nack);
 
                 //////////////////////////////
-                let event = DroneEvent::ControllerShortcut(packet.clone());
-                self.controller_send.send(event).unwrap();
-                /////////////////////////////
+
+                match packet.pack_type{
+                    PacketType::Ack(_) => {
+                        let event = DroneEvent::ControllerShortcut(packet.clone());
+                        self.controller_send.send(event).unwrap();
+                    }
+                    PacketType::Nack(_) => {
+                        let event = DroneEvent::ControllerShortcut(packet.clone());
+                        self.controller_send.send(event).unwrap();
+                    }
+                    (_) => {}
+                }
+                ///////////////////////////////
 
                 return;
             }
@@ -403,7 +438,7 @@ fn create_nack(packet: Packet,nack_type: NackType)->Packet{
     let pack = Packet {
         pack_type: PacketType::Nack(nack.clone()),
         routing_header: SourceRoutingHeader {
-            hop_index: 1,
+            hop_index: 0,
             hops: vec.clone(),
         },
         session_id: packet.session_id,

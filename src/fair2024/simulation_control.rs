@@ -5,6 +5,7 @@ use crossbeam_channel::{select_biased, unbounded, Receiver, RecvError, Sender, T
 use std::collections::HashMap;
 use std::{fs,thread};
 use std::sync::{Arc,Mutex};
+use lazy_static::lazy_static;
 use wg_2024::packet::NodeType;
 use wg_2024::config::Config;
 use wg_2024::controller::{DroneCommand,DroneEvent};
@@ -13,6 +14,8 @@ use wg_2024::network::{NodeId, SourceRoutingHeader};
 use wg_2024::packet::{Ack, FloodRequest, Fragment, Nack, NackType, Packet, PacketType};
 use crate::fair2024::drone::*;
 
+
+lazy_static! { static ref CONSOLE_MUTEX: Arc<Mutex<()>> = Arc::new(Mutex::new(())); }
 #[derive(Clone)]
 struct SimulationController {
     drones: HashMap<NodeId, Sender<DroneCommand>>,
@@ -28,16 +31,16 @@ impl SimulationController {
             select_biased! {
             recv(self.node_event_recv) -> command =>{
                 if let Ok(command) = command {
-
-                    match command{
+                    let _lock = CONSOLE_MUTEX.lock().unwrap();
+                     match command{
                         DroneEvent::PacketSent(ref packet) => {
-                            println!("drone sent :");
+                            println!("Simulation control: drone sent packet");
                         }
                         DroneEvent::PacketDropped(ref packet) => {
-                            println!("drone dropped :");
+                            println!("Simulation control: drone dropped packet");
                         }
                         DroneEvent::ControllerShortcut(ref controller_shortcut) => {
-                            println!("packet sent to destination");
+                            println!("Simulation control: packet sent to destination");
                         }
                     }
                     self.handle_event(command.clone());
@@ -63,9 +66,13 @@ impl SimulationController {
         }
     }
     fn print_packet(&mut self, packet: Packet) {
-        println!("source id: {:#?}", packet.routing_header.hops[0]);
-        println!("destination id: {:#?}", packet.routing_header.hops[packet.routing_header.hops.len() - 1]);
-        println!("path: {:#?}", packet.routing_header.hops);
+        print!("  source id: {:#?}  |", packet.routing_header.hops[0]);
+        print!("  destination id: {:#?}  |", packet.routing_header.hops[packet.routing_header.hops.len() - 1]);
+        print!("  path: [");
+        for i in 0..packet.routing_header.hops.len()-2 {
+            print!("{}, ", packet.routing_header.hops[i]);
+        }
+        println!("{}]", packet.routing_header.hops[packet.routing_header.hops.len() - 1]);
     }
     fn send_to_destination(&mut self, packet: Packet) {
         let addr = packet.routing_header.hops[packet.routing_header.hops.len() - 1];
@@ -267,8 +274,8 @@ pub fn test() {
         session_id: 0,
     };
     let my_packet2=Packet{
-        pack_type: PacketType::FloodRequest(FloodRequest{flood_id:1 , initiator_id:4, path_trace: vec![(1, NodeType::Drone)]}),
-        routing_header: SourceRoutingHeader{hop_index:0,hops: vec![3,2]},
+        pack_type: PacketType::FloodRequest(FloodRequest{flood_id:1 , initiator_id:0, path_trace: vec![(0, NodeType::Drone)]}),
+        routing_header: SourceRoutingHeader{hop_index:0,hops: vec![1]},
         session_id: 0,
     };
     // let (sender_5, sium)= unbounded();
@@ -276,9 +283,10 @@ pub fn test() {
     // controller.crash(2);
     {
         let mut controller = controller.lock().unwrap();
-        controller.msg_fragment(my_packet);
+        //controller.msg_fragment(my_packet);
+        controller.initiate_flood(my_packet2);
     }
-    // controller.initiate_flood(my_packet2);
+
 
     //controller.msg_fragment(my_packet);
     // controller.add_sender(2, 5, sender_5);
