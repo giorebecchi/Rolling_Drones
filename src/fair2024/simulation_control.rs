@@ -21,6 +21,7 @@ struct SimulationController {
     drones: HashMap<NodeId, Sender<DroneCommand>>,
     packet_channel: HashMap<NodeId, Sender<Packet>>,
     node_event_recv: Receiver<DroneEvent>,
+    neighbours: HashMap<NodeId, Vec<NodeId>>,
 }
 
 
@@ -30,9 +31,9 @@ impl SimulationController {
         loop{
             select_biased! {
             recv(self.node_event_recv) -> command =>{
-                if let Ok(command) = command {
+                if let Ok(drone_event) = command {
                     let _lock = CONSOLE_MUTEX.lock().unwrap();
-                     match command{
+                     match drone_event{
                         DroneEvent::PacketSent(ref packet) => {
                             println!("Simulation control: drone sent packet");
                         }
@@ -43,7 +44,7 @@ impl SimulationController {
                             println!("Simulation control: packet sent to destination");
                         }
                     }
-                    self.handle_event(command.clone());
+                    self.handle_event(drone_event.clone());
                 }
 
             }
@@ -66,17 +67,18 @@ impl SimulationController {
         }
     }
     fn print_packet(&mut self, packet: Packet) {
-        print!("  source id: {:#?}  |", packet.routing_header.hops[0]);
-        print!("  destination id: {:#?}  |", packet.routing_header.hops[packet.routing_header.hops.len() - 1]);
-        print!("  path: [");
-        for i in 0..packet.routing_header.hops.len()-2 {
-            print!("{}, ", packet.routing_header.hops[i]);
-        }
-        println!("{}]", packet.routing_header.hops[packet.routing_header.hops.len() - 1]);
+        // print!("  source id: {:#?}  |", packet.routing_header.hops[0]);
+        // print!("  destination id: {:#?}  |", packet.routing_header.hops[packet.routing_header.hops.len() - 1]);
+        // print!("  path: [");
+        // for i in 0..packet.routing_header.hops.len()-1 {
+        //     print!("{}, ", packet.routing_header.hops[i]);
+        // }
+        // println!("{}]", packet.routing_header.hops[packet.routing_header.hops.len() - 1]);
     }
-    fn send_to_destination(&mut self, packet: Packet) {
+    fn send_to_destination(&mut self, mut packet: Packet) {
         let addr = packet.routing_header.hops[packet.routing_header.hops.len() - 1];
         self.print_packet(packet.clone());
+        packet.routing_header.hop_index = packet.routing_header.hops.len()-1;
 
         if let Some(sender) = self.packet_channel.get(&addr) {
             sender.send(packet).unwrap();
@@ -93,6 +95,13 @@ impl SimulationController {
         }
     }
     fn crash(&mut self, id: NodeId) {
+        let nghb = self.neighbours.get(&id).unwrap();
+        for neighbour in nghb.iter(){
+            if let Some(sender) = self.drones.get(&neighbour) {
+                sender.send(DroneCommand::RemoveSender(id)).unwrap();
+            }
+        }
+
         // Send the Crash command to the target drone
         if let Some(drone_sender) = self.drones.get(&id) {
             if let Err(err) = drone_sender.send(DroneCommand::Crash) {
@@ -105,30 +114,6 @@ impl SimulationController {
             return;
         }
 
-        // Notify neighbors to remove the crashing drone as a sender
-        if let Some(packet_channel) = self.packet_channel.get(&id) {
-            let neighbor_ids: Vec<NodeId> = self.drones.keys().cloned().filter(|&nid| nid != id).collect();
-
-            thread::scope(|s| {
-                for neighbor_id in neighbor_ids {
-                    if let Some(neighbor_sender) = self.drones.get(&neighbor_id) {
-                        s.spawn(move || {
-                            if let Err(err) = neighbor_sender.send(DroneCommand::RemoveSender(id)) {
-                                println!(
-                                    "Failed to send RemoveSender command to neighbor {}: {:?}",
-                                    neighbor_id, err
-                                );
-                            } else {
-                                println!(
-                                    "Sent RemoveSender command to neighbor {} for drone {}",
-                                    neighbor_id, id
-                                );
-                            }
-                        });
-                    }
-                }
-            });
-        }
     }
 
     fn pdr(&mut self, id : NodeId) {
@@ -175,8 +160,9 @@ impl SimulationController {
         }
     }
     fn ack(&mut self, mut packet: Packet) {
-        let next_hop=packet.routing_header.hops[packet.routing_header.hop_index];
+        let next_hop=packet.routing_header.hops[packet.routing_header.hop_index +1];
         if let Some(sender) = self.packet_channel.get(&next_hop) {
+            packet.routing_header.hop_index+=1;
             sender.send(packet).unwrap();
         }else{
             println!("No sender found for hop {}", next_hop);
@@ -211,6 +197,7 @@ pub fn parse_config(file: &str) -> Config {
 
 pub fn test() {
     let config = parse_config("src/fair2024/input.toml");
+    let mut neighbours=HashMap::new();
     let mut controller_drones = HashMap::new();
     let mut packet_drones = HashMap::new();
     let (node_event_send, node_event_recv) = unbounded();
@@ -231,6 +218,11 @@ pub fn test() {
         let (controller_drone_send, controller_drone_recv) = unbounded();
         controller_drones.insert(drone.id, controller_drone_send);
         packet_drones.insert(drone.id, packet_channels[&drone.id].0.clone());
+        let mut vec = Vec::new();
+        for neigh in drone.clone().connected_node_ids{
+            vec.push(neigh);
+        }
+        neighbours.insert(drone.id, vec);
         let node_event_send = node_event_send.clone();
         // packet
         let packet_recv = packet_channels[&drone.id].1.clone();
@@ -252,6 +244,7 @@ pub fn test() {
     let controller = Arc::new(Mutex::new(SimulationController {
         drones: controller_drones,
         node_event_recv: node_event_recv.clone(),
+        neighbours,
         packet_channel: packet_drones,
     }));
 
@@ -270,11 +263,11 @@ pub fn test() {
             length: 1,
             data: [1;128],
         }),
-        routing_header: SourceRoutingHeader{hop_index:0,hops: vec![0,1,3,2]},
+        routing_header: SourceRoutingHeader{hop_index:0,hops: vec![11,1,2,3]},
         session_id: 0,
     };
     let my_packet2=Packet{
-        pack_type: PacketType::FloodRequest(FloodRequest{flood_id:1 , initiator_id:0, path_trace: vec![(0, NodeType::Drone)]}),
+        pack_type: PacketType::FloodRequest(FloodRequest{flood_id:1 , initiator_id:11, path_trace: vec![(11, NodeType::Client)]}),
         routing_header: SourceRoutingHeader{hop_index:0,hops: vec![1]},
         session_id: 0,
     };
@@ -283,8 +276,13 @@ pub fn test() {
     // controller.crash(2);
     {
         let mut controller = controller.lock().unwrap();
-        //controller.msg_fragment(my_packet);
-        controller.initiate_flood(my_packet2);
+
+         // controller.initiate_flood(my_packet2);
+        // controller.msg_fragment(my_packet);
+        controller.crash(1);
+        // controller.ack(my_packet);
+        // controller.msg_fragment(my_packet);
+
     }
 
 
