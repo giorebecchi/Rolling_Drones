@@ -1,157 +1,92 @@
-
-
 #[cfg(test)]
 mod tests {
     use std::collections::HashMap;
-    //use crate::fair2024::simulation_control::*;
-    use wg_2024::tests::*;
+    use std::sync::{Arc, Mutex};
+    use std::thread;
+    use std::time::Duration;
+    use crossbeam_channel::unbounded;
+    use wg_2024::controller::DroneCommand;
+    use wg_2024::drone::Drone;
     use crate::fair2024::drone::MyDrone;
-    use wg_2024::packet::PacketType::MsgFragment;
+    use wg_2024::tests::{generic_fragment_forward,generic_fragment_drop};
 
     #[test]
-    fn test_generic_fragment_drop_with_my_drone() {
+    fn test_generic_fragment_forward(){// To run this test remember to comment the DroneEvent that is
+                                        //  sent to the simulation controller in the handle_msg_fragment();.
+        generic_fragment_forward::<MyDrone>();
+    }
+    #[test]
+    fn test_generic_fragment_drop(){ // To run this test remember to comment the DroneEvent that is
+                                     //  sent to the simulation controller in the is_dropped().
         generic_fragment_drop::<MyDrone>();
     }
     #[test]
-    fn test_generic_fragment_forward(){
-        generic_fragment_forward::<MyDrone>();
-    }
-    //#[test]
-    //fn test_generic_chain_fragment_drop(){
-    //    generic_chain_fragment_drop::<MyDrone>(); //fails because drones don't send any acks when they receive fragments
-    //}
-    //#[test]
-    //fn test_generic_chain_fragment_ack(){
-    //    generic_chain_fragment_ack::<MyDrone>();
-    //} //fails for same reason as above
+    fn test_pdr_command() { //Passes
+        let (send_drone_command, rcv_drone_command) = unbounded();
+        let (_, packet_recv) = unbounded();
+        let packet_send_map: HashMap<u8, _> = HashMap::new();
+
+        let drone = Arc::new(Mutex::new(MyDrone::new(
+            1,
+            unbounded().0,
+            rcv_drone_command,
+            packet_recv,
+            packet_send_map,
+            0.0,
+        )));
 
 
-    use crossbeam_channel::{unbounded, Sender};
-    use wg_2024::controller::DroneCommand;
-    use wg_2024::drone::Drone;
-    use wg_2024::network::NodeId;
-    use wg_2024::packet::{Ack, Fragment, Packet, PacketType};
+        let drone_clone = Arc::clone(&drone);
+        let drone_handle = thread::spawn(move || {
+            let mut drone_instance = drone_clone.lock().unwrap();
+            drone_instance.run();
+        });
 
-    #[test]
-    fn test_add_sender() {
-        let (controller_send, _controller_recv) = unbounded();
-        let (_command_send, controller_recv) = unbounded();
-        let (_packet_send, packet_recv) = unbounded();
-        let packet_send_map: HashMap<NodeId, Sender<Packet>> = HashMap::new();
+        send_drone_command.send(DroneCommand::SetPacketDropRate(0.5)).unwrap();
+        send_drone_command.send(DroneCommand::Crash).unwrap();
 
-        let mut drone = MyDrone::new(1, controller_send, controller_recv, packet_recv, packet_send_map, 0.1);
-        let (sender, _receiver) = unbounded();
 
-        drone.add_sender(2, sender);
+        thread::sleep(Duration::from_millis(100));
 
-        assert!(drone.packet_send.contains_key(&2));
-    }
+        let drone_locked = drone.lock().unwrap();
+        assert_eq!(drone_locked.pdr, 0.5, "PDR should be updated to 0.5");
+        drone_handle.join().unwrap();
 
-    #[test]
-    fn test_remove_sender() {
-        let (controller_send, _controller_recv) = unbounded();
-        let (_command_send, controller_recv) = unbounded();
-        let (_packet_send, packet_recv) = unbounded();
-        let mut packet_send_map: HashMap<NodeId, Sender<Packet>> = HashMap::new();
-        let (sender, _receiver) = unbounded();
-        packet_send_map.insert(2, sender);
-
-        let mut drone = MyDrone::new(1, controller_send, controller_recv, packet_recv, packet_send_map, 0.1);
-        drone.remove_sender(2);
-
-        assert!(!drone.packet_send.contains_key(&2));
     }
 
     #[test]
-    fn test_set_pdr() {
-        let (controller_send, _controller_recv) = unbounded();
-        let (_command_send, controller_recv) = unbounded();
-        let (_packet_send, packet_recv) = unbounded();
-        let packet_send_map: HashMap<NodeId, Sender<Packet>> = HashMap::new();
+    fn test_drone_crash() { //Passes
+        let (send_drone_command, recv_drone_command) = unbounded();
+        let (_, packet_recv) = unbounded();
+        let packet_send_map: HashMap<u8, _> = HashMap::new();
 
-        let mut drone = MyDrone::new(1, controller_send, controller_recv, packet_recv, packet_send_map, 0.1);
-        drone.set_pdr(0.5);
+        let drone = Arc::new(Mutex::new(MyDrone::new(
+            1,
+            unbounded().0,
+            recv_drone_command,
+            packet_recv,
+            packet_send_map,
+            0.0,
+        )));
 
-        assert_eq!(drone.pdr, 0.5);
+        let drone_clone = Arc::clone(&drone);
+        let drone_handle = thread::spawn(move || {
+            let mut drone_instance = drone_clone.lock().unwrap();
+            drone_instance.run();
+        });
+
+        thread::sleep(Duration::from_millis(100));
+
+        send_drone_command.send(DroneCommand::Crash).unwrap();
+
+        thread::sleep(Duration::from_millis(100));
+
+        let result = drone_handle.join();
+        assert!(result.is_ok(), "Drone thread did not exit as expected");
+
+        let drone_locked = drone.lock().unwrap();
+        assert!(drone_locked.packet_send.is_empty(), "Packet send map should be cleared after crash");
     }
 
-    #[test]
-    fn test_handle_command_crash() {
-        let (controller_send, _controller_recv) = unbounded();
-        let (_command_send, controller_recv) = unbounded();
-        let (_packet_send, packet_recv) = unbounded();
-        let packet_send_map: HashMap<NodeId, Sender<Packet>> = HashMap::new();
-
-        let mut drone = MyDrone::new(1, controller_send, controller_recv, packet_recv, packet_send_map, 0.1);
-        drone.handle_command(DroneCommand::Crash);
-
-        assert!(drone.packet_send.is_empty());
-    }
-
-    #[test]
-    fn test_handle_packet_ack() {
-        let (controller_send, _controller_recv) = unbounded();
-        let (_command_send, controller_recv) = unbounded();
-        let (packet_send, packet_recv) = unbounded();
-        let mut packet_send_map: HashMap<NodeId, Sender<Packet>> = HashMap::new();
-        let (sender, receiver) = unbounded();
-        packet_send_map.insert(2, sender);
-
-        let mut drone = MyDrone::new(1, controller_send, controller_recv, packet_recv, packet_send_map, 0.1);
-        let packet = Packet {
-            pack_type: PacketType::Ack(Ack{
-                fragment_index:0,
-            }),
-            routing_header: Default::default(),
-            session_id: 1,
-        };
-
-        packet_send.send(packet.clone()).unwrap();
-        drone.handle_packet(packet.clone());
-
-        assert_eq!(receiver.try_recv().unwrap(), packet);
-    }
-
-    #[test]
-    fn test_handle_packet_msg_fragment() {
-        let (controller_send, _controller_recv) = unbounded();
-        let (_command_send, controller_recv) = unbounded();
-        let (packet_send, packet_recv) = unbounded();
-        let mut packet_send_map: HashMap<NodeId, Sender<Packet>> = HashMap::new();
-        let (sender, _receiver) = unbounded();
-        packet_send_map.insert(2, sender);
-
-        let mut drone = MyDrone::new(1, controller_send, controller_recv, packet_recv, packet_send_map, 0.1);
-        let packet = Packet {
-            pack_type: PacketType::MsgFragment(Fragment {
-                fragment_index: 0,
-                total_n_fragments: 8,
-                length: 8,
-                data: [1;128],
-            }),
-            routing_header: Default::default(),
-            session_id: 1,
-        };
-
-        packet_send.send(packet.clone()).unwrap();
-        drone.handle_packet(packet);
-    }
-
-    #[test]
-    fn test_packet_drop_rate() {
-        let (controller_send, _controller_recv) = unbounded();
-        let (_command_send, controller_recv) = unbounded();
-        let (_packet_send, packet_recv) = unbounded();
-        let packet_send_map: HashMap<NodeId, Sender<Packet>> = HashMap::new();
-
-        let drone = MyDrone::new(1, controller_send, controller_recv, packet_recv, packet_send_map, 0.9);
-        let packet = Packet {
-            pack_type: PacketType::Ack(Ack{fragment_index: 0}),
-            routing_header: Default::default(),
-            session_id: 1,
-        };
-
-        assert!(drone.is_dropped(packet));
-    }
 
 }

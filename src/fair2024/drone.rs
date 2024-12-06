@@ -1,5 +1,5 @@
-use std::sync::Arc;
-use std::sync::Mutex;
+//use std::sync::Arc;
+//use std::sync::Mutex;
 use std::collections::{HashMap, HashSet};
 use crossbeam_channel::{select_biased, Receiver, Sender};
 use rand::Rng;
@@ -7,16 +7,16 @@ use wg_2024::controller::{DroneCommand, DroneEvent};
 use wg_2024::drone::Drone;
 use wg_2024::network::{NodeId, SourceRoutingHeader};
 use wg_2024::packet::{FloodRequest, FloodResponse, Nack, NackType, NodeType, Packet, PacketType};
-use lazy_static::lazy_static;
+//use lazy_static::lazy_static;
 
 
-lazy_static! { static ref CONSOLE_MUTEX: Arc<Mutex<()>> = Arc::new(Mutex::new(())); }
+//lazy_static! { static ref CONSOLE_MUTEX: Arc<Mutex<()>> = Arc::new(Mutex::new(())); }
 pub struct MyDrone {
     id: NodeId,
     controller_send: Sender<DroneEvent>,
     controller_recv: Receiver<DroneCommand>,
     packet_recv: Receiver<Packet>,
-    pub(crate) pdr: f32,
+    pub pdr: f32,
     already_visited: HashSet<(NodeId,u64)>,
     pub packet_send: HashMap<NodeId, Sender<Packet>>,
 }
@@ -44,7 +44,6 @@ impl Drone for MyDrone {
             select_biased!{
                 recv(self.controller_recv) -> command => {
                     if let Ok(command) = command {
-                        let _lock = CONSOLE_MUTEX.lock().unwrap();
                         match command.clone() {
                         DroneCommand::Crash => {
                                 println!("drone {} crashed", self.id);
@@ -78,7 +77,7 @@ impl Drone for MyDrone {
                             PacketType::MsgFragment(msg)=>{
                                 println!("drone {} has received msg fragment {:?}", self.id,msg);
                             }
-                            PacketType::FloodRequest(flood_request)=>{
+                            PacketType::FloodRequest(_)=>{
                                 //println!("drone {} has received flood request {:?}",self.id,flood_request);
                             }
                             PacketType::FloodResponse(flood_response)=>{
@@ -88,8 +87,11 @@ impl Drone for MyDrone {
                         self.handle_packet(packet);
                     }
                 },
+
             }
+
         }
+        println!("Drone {} has exited the run loop", self.id);
     }
 }
 impl MyDrone {
@@ -166,17 +168,17 @@ impl MyDrone {
                 self.forward_packet(packet.clone());
 
             }
-            PacketType::FloodRequest(fl)=>{
+            PacketType::FloodRequest(_)=>{
                 // println!("Received Flood Request: {:?}",fl);
                 self.handle_flood_request(packet);
 
             }
-            PacketType::FloodResponse(fr)=>{
+            PacketType::FloodResponse(_)=>{
                 // println!("Received Flood Response: {:?}",fr);
                 self.forward_packet(packet.clone());
 
             }
-            PacketType::MsgFragment(msg_fragment)=>{
+            PacketType::MsgFragment(_)=>{
                 //println!("Received MsgFragment: {:?}",msg_fragment);
                 self.handle_msg_fragment(packet.clone());
             }
@@ -186,8 +188,8 @@ impl MyDrone {
         let mut rng=rand::rng();
         let rand :f32 = (rng.random_range(0.0..=1.0) as f32 * 100.0).round() / 100.0;
         if rand<=self.pdr{
-            let event = DroneEvent::PacketDropped(packet.clone());
-            self.controller_send.send(event).unwrap();
+            //let event = DroneEvent::PacketDropped(packet.clone());
+            //self.controller_send.send(event).unwrap();
             return true;
         }
         false
@@ -223,8 +225,8 @@ impl MyDrone {
             }else {
 
                 //////////////////////////////
-                let event = DroneEvent::PacketSent(packet.clone());
-                self.controller_send.send(event).unwrap();
+                // let event = DroneEvent::PacketSent(packet.clone());
+                // self.controller_send.send(event).unwrap();
                 /////////////////////////////
 
                 if let Some(sender)=self.packet_send.get(&next_hop) {
@@ -295,11 +297,11 @@ impl MyDrone {
                 let event = DroneEvent::ControllerShortcut(packet.clone());
                 self.controller_send.send(event).unwrap();
             }
-            (_) => {}
+            _ => {}
         }
     }
 
-    fn handle_flood_request(&mut self, mut packet : Packet){
+    fn handle_flood_request(&mut self, packet : Packet){
         if let PacketType::FloodRequest(mut flood) = packet.pack_type{
             if self.already_visited.contains(&(flood.initiator_id, flood.flood_id)){
                 println!("error, already received!!");

@@ -278,8 +278,8 @@ pub fn test() {
         let mut controller = controller.lock().unwrap();
 
          // controller.initiate_flood(my_packet2);
-        // controller.msg_fragment(my_packet);
-        controller.crash(1);
+        controller.msg_fragment(my_packet);
+        // controller.crash(1);
         // controller.ack(my_packet);
         // controller.msg_fragment(my_packet);
 
