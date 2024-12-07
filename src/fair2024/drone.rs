@@ -1,5 +1,5 @@
-use std::sync::Arc;
-use std::sync::Mutex;
+//use std::sync::Arc;
+//use std::sync::Mutex;
 use std::collections::{HashMap, HashSet};
 use crossbeam_channel::{select_biased, Receiver, Sender};
 use rand::Rng;
@@ -7,17 +7,17 @@ use wg_2024::controller::{DroneCommand, DroneEvent};
 use wg_2024::drone::Drone;
 use wg_2024::network::{NodeId, SourceRoutingHeader};
 use wg_2024::packet::{FloodRequest, FloodResponse, Nack, NackType, NodeType, Packet, PacketType};
-use lazy_static::lazy_static;
+//use lazy_static::lazy_static;
 
 
-lazy_static! { static ref CONSOLE_MUTEX: Arc<Mutex<()>> = Arc::new(Mutex::new(())); }
+//lazy_static! { static ref CONSOLE_MUTEX: Arc<Mutex<()>> = Arc::new(Mutex::new(())); }
 pub struct MyDrone {
-    pub id: NodeId,
-    pub controller_send: Sender<DroneEvent>,
-    pub controller_recv: Receiver<DroneCommand>,
-    pub packet_recv: Receiver<Packet>,
+    id: NodeId,
+    controller_send: Sender<DroneEvent>,
+    controller_recv: Receiver<DroneCommand>,
+    packet_recv: Receiver<Packet>,
     pub pdr: f32,
-    pub already_visited: HashSet<(NodeId,u64)>,
+    already_visited: HashSet<(NodeId,u64)>,
     pub packet_send: HashMap<NodeId, Sender<Packet>>,
 }
 
@@ -44,14 +44,13 @@ impl Drone for MyDrone {
             select_biased!{
                 recv(self.controller_recv) -> command => {
                     if let Ok(command) = command {
-                        let _lock = CONSOLE_MUTEX.lock().unwrap();
                         match command.clone() {
                         DroneCommand::Crash => {
                                 println!("drone {} crashed", self.id);
                                 crash=true;
                         },
                         DroneCommand::SetPacketDropRate(x) => {
-                                println!("set_packet_drop_rate, before it was: {} \nnow pdr is: {}", self.pdr,x);
+                                println!("set_packet_drop_rate, before it was: {} \n now pdr is: {}", self.pdr,x);
                         },
                         DroneCommand::AddSender(id, send_pack) => {
                                 println!("added sender {:?} to {}",send_pack,id);
@@ -78,8 +77,8 @@ impl Drone for MyDrone {
                             PacketType::MsgFragment(msg)=>{
                                 println!("drone {} has received msg fragment {:?}", self.id,msg);
                             }
-                            PacketType::FloodRequest(flood_request)=>{
-                                println!("drone {} has received flood request {:?}",self.id,flood_request);
+                            PacketType::FloodRequest(_)=>{
+                                //println!("drone {} has received flood request {:?}",self.id,flood_request);
                             }
                             PacketType::FloodResponse(flood_response)=>{
                                println!("drone {} has received flood response {:?}",self.id,flood_response);
@@ -112,9 +111,6 @@ impl MyDrone {
                 self.remove_sender(node_id);
             }
         }
-    }
-    pub fn get_pdr(&self) -> f32 {
-        self.pdr
     }
     pub fn add_sender(&mut self, node_id: NodeId, sender: Sender<Packet>) {
         if self.packet_send.contains_key(&node_id) {
@@ -172,8 +168,8 @@ impl MyDrone {
                 self.forward_packet(packet.clone());
 
             }
-            PacketType::FloodRequest(fl)=>{
-                //println!("Received Flood Request: {:?}",fl);
+            PacketType::FloodRequest(_)=>{
+                // println!("Received Flood Request: {:?}",fl);
                 self.handle_flood_request(packet);
 
             }
@@ -188,12 +184,12 @@ impl MyDrone {
             }
         }
     }
-    pub fn is_dropped(&self, packet: Packet) ->bool{
+    pub(crate) fn is_dropped(&self, packet: Packet) ->bool{
         let mut rng=rand::rng();
         let rand :f32 = (rng.random_range(0.0..=1.0) as f32 * 100.0).round() / 100.0;
         if rand<=self.pdr{
-            let event = DroneEvent::PacketDropped(packet.clone());
-            self.controller_send.send(event).unwrap();
+            //let event = DroneEvent::PacketDropped(packet.clone());
+            //self.controller_send.send(event).unwrap();
             return true;
         }
         false
@@ -229,8 +225,8 @@ impl MyDrone {
             }else {
 
                 //////////////////////////////
-                 let event = DroneEvent::PacketSent(packet.clone());
-                 self.controller_send.send(event).unwrap();
+                // let event = DroneEvent::PacketSent(packet.clone());
+                // self.controller_send.send(event).unwrap();
                 /////////////////////////////
 
                 if let Some(sender)=self.packet_send.get(&next_hop) {
@@ -307,27 +303,22 @@ impl MyDrone {
 
     fn handle_flood_request(&mut self, packet : Packet){
         if let PacketType::FloodRequest(mut flood) = packet.pack_type{
-            flood.path_trace.push((self.id, NodeType::Drone));
             if self.already_visited.contains(&(flood.initiator_id, flood.flood_id)){
                 println!("error, already received!!");
                 self.forward_packet(self.create_flood_response(packet.session_id,flood));
                 return;
             }else {
                 self.already_visited.insert((flood.initiator_id, flood.flood_id));
+                flood.path_trace.push((self.id, NodeType::Drone));
                 let new_packet = Packet{
                     pack_type : PacketType::FloodRequest(flood.clone()),
                     routing_header: packet.routing_header,
                     session_id: packet.session_id,
                 };
                 let (previous, _) = flood.path_trace[flood.path_trace.len() - 2];
-                if self.packet_send.len()==1{
-                    println!("drone {} has only one neighbour",self.id);
-                    self.forward_packet(self.create_flood_response(packet.session_id,flood));
-                    return;
-                }
                 for (idd, neighbour) in self.packet_send.clone() {
                     if idd == previous {
-                        println!("don't send to previous drone: {}",idd);
+                        //don't send to previous
                         // println!("not sent to {}, because it was the previous", previous);
                     } else {
                         //println!("sent flood request to : {}", idd);
@@ -343,6 +334,7 @@ impl MyDrone {
     }
     fn create_flood_response(&self, s_id: u64, mut flood : FloodRequest )->Packet{
         let mut src_header=Vec::new();
+        flood.path_trace.push((self.id, NodeType::Drone));
         for (id,_) in flood.path_trace.clone(){
             src_header.push(id);
         }
