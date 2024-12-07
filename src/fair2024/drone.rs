@@ -46,18 +46,17 @@ impl Drone for MyDrone {
                     if let Ok(command) = command {
                         match command.clone() {
                         DroneCommand::Crash => {
-                                println!("drone {} received Crash command", self.id);
+                                println!("drone {} crashed", self.id);
                                 crash=true;
                         },
                         DroneCommand::SetPacketDropRate(x) => {
-                                println!("drone {} received SetPacketDropRate command", self.id);
-                                println!("Pdr of drone in this moment: {}", self.pdr);
+                                println!("set_packet_drop_rate, before it was: {} \n now pdr is: {}", self.pdr,x);
                         },
                         DroneCommand::AddSender(id, send_pack) => {
-                                //println!("added sender {:?} to {}",send_pack,id);
+                                println!("added sender {:?} to {}",send_pack,id);
                         },
                         DroneCommand::RemoveSender(id) => {
-                               // println!("removed sender {} from drone {}", id, self.id);
+                                println!("removed sender {}, from drone {}", id, self.id);
                                 //break;
                             }
 
@@ -70,23 +69,19 @@ impl Drone for MyDrone {
                         match packet.clone().pack_type{
                             PacketType::Ack(ack)=>{
                                 println!("drone {} has received ack {:?}",self.id,ack);
-                                println!();
                                 //break;
                             }
                             PacketType::Nack(nack)=>{
-                                println!("drone {} has received a nack of type {:?} regarding fragment index: {:?}",self.id,nack.nack_type, nack.fragment_index);
-                                println!();
+                                println!("drone {} has received nack {:?}",self.id,nack);
                             }
                             PacketType::MsgFragment(msg)=>{
-                                println!("drone {} has received msg fragment: {:?}", self.id,msg); //display already implemented
-                                println!();
+                                println!("drone {} has received msg fragment {:?}", self.id,msg);
                             }
                             PacketType::FloodRequest(_)=>{
                                 //println!("drone {} has received flood request {:?}",self.id,flood_request);
                             }
                             PacketType::FloodResponse(flood_response)=>{
                                println!("drone {} has received flood response {:?}",self.id,flood_response);
-                                println!();
                             }
                         }
                         self.handle_packet(packet);
@@ -119,21 +114,21 @@ impl MyDrone {
     }
     pub fn add_sender(&mut self, node_id: NodeId, sender: Sender<Packet>) {
         if self.packet_send.contains_key(&node_id) {
-            println!("Failed to add sender because the drone {} is already a neighbour of {}", node_id, self.id);
+            println!("The drone {} is already a neighbour", node_id);
         }else {
             self.packet_send.insert(node_id, sender);
-            println!("Added sender of new neighbor {} to neighbors of drone {}", node_id, self.id);
+            println!("Added sender for neighbor {}", node_id);
         }
     }
     pub fn set_pdr(&mut self, pdr: f32) {
         self.pdr = pdr;
-        println!("Updated pdr to {}", pdr);
+        println!("Set packet drop rate to {}", pdr);
     }
     pub fn remove_sender(&mut self, node_id: NodeId) {
         if self.packet_send.remove_entry(&node_id).is_some() {
-            println!("Removed sender for neighbor {} of drone {}", node_id, self.id);
+            println!("Removed sender for neighbor {}", node_id);
         } else {
-            println!("unable to remove: sender for neighbor {} of drone {} was not found", node_id, self.id);
+            println!("Sender for neighbor {} was not found", node_id);
         }
     }
     pub fn handle_crash(&mut self) {
@@ -217,7 +212,7 @@ impl MyDrone {
         if let Some(_) = self.packet_send.get(&next_hop) {
             if self.is_dropped(packet.clone()) {
 
-                println!("The message fragment was dropped");
+                println!("dropped");
                 let mut pack = create_nack(packet.clone(),NackType::Dropped);
                 if let Some(sender) = self.packet_send.get(&pack.routing_header.hops[pack.routing_header.hop_index+1]) {
                     println!("Drone {} is sending back a nack",self.id);
@@ -233,9 +228,9 @@ impl MyDrone {
                 // let event = DroneEvent::PacketSent(packet.clone());
                 // self.controller_send.send(event).unwrap();
                 /////////////////////////////
-                println!("No problems were found. ");
+
                 if let Some(sender)=self.packet_send.get(&next_hop) {
-                    println!("Message fragment forwarded to drone {}", packet.routing_header.hops[packet.routing_header.hop_index+1]);
+                    println!("Message sent to {}", packet.routing_header.hops[packet.routing_header.hop_index+1]);
                     packet.routing_header.hop_index += 1;
                     sender.send(packet).unwrap();
                 }
@@ -269,8 +264,8 @@ impl MyDrone {
 
                 } else {
                     println!(
-                        "Packet of type {:?} forwarded to next hop {}",
-                        packet.pack_type, next_hop
+                        "Packet forwarded to next hop {}: {:?}",
+                        next_hop, packet
                     );
                 }
             } else {
