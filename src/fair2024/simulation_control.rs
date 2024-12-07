@@ -17,11 +17,11 @@ use crate::fair2024::drone::*;
 
 lazy_static! { static ref CONSOLE_MUTEX: Arc<Mutex<()>> = Arc::new(Mutex::new(())); }
 #[derive(Clone)]
-struct SimulationController {
-    drones: HashMap<NodeId, Sender<DroneCommand>>,
-    packet_channel: HashMap<NodeId, Sender<Packet>>,
-    node_event_recv: Receiver<DroneEvent>,
-    neighbours: HashMap<NodeId, Vec<NodeId>>,
+pub struct SimulationController {
+    pub drones: HashMap<NodeId, Sender<DroneCommand>>,
+    pub packet_channel: HashMap<NodeId, Sender<Packet>>,
+    pub node_event_recv: Receiver<DroneEvent>,
+    pub neighbours: HashMap<NodeId, Vec<NodeId>>,
 }
 
 
@@ -160,7 +160,7 @@ impl SimulationController {
         }
     }
     fn ack(&mut self, mut packet: Packet) {
-        let next_hop=packet.routing_header.hops[packet.routing_header.hop_index +1];
+        let next_hop=packet.routing_header.hops[packet.routing_header.hop_index+1];
         if let Some(sender) = self.packet_channel.get(&next_hop) {
             packet.routing_header.hop_index+=1;
             sender.send(packet).unwrap();
@@ -176,7 +176,7 @@ impl SimulationController {
             sender.send(packet).unwrap();
         }
     }
-    fn initiate_flood(&mut self, packet: Packet){
+    pub fn initiate_flood(&mut self, packet: Packet){
         if let PacketType::FloodRequest(flood_request)=packet.clone().pack_type {
             for node_neighbours in packet.clone().routing_header.hops{
                 if let Some(sender) = self.packet_channel.get(&node_neighbours) {
@@ -263,12 +263,19 @@ pub fn test() {
             length: 1,
             data: [1;128],
         }),
-        routing_header: SourceRoutingHeader{hop_index:0,hops: vec![11,1,2,3]},
+        routing_header: SourceRoutingHeader{hop_index:0,hops: vec![11,2,3]},
         session_id: 0,
     };
     let my_packet2=Packet{
-        pack_type: PacketType::FloodRequest(FloodRequest{flood_id:1 , initiator_id:11, path_trace: vec![(11, NodeType::Client)]}),
-        routing_header: SourceRoutingHeader{hop_index:0,hops: vec![1]},
+        pack_type: PacketType::FloodRequest(FloodRequest{flood_id:100 , initiator_id:1, path_trace: vec![(1, NodeType::Client)]}),
+        routing_header: SourceRoutingHeader{hop_index:0,hops: vec![2]},
+        session_id: 0,
+    };
+    let my_packet3=Packet{
+        pack_type: PacketType::Ack(Ack{
+            fragment_index: 0,
+        }),
+        routing_header: SourceRoutingHeader{hop_index: 0, hops: vec![1,2,3]},
         session_id: 0,
     };
     // let (sender_5, sium)= unbounded();
@@ -277,26 +284,15 @@ pub fn test() {
     {
         let mut controller = controller.lock().unwrap();
 
-         // controller.initiate_flood(my_packet2);
-        controller.msg_fragment(my_packet);
+        //controller.initiate_flood(my_packet2);
+        // controller.ack(my_packet3);
+        controller.initiate_flood(my_packet2);
+        // controller.msg_fragment(my_packet);
         // controller.crash(1);
         // controller.ack(my_packet);
         // controller.msg_fragment(my_packet);
 
     }
-
-
-    //controller.msg_fragment(my_packet);
-    // controller.add_sender(2, 5, sender_5);
-    // controller.remove_sender(2, 5);
-    // controller.crash(1);
-    // controller.ack(my_packet);
-    // controller.ack(my_packet2);
-    // controller.remove_sender(2,3);
-    // controller.ack(3);
-    // controller.msg_fragment(my_packet);
-    ///ATTENTO!!!! Devi dare per forza un comando a tutti e tre i droni se vuoi che la simulazione finisca.
-    /// In caso contrario la simulazione si fermerà al run del drone successivo che non ha ancora ricevuto un comando!
 
     while let Some(handle) = handles.pop() {
         handle.join().unwrap();
