@@ -108,7 +108,7 @@ impl SimulationController {
                 println!("Failed to send Crash command to drone {}: {:?}", id, err);
                 return;
             }
-            println!("Sent Crash command to drone {}", id);
+            //println!("Sent Crash command to drone {}", id);
         } else {
             println!("No drone with ID {:?}", id);
             return;
@@ -137,7 +137,7 @@ impl SimulationController {
                     dst_id, err
                 );
             } else {
-                println!("Sent AddSender command to drone {}", dst_id);
+                println!("Sent command AddSender to drone {}", dst_id);
             }
         } else {
             println!("No drone found with ID {}", dst_id);
@@ -169,10 +169,11 @@ impl SimulationController {
         }
     }
     fn msg_fragment(&mut self, mut packet: Packet){
+        println!("You're trying to send a msg fragment");
         let mut next_hop=packet.routing_header.hops[packet.routing_header.hop_index+1];
         if let Some(sender) = self.packet_channel.get(&next_hop) {
             packet.routing_header.hop_index+=1;
-            println!(" hop_index: {}",packet.routing_header.hop_index);
+            println!("Starting from hop_index: {} \n",packet.routing_header.hop_index);
             sender.send(packet).unwrap();
         }
     }
@@ -271,30 +272,28 @@ pub fn test() {
         routing_header: SourceRoutingHeader{hop_index:0,hops: vec![1]},
         session_id: 0,
     };
-    // let (sender_5, sium)= unbounded();
+     let (sender_5, _)= unbounded::<Packet>();
+    let (sender_1, _)  = unbounded::<Packet>();
 
     // controller.crash(2);
     {
         let mut controller = controller.lock().unwrap();
 
          // controller.initiate_flood(my_packet2);
-        controller.msg_fragment(my_packet);
-        // controller.crash(1);
-        // controller.ack(my_packet);
+        //controller.msg_fragment(my_packet);
+        //controller.crash(1);
+        //controller.pdr(1);
+        //controller.ack(my_packet);
+         //controller.ack(my_packet2);
         // controller.msg_fragment(my_packet);
+        //controller.add_sender(2, 5, sender_5);
+       // controller.add_sender(5, 1, sender_1)
+        // controller.remove_sender(2, 5);
+        // controller.remove_sender(4,2);
+        // controller.ack(3);
 
     }
 
-
-    //controller.msg_fragment(my_packet);
-    // controller.add_sender(2, 5, sender_5);
-    // controller.remove_sender(2, 5);
-    // controller.crash(1);
-    // controller.ack(my_packet);
-    // controller.ack(my_packet2);
-    // controller.remove_sender(2,3);
-    // controller.ack(3);
-    // controller.msg_fragment(my_packet);
     ///ATTENTO!!!! Devi dare per forza un comando a tutti e tre i droni se vuoi che la simulazione finisca.
     /// In caso contrario la simulazione si fermerà al run del drone successivo che non ha ancora ricevuto un comando!
 
