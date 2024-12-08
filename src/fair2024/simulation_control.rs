@@ -108,7 +108,7 @@ impl SimulationController {
                 println!("Failed to send Crash command to drone {}: {:?}", id, err);
                 return;
             }
-            println!("Sent Crash command to drone {}", id);
+           // println!("Sent Crash command to drone {}", id);
         } else {
             println!("No drone with ID {:?}", id);
             return;
@@ -169,14 +169,16 @@ impl SimulationController {
         }
     }
     fn msg_fragment(&mut self, mut packet: Packet){
+        println!("You're tying to send a message fragment");
         let mut next_hop=packet.routing_header.hops[packet.routing_header.hop_index+1];
         if let Some(sender) = self.packet_channel.get(&next_hop) {
             packet.routing_header.hop_index+=1;
-            println!(" hop_index: {}",packet.routing_header.hop_index);
+            println!("Starting from hop_index: {} \n ",packet.routing_header.hop_index);
             sender.send(packet).unwrap();
         }
     }
     fn initiate_flood(&mut self, packet: Packet){
+        println!("Initiating flood");
         if let PacketType::FloodRequest(flood_request)=packet.clone().pack_type {
             for node_neighbours in packet.clone().routing_header.hops{
                 if let Some(sender) = self.packet_channel.get(&node_neighbours) {
@@ -196,7 +198,7 @@ pub fn parse_config(file: &str) -> Config {
 }
 
 pub fn test() {
-    let config = parse_config("assets/configurations/double_chain.toml"); //choose the configuration from assets/configuration
+    let config = parse_config("assets/configurations/sub_net.toml"); //choose the configuration from assets/configuration
     let mut neighbours=HashMap::new();
     let mut controller_drones = HashMap::new();
     let mut packet_drones = HashMap::new();
@@ -273,15 +275,43 @@ pub fn test() {
         session_id: 2,
     };
 
+
+    let (sender_5, _)= unbounded::<Packet>();
+    let (sender_1, _)  = unbounded::<Packet>();
+
     {
         ///prima di far runnare controllare che le configurazioni
         /// corrispondano al nome dei pacchetti (vedi riga 199)
         let mut controller = controller.lock().unwrap();
+
+        //ALL pdr are initially set to 0.00
+        //can change pdr for a drone in input files to test "Dropped"
         //controller.msg_fragment(fragment_star);
         //controller.msg_fragment(fragment_double_chain);
         //controller.msg_fragment(fragment_butterfly);
         //controller.msg_fragment(fragment_sub_net);
-        controller.initiate_flood(flood_packet);
+        //controller.msg_fragment(fragment_tree);
+
+        //controller.pdr(2);
+
+        //controller.crash(2);
+
+        //working add sender
+        //controller.add_sender(2, 5, sender_5);
+
+        //not working add sender
+        //controller.add_sender(2, 1, sender_1 );
+
+        //working remove sender
+        //controller.remove_sender(2, 7);
+
+        //not working remove sender
+        //controller.remove_sender(2, 4);
+
+        //controller.ack(fragment_double_chain);
+
+        //controller.initiate_flood(flood_packet);
+
 
 
     };
