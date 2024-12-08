@@ -57,7 +57,6 @@ impl Drone for MyDrone {
                         },
                         DroneCommand::RemoveSender(id) => {
                                 println!("removed sender {}, from drone {}", id, self.id);
-                                //break;
                             }
 
                     }
@@ -134,7 +133,6 @@ impl MyDrone {
     pub fn handle_crash(&mut self) {
         println!("Drone {} entering crashing state", self.id);
 
-        // Process remaining packets
         while let Ok(packet) = self.packet_recv.try_recv() {
             match packet.pack_type {
                 PacketType::Ack(_) | PacketType::Nack(_) | PacketType::FloodResponse(_) => {
@@ -169,27 +167,24 @@ impl MyDrone {
 
             }
             PacketType::FloodRequest(_)=>{
-                // println!("Received Flood Request: {:?}",fl);
                 self.handle_flood_request(packet);
 
             }
             PacketType::FloodResponse(_)=>{
-                // println!("Received Flood Response: {:?}",fr);
                 self.forward_packet(packet.clone());
 
             }
             PacketType::MsgFragment(_)=>{
-                //println!("Received MsgFragment: {:?}",msg_fragment);
                 self.handle_msg_fragment(packet.clone());
             }
         }
     }
-    pub(crate) fn is_dropped(&self, packet: Packet) ->bool{
+     fn is_dropped(&self, packet: Packet) ->bool{
         let mut rng=rand::rng();
         let rand :f32 = (rng.random_range(0.0..=1.0) as f32 * 100.0).round() / 100.0;
         if rand<=self.pdr{
-            //let event = DroneEvent::PacketDropped(packet.clone());
-            //self.controller_send.send(event).unwrap();
+            let event = DroneEvent::PacketDropped(packet.clone());
+            self.controller_send.send(event).unwrap();
             return true;
         }
         false
@@ -218,16 +213,11 @@ impl MyDrone {
                     println!("Drone {} is sending back a nack",self.id);
                     pack.routing_header.hop_index+=1;
                     sender.send(pack).unwrap();
-                }else {
-                    println!("dhdhdh");
-                    return;
                 }
             }else {
 
-                //////////////////////////////
-                // let event = DroneEvent::PacketSent(packet.clone());
-                // self.controller_send.send(event).unwrap();
-                /////////////////////////////
+                 let event = DroneEvent::PacketSent(packet.clone());
+                 self.controller_send.send(event).unwrap();
 
                 if let Some(sender)=self.packet_send.get(&next_hop) {
                     println!("Message sent to {}", packet.routing_header.hops[packet.routing_header.hop_index+1]);
@@ -247,12 +237,10 @@ impl MyDrone {
         // Check if there are more hops in the routing header
         if packet.routing_header.hop_index < packet.routing_header.hops.len() -1 {
             packet.routing_header.hop_index += 1;
-            // Get the next hop
+
             let next_hop = packet.routing_header.hops[packet.routing_header.hop_index];
 
-            // Increment the hop index
 
-            // Send the packet to the next hop
             if let Some(sender) = self.packet_send.get(&next_hop) {
                 if let Err(e) = sender.send(packet.clone()) {
                     println!(
@@ -263,10 +251,10 @@ impl MyDrone {
                     self.handle_drone_event(packet.clone());
 
                 } else {
-                    println!(
-                        "Packet forwarded to next hop {}: {:?}",
-                        next_hop, packet
-                    );
+                    // println!(
+                    //     "Packet forwarded to next hop {}: {:?}",
+                    //     next_hop, packet
+                    // );
                 }
             } else {
                 println!(
@@ -304,7 +292,6 @@ impl MyDrone {
     fn handle_flood_request(&mut self, packet : Packet){
         if let PacketType::FloodRequest(mut flood) = packet.pack_type{
             if self.already_visited.contains(&(flood.initiator_id, flood.flood_id)){
-                println!("error, already received!!");
                 self.forward_packet(self.create_flood_response(packet.session_id,flood));
                 return;
             }else {
@@ -318,10 +305,7 @@ impl MyDrone {
                 let (previous, _) = flood.path_trace[flood.path_trace.len() - 2];
                 for (idd, neighbour) in self.packet_send.clone() {
                     if idd == previous {
-                        //don't send to previous
-                        // println!("not sent to {}, because it was the previous", previous);
                     } else {
-                        //println!("sent flood request to : {}", idd);
                         neighbour.send(new_packet.clone()).unwrap();
                     }
                 }
@@ -352,15 +336,13 @@ impl MyDrone {
 
 }
 fn reverse_vector<T: Clone>(input: &[T]) -> Vec<T> {
-    let mut reversed: Vec<T> = input.to_vec(); // Convert to Vec
-    reversed.reverse(); // Reverse in place
+    let mut reversed: Vec<T> = input.to_vec();
+    reversed.reverse();
     reversed
 }
 fn create_nack(packet: Packet,nack_type: NackType)->Packet{
     let mut vec = Vec::new();
-    //println!("hop index: {}", packet.routing_header.hop_index);
     for node_id in (0..=packet.routing_header.hop_index).rev() {
-        //println!("node_id: {}",node_id);
         vec.push(packet.routing_header.hops[node_id]);
     }
     let nack = Nack {

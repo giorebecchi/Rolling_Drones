@@ -196,7 +196,7 @@ pub fn parse_config(file: &str) -> Config {
 }
 
 pub fn test() {
-    let config = parse_config("src/fair2024/input.toml");
+    let config = parse_config("assets/configurations/double_chain.toml"); //choose the configuration from assets/configuration
     let mut neighbours=HashMap::new();
     let mut controller_drones = HashMap::new();
     let mut packet_drones = HashMap::new();
@@ -254,54 +254,57 @@ pub fn test() {
         controller.run()
     });
 
+    let fragment_double_chain = create_fragments(vec![0,1, 2, 3, 4, 5, 10, 11]);
+    let fragment_star = create_fragments(vec![0, 1, 8, 5, 2, 9, 6, 3, 10, 11]);
+    let fragment_butterfly= create_fragments(vec![0,1, 6, 10, 11]);
+    let fragment_tree=create_fragments(vec![0,1, 3, 6, 10, 11]);
+    let fragment_sub_net= create_fragments(vec![0,1, 7, 8, 9, 10, 11]);
 
-
-    let my_packet=Packet{
-        pack_type: PacketType::MsgFragment(Fragment{
-            fragment_index: 1,
-            total_n_fragments:1,
-            length: 1,
-            data: [1;128],
+    let flood_packet = Packet{
+        pack_type: PacketType::FloodRequest(FloodRequest{
+            flood_id: 100,
+            initiator_id: 0,
+            path_trace: vec![(0, NodeType::Client)],
         }),
-        routing_header: SourceRoutingHeader{hop_index:0,hops: vec![11,1,2,3]},
-        session_id: 0,
+        routing_header: SourceRoutingHeader{
+            hop_index:0,
+            hops: vec![1],
+        },
+        session_id: 2,
     };
-    let my_packet2=Packet{
-        pack_type: PacketType::FloodRequest(FloodRequest{flood_id:1 , initiator_id:11, path_trace: vec![(11, NodeType::Client)]}),
-        routing_header: SourceRoutingHeader{hop_index:0,hops: vec![1]},
-        session_id: 0,
-    };
-    // let (sender_5, sium)= unbounded();
 
-    // controller.crash(2);
     {
+        ///prima di far runnare controllare che le configurazioni
+        /// corrispondano al nome dei pacchetti (vedi riga 199)
         let mut controller = controller.lock().unwrap();
-
-         // controller.initiate_flood(my_packet2);
-        controller.msg_fragment(my_packet);
-        // controller.crash(1);
-        // controller.ack(my_packet);
-        // controller.msg_fragment(my_packet);
-
-    }
+        //controller.msg_fragment(fragment_star);
+        //controller.msg_fragment(fragment_double_chain);
+        //controller.msg_fragment(fragment_butterfly);
+        //controller.msg_fragment(fragment_sub_net);
+        controller.initiate_flood(flood_packet);
 
 
-    //controller.msg_fragment(my_packet);
-    // controller.add_sender(2, 5, sender_5);
-    // controller.remove_sender(2, 5);
-    // controller.crash(1);
-    // controller.ack(my_packet);
-    // controller.ack(my_packet2);
-    // controller.remove_sender(2,3);
-    // controller.ack(3);
-    // controller.msg_fragment(my_packet);
-    ///ATTENTO!!!! Devi dare per forza un comando a tutti e tre i droni se vuoi che la simulazione finisca.
-    /// In caso contrario la simulazione si fermerà al run del drone successivo che non ha ancora ricevuto un comando!
+    };
 
     while let Some(handle) = handles.pop() {
         handle.join().unwrap();
 
     }
     controller_handle.join().unwrap();
+}
+fn create_fragments(vec: Vec<NodeId>)->Packet{
+    Packet{
+        pack_type: PacketType::MsgFragment(Fragment {
+            fragment_index: 1,
+            total_n_fragments: 1,
+            length: 1,
+            data: [1; 128],
+        }),
+        routing_header: SourceRoutingHeader {
+            hop_index: 0,
+            hops: vec,
+        },
+        session_id: 0,
+    }
 }
 
