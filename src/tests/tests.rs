@@ -9,18 +9,18 @@ mod tests {
     use wg_2024::drone::Drone;
     use wg_2024::network::{NodeId, SourceRoutingHeader};
     use wg_2024::packet::{FloodRequest, NodeType, Packet, PacketType};
-    use crate::fair2024::drone::MyDrone;
+    use crate::fair2024::drone::RollingDrone;
     use wg_2024::tests::{generic_fragment_forward,generic_fragment_drop};
 
     #[test]
     fn test_generic_fragment_forward(){// To run this test remember to comment the DroneEvent that is
                                         //  sent to the simulation controller in the handle_msg_fragment();.
-        generic_fragment_forward::<MyDrone>();
+        generic_fragment_forward::<RollingDrone>();
     }
     #[test]
     fn test_generic_fragment_drop(){ // To run this test remember to comment the DroneEvent that is
                                      //  sent to the simulation controller in the is_dropped().
-        generic_fragment_drop::<MyDrone>();
+        generic_fragment_drop::<RollingDrone>();
     }
 
     #[test]
@@ -29,7 +29,7 @@ mod tests {
         let (_, packet_recv) = unbounded();
         let packet_send_map: HashMap<u8, _> = HashMap::new();
 
-        let drone = Arc::new(Mutex::new(MyDrone::new(
+        let drone = Arc::new(Mutex::new(RollingDrone::new(
             1,
             unbounded().0,
             recv_drone_command,
@@ -89,7 +89,7 @@ mod tests {
         let client_sender_to_drone2 = client.send_channel.get(&2).unwrap().clone();
 
         // Initialize Drone 2
-        let mut drone2 = MyDrone::new(2, unbounded().0, unbounded().1, drone2_receiver.clone(), {
+        let mut drone2 = RollingDrone::new(2, unbounded().0, unbounded().1, drone2_receiver.clone(), {
             let mut map = HashMap::new();
             map.insert(1, client_sender_to_drone2.clone());
             map.insert(3, drone3_sender.clone());
@@ -97,7 +97,7 @@ mod tests {
         }, 0.05);
 
         // Initialize Drone 3
-        let mut drone3 = MyDrone::new(3, unbounded().0, unbounded().1, drone3_receiver.clone(), {
+        let mut drone3 = RollingDrone::new(3, unbounded().0, unbounded().1, drone3_receiver.clone(), {
             let mut map = HashMap::new();
             map.insert(2, drone2_sender.clone());
             map

@@ -11,7 +11,7 @@ use wg_2024::packet::{FloodRequest, FloodResponse, Nack, NackType, NodeType, Pac
 
 
 //lazy_static! { static ref CONSOLE_MUTEX: Arc<Mutex<()>> = Arc::new(Mutex::new(())); }
-pub struct MyDrone {
+pub struct RollingDrone {
     id: NodeId,
     controller_send: Sender<DroneEvent>,
     controller_recv: Receiver<DroneCommand>,
@@ -21,7 +21,7 @@ pub struct MyDrone {
     pub packet_send: HashMap<NodeId, Sender<Packet>>,
 }
 
-impl Drone for MyDrone {
+impl Drone for RollingDrone {
     fn new(id: NodeId,
            controller_send: Sender<DroneEvent>,
            controller_recv: Receiver<DroneCommand>,
@@ -100,7 +100,7 @@ impl Drone for MyDrone {
         println!("Drone {} has exited the run loop", self.id);
     }
 }
-impl MyDrone {
+impl RollingDrone {
     pub fn handle_command(&mut self, command: DroneCommand) {
         match command {
             DroneCommand::AddSender(node_id, sender) => {
@@ -229,7 +229,7 @@ impl MyDrone {
                 println!("No problems were found.");
 
                 if let Some(sender)=self.packet_send.get(&next_hop) {
-                    println!("Message fragment forwarded to drone {}", packet.routing_header.hops[packet.routing_header.hop_index+1]);
+                    println!("Message fragment forwarded to node {}", packet.routing_header.hops[packet.routing_header.hop_index+1]);
                     packet.routing_header.hop_index += 1;
                     sender.send(packet).unwrap();
                 }

@@ -235,7 +235,7 @@ pub fn test() {
             .collect();
 
         handles.push(thread::spawn(move || {
-            let mut drone = MyDrone::new(drone.id,node_event_send,controller_drone_recv,packet_recv,packet_send,drone.pdr);
+            let mut drone = RollingDrone::new(drone.id,node_event_send,controller_drone_recv,packet_recv,packet_send,drone.pdr);
 
 
             drone.run();
