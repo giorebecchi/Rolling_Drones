@@ -83,8 +83,8 @@ impl Drone for RollingDrone {
                                 //println!("drone {} has received flood request {:?}",self.id,flood_request);
                             }
                             PacketType::FloodResponse(flood_response)=>{
-                               println!("drone {} has received flood response {:?}",self.id,flood_response);
-                                println!();
+                               //println!("drone {} has received flood response {:?}",self.id,flood_response);
+                                // println!();
                             }
                         }
                         self.handle_packet(packet);
@@ -336,6 +336,7 @@ impl RollingDrone {
             },
             session_id: s_id,
         };
+        println!("Created flood response: {:?}", fr);
         fr
     }
 
