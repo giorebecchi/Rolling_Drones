@@ -219,15 +219,14 @@ impl RollingDrone {
                     sender.send(pack).unwrap();
                 }
             }else {
-
+                packet.routing_header.hop_index += 1;
                  let event = DroneEvent::PacketSent(packet.clone());
                  self.controller_send.send(event).unwrap();
 
                 println!("No problems were found.");
 
                 if let Some(sender)=self.packet_send.get(&next_hop) {
-                    println!("Message fragment forwarded to node {}", packet.routing_header.hops[packet.routing_header.hop_index+1]);
-                    packet.routing_header.hop_index += 1;
+                    println!("Message fragment forwarded to node {}", packet.routing_header.hops[packet.routing_header.hop_index]);
                     sender.send(packet).unwrap();
                 }
 

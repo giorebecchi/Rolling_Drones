@@ -198,7 +198,7 @@ pub fn parse_config(file: &str) -> Config {
 }
 
 pub fn test() {
-    let config = parse_config("assets/configurations/sub_net.toml"); //choose the configuration from assets/configuration
+    let config = parse_config("assets/configurations/tree.toml"); //choose the configuration from assets/configuration
     let mut neighbours=HashMap::new();
     let mut controller_drones = HashMap::new();
     let mut packet_drones = HashMap::new();
