@@ -198,7 +198,7 @@ pub fn parse_config(file: &str) -> Config {
 }
 
 pub fn test() {
-    let config = parse_config("assets/configurations/star.toml"); //choose the configuration from assets/configuration
+    let config = parse_config("assets/configurations/double_chain.toml"); //choose the configuration from assets/configuration
     let mut neighbours=HashMap::new();
     let mut controller_drones = HashMap::new();
     let mut packet_drones = HashMap::new();
@@ -274,6 +274,16 @@ pub fn test() {
         },
         session_id: 2,
     };
+    let ack_double_chain = Packet{
+        pack_type: PacketType::Ack(Ack{
+            fragment_index: 20,
+        }),
+        routing_header: SourceRoutingHeader{
+            hop_index:0,
+            hops: vec![0,1, 2, 3, 4, 5, 10, 11],
+        },
+        session_id: 2,
+    };
 
 
     let (sender_5, _)= unbounded::<Packet>();
@@ -308,9 +318,9 @@ pub fn test() {
         //not working remove sender
         //controller.remove_sender(2, 4);
 
-        //controller.ack(fragment_double_chain);
+        controller.ack(ack_double_chain);
 
-        controller.initiate_flood(flood_packet);
+        //controller.initiate_flood(flood_packet);
 
 
 
