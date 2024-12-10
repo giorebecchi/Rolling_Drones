@@ -3,19 +3,6 @@
 version = 3
 
 [[package]]
-name = "Rolling_Drones"
-version = "0.1.0"
-dependencies = [
- "bevy",
- "crossbeam-channel",
- "lazy_static",
- "rand 0.9.0-beta.1",
- "serde",
- "toml",
- "wg_2024",
-]
-
-[[package]]
 name = "ab_glyph"
 version = "0.2.29"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -1706,9 +1693,9 @@ dependencies = [
 
 [[package]]
 name = "fastrand"
-version = "2.2.0"
+version = "2.3.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "486f806e73c5707928240ddc295403b1b93c96a02038563881c4a2fd84b81ac4"
+checksum = "37909eebbb50d72f9059c3b6d82c0463f2ff062c9e95845c43a6c9c0355411be"
 
 [[package]]
 name = "fdeflate"
@@ -1717,6 +1704,19 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "1e6853b52649d4ac5c0bd02320cddc5ba956bdb407c4b75a2c6b75bf51500f8c"
 dependencies = [
  "simd-adler32",
+]
+
+[[package]]
+name = "final_project"
+version = "0.1.0"
+dependencies = [
+ "bevy",
+ "crossbeam-channel",
+ "lazy_static",
+ "rand 0.9.0-beta.1",
+ "serde",
+ "toml",
+ "wg_2024",
 ]
 
 [[package]]
@@ -2257,9 +2257,9 @@ dependencies = [
 
 [[package]]
 name = "libc"
-version = "0.2.167"
+version = "0.2.168"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "09d6582e104315a817dff97f75133544b2e094ee22447d2acf4a74e189ba06fc"
+checksum = "5aaeb2981e0606ca11d79718f8bb01164f1d6ed75080182d3abf017e6d244b6d"
 
 [[package]]
 name = "libloading"
@@ -3182,6 +3182,17 @@ dependencies = [
 ]
 
 [[package]]
+name = "rolling_drone"
+version = "0.1.0"
+dependencies = [
+ "crossbeam-channel",
+ "rand 0.9.0-beta.1",
+ "serde",
+ "toml",
+ "wg_2024",
+]
+
+[[package]]
 name = "ron"
 version = "0.8.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -3201,15 +3212,15 @@ checksum = "08d43f7aa6b08d49f382cde6a7982047c3426db949b1424bc4b7ec9ae12c6ce2"
 
 [[package]]
 name = "rustix"
-version = "0.38.41"
+version = "0.38.42"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "d7f649912bc1495e167a6edee79151c84b1bad49748cb4f1f1167f459f6224f6"
+checksum = "f93dc38ecbab2eb790ff964bb77fa94faf256fd3e73285fd7ba0903b76bedb85"
 dependencies = [
  "bitflags 2.6.0",
  "errno",
  "libc",
  "linux-raw-sys",
- "windows-sys 0.52.0",
+ "windows-sys 0.59.0",
 ]
 
 [[package]]
@@ -3762,7 +3773,7 @@ dependencies = [
 [[package]]
 name = "wg_2024"
 version = "0.1.0"
-source = "git+https://github.com/WGL-2024/WGL_repo_2024.git#f88f1f263ba5e0d356bac60b694f787bcc8c7107"
+source = "git+https://github.com/WGL-2024/WGL_repo_2024.git#85f907eed84da8703749ff327841306d42e8af01"
 dependencies = [
  "wg_internal",
 ]
@@ -3770,7 +3781,7 @@ dependencies = [
 [[package]]
 name = "wg_config"
 version = "0.1.0"
-source = "git+https://github.com/WGL-2024/WGL_repo_2024.git#f88f1f263ba5e0d356bac60b694f787bcc8c7107"
+source = "git+https://github.com/WGL-2024/WGL_repo_2024.git#85f907eed84da8703749ff327841306d42e8af01"
 dependencies = [
  "serde",
  "wg_network",
@@ -3779,7 +3790,7 @@ dependencies = [
 [[package]]
 name = "wg_controller"
 version = "0.1.0"
-source = "git+https://github.com/WGL-2024/WGL_repo_2024.git#f88f1f263ba5e0d356bac60b694f787bcc8c7107"
+source = "git+https://github.com/WGL-2024/WGL_repo_2024.git#85f907eed84da8703749ff327841306d42e8af01"
 dependencies = [
  "crossbeam-channel",
  "wg_network",
@@ -3789,7 +3800,7 @@ dependencies = [
 [[package]]
 name = "wg_drone"
 version = "0.1.0"
-source = "git+https://github.com/WGL-2024/WGL_repo_2024.git#f88f1f263ba5e0d356bac60b694f787bcc8c7107"
+source = "git+https://github.com/WGL-2024/WGL_repo_2024.git#85f907eed84da8703749ff327841306d42e8af01"
 dependencies = [
  "crossbeam-channel",
  "wg_controller",
@@ -3800,7 +3811,7 @@ dependencies = [
 [[package]]
 name = "wg_internal"
 version = "0.1.0"
-source = "git+https://github.com/WGL-2024/WGL_repo_2024.git#f88f1f263ba5e0d356bac60b694f787bcc8c7107"
+source = "git+https://github.com/WGL-2024/WGL_repo_2024.git#85f907eed84da8703749ff327841306d42e8af01"
 dependencies = [
  "wg_config",
  "wg_controller",
@@ -3813,12 +3824,12 @@ dependencies = [
 [[package]]
 name = "wg_network"
 version = "0.1.0"
-source = "git+https://github.com/WGL-2024/WGL_repo_2024.git#f88f1f263ba5e0d356bac60b694f787bcc8c7107"
+source = "git+https://github.com/WGL-2024/WGL_repo_2024.git#85f907eed84da8703749ff327841306d42e8af01"
 
 [[package]]
 name = "wg_packet"
 version = "0.1.0"
-source = "git+https://github.com/WGL-2024/WGL_repo_2024.git#f88f1f263ba5e0d356bac60b694f787bcc8c7107"
+source = "git+https://github.com/WGL-2024/WGL_repo_2024.git#85f907eed84da8703749ff327841306d42e8af01"
 dependencies = [
  "wg_network",
 ]
@@ -3826,9 +3837,10 @@ dependencies = [
 [[package]]
 name = "wg_tests"
 version = "0.1.0"
-source = "git+https://github.com/WGL-2024/WGL_repo_2024.git#f88f1f263ba5e0d356bac60b694f787bcc8c7107"
+source = "git+https://github.com/WGL-2024/WGL_repo_2024.git#85f907eed84da8703749ff327841306d42e8af01"
 dependencies = [
  "crossbeam-channel",
+ "wg_controller",
  "wg_drone",
  "wg_network",
  "wg_packet",
