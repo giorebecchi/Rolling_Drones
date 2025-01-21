@@ -1,6 +1,7 @@
 
 mod simulation_control;
+mod GUI;
 
 pub fn main(){
-    simulation_control::simulation_control::test();
+    GUI::topology_display::main();
 }
