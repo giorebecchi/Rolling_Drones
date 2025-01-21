@@ -1,0 +1,19 @@
+Individual contributions:
+
+Clients - Chiara Strozzi
+
+--Scrivi qua le funzionalità dei client e la scaletta delle cose da fare:
+
+Servers - Massimo Malchiodi / Filippo Baietta
+
+--Scrivete qua le funzionalità dei server e la scaledda delle cose da fare:
+
+Simulation Control - Giovanni Rebecchi
+
+--Scrivi qua le funzionalità del simulation control e la scaletta delle cose da fare:
+
+1. Testare i droni comprati (fatto)
+2. Front-end (con bevy?)
+3. Testare rete di servers e clients con rete di droni
+4. Collegare front-end a back-end
+

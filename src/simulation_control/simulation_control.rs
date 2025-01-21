@@ -12,7 +12,19 @@ use wg_2024::controller::{DroneCommand,DroneEvent};
 use wg_2024::drone::{Drone};
 use wg_2024::network::{NodeId, SourceRoutingHeader};
 use wg_2024::packet::{Ack, FloodRequest, Fragment, Nack, NackType, Packet, PacketType};
-use crate::fair2024::drone::*;
+use fungi_drone::FungiDrone;
+use bagel_bomber::BagelBomber;
+use Krusty_Club::Krusty_C;
+use skylink::SkyLinkDrone;
+use LeDron_James::Drone as Le_Drone;
+use lockheedrustin_drone::LockheedRustin;
+use wg_2024_rust::drone::RustDrone;
+use rustbusters_drone::RustBustersDrone;
+use rusteze_drone::RustezeDrone;
+use rustafarian_drone::RustafarianDrone;
+
+
+
 
 
 lazy_static! { static ref CONSOLE_MUTEX: Arc<Mutex<()>> = Arc::new(Mutex::new(())); }
@@ -197,12 +209,14 @@ pub fn parse_config(file: &str) -> Config {
     toml::from_str(&file_str).unwrap()
 }
 
+
 pub fn test() {
-    let config = parse_config("assets/configurations/double_chain.toml"); //choose the configuration from assets/configuration
-    let mut neighbours=HashMap::new();
+    let config = parse_config("assets/configurations/double_chain.toml");
+    let mut neighbours = HashMap::new();
     let mut controller_drones = HashMap::new();
     let mut packet_drones = HashMap::new();
     let (node_event_send, node_event_recv) = unbounded();
+
 
     let mut packet_channels = HashMap::new();
     for drone in config.drone.iter() {
@@ -214,34 +228,156 @@ pub fn test() {
     for server in config.server.iter() {
         packet_channels.insert(server.id, unbounded());
     }
+
     let mut handles = Vec::new();
-    for drone in config.drone.into_iter() {
-        // controller
+
+
+    for (i, cfg_drone) in config.drone.into_iter().enumerate() {
         let (controller_drone_send, controller_drone_recv) = unbounded();
-        controller_drones.insert(drone.id, controller_drone_send);
-        packet_drones.insert(drone.id, packet_channels[&drone.id].0.clone());
+        controller_drones.insert(cfg_drone.id, controller_drone_send);
+        packet_drones.insert(cfg_drone.id, packet_channels[&cfg_drone.id].0.clone());
+
+
         let mut vec = Vec::new();
-        for neigh in drone.clone().connected_node_ids{
-            vec.push(neigh);
+        for neigh in &cfg_drone.connected_node_ids {
+            vec.push(*neigh);
         }
-        neighbours.insert(drone.id, vec);
+        neighbours.insert(cfg_drone.id, vec);
+
         let node_event_send = node_event_send.clone();
-        // packet
-        let packet_recv = packet_channels[&drone.id].1.clone();
-        let packet_send = drone
+        let packet_recv = packet_channels[&cfg_drone.id].1.clone();
+        let packet_send = cfg_drone
             .connected_node_ids
+            .clone()
             .into_iter()
-            .map(|id| (id, packet_channels[&id].0.clone()))
-            .collect();
-
-        handles.push(thread::spawn(move || {
-            let mut drone = RollingDrone::new(drone.id,node_event_send,controller_drone_recv,packet_recv,packet_send,drone.pdr);
+            .map(|nid| (nid, packet_channels[&nid].0.clone()))
+            .collect::<HashMap<_, _>>();
 
 
-            drone.run();
-        }));
+        let handle = thread::spawn(move || {
+            match i {
+                0 => {
+                    let mut drone = BagelBomber::new(
+                        cfg_drone.id,
+                        node_event_send,
+                        controller_drone_recv,
+                        packet_recv,
+                        packet_send,
+                        cfg_drone.pdr,
+                    );
+                    drone.run();
+                }
+                1 => {
+
+                    let mut drone = FungiDrone::new(
+                        cfg_drone.id,
+                        node_event_send,
+                        controller_drone_recv,
+                        packet_recv,
+                        packet_send,
+                        cfg_drone.pdr,
+                    );
+                    drone.run();
+                }
+                2 => {
+
+                    let mut drone = Krusty_C::new(
+                        cfg_drone.id,
+                        node_event_send,
+                        controller_drone_recv,
+                        packet_recv,
+                        packet_send,
+                        cfg_drone.pdr,
+                    );
+                    drone.run();
+                }
+                3=> {
+                    let mut drone = SkyLinkDrone::new(
+                        cfg_drone.id,
+                        node_event_send,
+                        controller_drone_recv,
+                        packet_recv,
+                        packet_send,
+                        cfg_drone.pdr,
+                    );
+                    drone.run();
+                }
+                4=>{
+                    let mut drone = Le_Drone::new(
+                        cfg_drone.id,
+                        node_event_send,
+                        controller_drone_recv,
+                        packet_recv,
+                        packet_send,
+                        cfg_drone.pdr,
+                    );
+                    drone.run();
+                }
+                5=>{
+                    let mut drone = LockheedRustin::new(
+                        cfg_drone.id,
+                        node_event_send,
+                        controller_drone_recv,
+                        packet_recv,
+                        packet_send,
+                        cfg_drone.pdr,
+                    );
+                    drone.run();
+                }
+                6=>{
+                    let mut drone = RustDrone::new(
+                        cfg_drone.id,
+                        node_event_send,
+                        controller_drone_recv,
+                        packet_recv,
+                        packet_send,
+                        cfg_drone.pdr,
+                    );
+                    drone.run();
+
+                }
+                7=>{
+                    let mut drone = RustBustersDrone::new(
+                        cfg_drone.id,
+                        node_event_send,
+                        controller_drone_recv,
+                        packet_recv,
+                        packet_send,
+                        cfg_drone.pdr,
+                    );
+                    drone.run();
+                }
+                8=>{
+                    let mut drone = RustezeDrone::new(
+                        cfg_drone.id,
+                        node_event_send,
+                        controller_drone_recv,
+                        packet_recv,
+                        packet_send,
+                        cfg_drone.pdr,
+                    );
+                    drone.run();
+                }
+                9=>{
+                    let mut drone = RustafarianDrone::new(
+                        cfg_drone.id,
+                        node_event_send,
+                        controller_drone_recv,
+                        packet_recv,
+                        packet_send,
+                        cfg_drone.pdr,
+                    );
+                    drone.run();
+                }
+                _ => {
+
+                    panic!("We only support 10 drones in this example.");
+                }
+            }
+        });
+
+        handles.push(handle);
     }
-
 
     let controller = Arc::new(Mutex::new(SimulationController {
         drones: controller_drones,
@@ -256,84 +392,22 @@ pub fn test() {
         controller.run()
     });
 
-    let fragment_double_chain = create_fragments(vec![0,1, 2, 3, 4, 5, 10, 11]);
-    let fragment_star = create_fragments(vec![0, 1, 8, 5, 2, 9, 6, 3, 10, 11]);
-    let fragment_butterfly= create_fragments(vec![0,1, 6, 10, 11]);
-    let fragment_tree=create_fragments(vec![0,1, 3, 6, 10, 11]);
-    let fragment_sub_net= create_fragments(vec![0,1, 7, 8, 9, 10, 11]);
 
-    let flood_packet = Packet{
-        pack_type: PacketType::FloodRequest(FloodRequest{
-            flood_id: 100,
-            initiator_id: 0,
-            path_trace: vec![(0, NodeType::Client)],
-        }),
-        routing_header: SourceRoutingHeader{
-            hop_index:0,
-            hops: vec![1],
-        },
-        session_id: 2,
-    };
-    let ack_double_chain = Packet{
-        pack_type: PacketType::Ack(Ack{
-            fragment_index: 20,
-        }),
-        routing_header: SourceRoutingHeader{
-            hop_index:0,
-            hops: vec![0,1, 2, 3, 4, 5, 10, 11],
-        },
-        session_id: 2,
-    };
-
-
-    let (sender_5, _)= unbounded::<Packet>();
-    let (sender_1, _)  = unbounded::<Packet>();
-
+    let fragment_double_chain = create_fragments(vec![0,1,2,3,4,5,10,11]);
     {
-        ///prima di far runnare controllare che le configurazioni
-        /// corrispondano al nome dei pacchetti (vedi riga 199)
         let mut controller = controller.lock().unwrap();
+        controller.msg_fragment(fragment_double_chain);
+    }
 
-        //ALL pdr are initially set to 0.00
-        //can change pdr for a drone in input files to test "Dropped"
-        //controller.msg_fragment(fragment_star);
-        //controller.msg_fragment(fragment_double_chain);
-        //controller.msg_fragment(fragment_butterfly);
-        //controller.msg_fragment(fragment_sub_net);
-        //controller.msg_fragment(fragment_tree);
-
-        //controller.pdr(2);
-
-        //controller.crash(2);
-
-        //working add sender
-        //controller.add_sender(2, 5, sender_5);
-
-        //not working add sender
-        //controller.add_sender(2, 1, sender_1 );
-
-        //working remove sender
-        //controller.remove_sender(2, 7);
-
-        //not working remove sender
-        //controller.remove_sender(2, 4);
-
-        controller.ack(ack_double_chain);
-
-        //controller.initiate_flood(flood_packet);
-
-
-
-    };
-
-    while let Some(handle) = handles.pop() {
+    for handle in handles {
         handle.join().unwrap();
-
     }
     controller_handle.join().unwrap();
 }
-fn create_fragments(vec: Vec<NodeId>)->Packet{
-    Packet{
+
+
+fn create_fragments(hops: Vec<NodeId>) -> Packet {
+    Packet {
         pack_type: PacketType::MsgFragment(Fragment {
             fragment_index: 1,
             total_n_fragments: 1,
@@ -342,9 +416,8 @@ fn create_fragments(vec: Vec<NodeId>)->Packet{
         }),
         routing_header: SourceRoutingHeader {
             hop_index: 0,
-            hops: vec,
+            hops,
         },
         session_id: 0,
     }
 }
-
