@@ -118,7 +118,7 @@ fn cleanup_menu(mut commands: Commands, menu_data: Res<MenuData>) {
 }
 
 fn setup_game(mut commands: Commands, asset_server: Res<AssetServer>) {
-    commands.spawn(Sprite::from_image(asset_server.load("C:\\Users\\giova\\RustroverProjects\\Rolling_Drones\\assets\\images\\Rolling_Drone.png")));
+    commands.spawn(Sprite::from_image(asset_server.load("images/Rolling_Drone.png")));
 }
 
 const SPEED: f32 = 100.0;
