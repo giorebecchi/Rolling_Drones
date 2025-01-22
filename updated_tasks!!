@@ -3,6 +3,25 @@ Individual contributions:
 Clients - Chiara Strozzi
 
 --Scrivi qua le funzionalità dei client e la scaletta delle cose da fare:
+1. Web browser: they can retrieve the list of all text files from text server and can display the file chosen
+   - access text server (sending a message to access the list)
+   - retrieve and display the list (text, media and communication messages are ALL high-level msg which need to be serialized and re-assembled)
+   - client sends message with a chosen text file to display, with the request if needed to also retrieve the referenced media
+   - retrieve the chosen file and display it
+   - if needed display the media referenced
+
+2. Chat client: client register itself to the Communication server, it can retrieve the list of registered clients and initiate a chat with them.
+   to initiate the chat it needs to send the message to the communication server specifying the destination client
+   the server has to forward the message
+   - register to server (send request message to server to register itself)
+   - retrieve the list of registered clients and display
+   - send message to communication server specifying the destination client
+   - end chat function? to end communication between 2 clients
+
+3. serialization, fragmentation and reassembling of the messages
+    - can introduce an Assembler as a sub-component
+    - when sending a message it needs to be serialized AND fragmented if it exceeds a certain size
+    - when receiving a message the client needs to re-order the fragment and to re-assemble the message
 
 Servers - Massimo Malchiodi / Filippo Baietta
 

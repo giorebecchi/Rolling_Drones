@@ -43,6 +43,7 @@ dependencies = [
  "rustafarian-drone",
  "rustbusters-drone",
  "rusteze_drone",
+ "serde",
  "skylink",
  "toml",
  "wg_2024",
