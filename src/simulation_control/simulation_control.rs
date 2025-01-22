@@ -7,7 +7,6 @@ use std::{fs,thread};
 use std::sync::{Arc,Mutex};
 use lazy_static::lazy_static;
 use wg_2024::packet::NodeType;
-use wg_2024::config::Config;
 use wg_2024::controller::{DroneCommand,DroneEvent};
 use wg_2024::drone::{Drone};
 use wg_2024::network::{NodeId, SourceRoutingHeader};
@@ -22,6 +21,7 @@ use wg_2024_rust::drone::RustDrone;
 use rustbusters_drone::RustBustersDrone;
 use rusteze_drone::RustezeDrone;
 use rustafarian_drone::RustafarianDrone;
+use crate::network_initializer::network_initializer::parse_config;
 
 
 
@@ -204,10 +204,7 @@ impl SimulationController {
         }
     }
 }
-pub fn parse_config(file: &str) -> Config {
-    let file_str = fs::read_to_string(file).unwrap();
-    toml::from_str(&file_str).unwrap()
-}
+
 
 
 pub fn test() {
