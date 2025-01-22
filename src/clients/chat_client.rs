@@ -22,7 +22,7 @@ pub struct MessageClient{
     //from:
     //to:
 }
-impl ChatClient {
+impl  ChatClient {
     pub fn register_client(&self)-> CommandChat{
         CommandChat::RegisterClient
     }
@@ -39,7 +39,7 @@ impl ChatClient {
 
 pub fn run_commands_chat(command: CommandChat){
     match command{
-
+        _=>todo!(),
     }
 }
 
