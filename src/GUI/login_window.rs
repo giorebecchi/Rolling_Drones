@@ -3,6 +3,10 @@ use bevy::prelude::*;
 use bevy::winit::WinitSettings;
 use bevy_dev_tools::states::*;
 use bevy_egui::{egui, EguiContexts, EguiPlugin};
+use crate::GUI::star_decagram::spawn_star_decagram;
+use crate::GUI::double_chain::spawn_double_chain;
+use crate::GUI::butterfly::spawn_butterfly;
+use crate::GUI::tree::spawn_tree;
 
 pub fn main() {
     App::new()
@@ -10,11 +14,13 @@ pub fn main() {
         .add_plugins(DefaultPlugins)
         .add_plugins(EguiPlugin)
         .init_resource::<OccupiedScreenSpace>()
+        .init_resource::<UserConfig>()
         .init_state::<AppState>()
         .add_systems(Startup, setup)
         .add_systems(OnEnter(AppState::Menu), setup_menu)
         .add_systems(Update, (menu, listen_keyboard_input_events).run_if(in_state(AppState::Menu)))
         .add_systems(OnExit(AppState::Menu), cleanup_menu)
+        //.add_systems(OnEnter(AppState::InGame), spawn_star_decagram)
         .add_systems(OnEnter(AppState::InGame), setup_network)
         .add_systems(Update , ui_settings.run_if(in_state(AppState::InGame)))
 
@@ -28,8 +34,7 @@ enum AppState {
     Menu,
     InGame,
 }
-#[derive(Component, PartialEq, Eq, Hash)]
-struct CameraPriority(u32);
+
 #[derive(Default, Resource)]
 struct OccupiedScreenSpace {
     left: f32,
@@ -46,13 +51,15 @@ struct MenuData {
     button_entity: Entity,
     text_field: Entity,
 }
+#[derive(Resource,Default,Debug,Clone)]
+struct UserConfig(String);
 
 const NORMAL_BUTTON: Color = Color::srgb(0.15, 0.15, 0.15);
 const HOVERED_BUTTON: Color = Color::srgb(0.25, 0.25, 0.25);
 const PRESSED_BUTTON: Color = Color::srgb(0.35, 0.75, 0.35);
 
 fn setup(mut commands: Commands) {
-    commands.spawn(Camera2d).insert(CameraPriority(0));
+    commands.spawn(Camera2d);
 
 }
 
@@ -135,6 +142,7 @@ fn menu(
 fn listen_keyboard_input_events(
     mut events: EventReader<KeyboardInput>,
     mut current_text: Local<String>,
+    mut user_config : ResMut<UserConfig>,
 ) {
     for event in events.read() {
         if !event.state.is_pressed() {
@@ -145,6 +153,7 @@ fn listen_keyboard_input_events(
             Key::Enter => {
                 if !current_text.is_empty() {
                     println!("User typed: {}", *current_text);
+                    user_config.0=current_text.clone();
                     current_text.clear();
                 }
             }
@@ -162,40 +171,29 @@ fn listen_keyboard_input_events(
     }
 }
 
-fn cleanup_menu(mut commands: Commands, menu_data: Res<MenuData>) {
+fn cleanup_menu(mut commands: Commands, menu_data: Res<MenuData>,query: Query<Entity, With<Camera2d>>) {
     commands.entity(menu_data.button_entity).despawn_recursive();
     commands.entity(menu_data.text_field).despawn_recursive();
+    for camera_entity in &query{
+        commands.entity(camera_entity).despawn_recursive();
+    }
 }
 
 fn setup_network(
     mut commands: Commands,
-    mut meshes: ResMut<Assets<Mesh>>,
-    mut materials: ResMut<Assets<StandardMaterial>>,
+    user_config: Res<UserConfig>,
+
 ) {
-    commands.spawn((
-        Mesh3d(meshes.add(Plane3d::default().mesh().size(5.0, 5.0))),
-        MeshMaterial3d(materials.add(Color::srgb(0.3, 0.5, 0.3))),
-    ));
-    commands.spawn((
-        Mesh3d(meshes.add(Cuboid::new(1.0, 1.0, 1.0))),
-        MeshMaterial3d(materials.add(Color::srgb(0.8, 0.7, 0.6))),
-        Transform::from_xyz(0.0, 0.5, 0.0),
-    ));
-    commands.spawn((
-        PointLight {
-            intensity: 1500.0,
-            shadows_enabled: true,
-            ..Default::default()
-        },
-        Transform::from_xyz(4.0, 8.0, 4.0),
-    ));
 
-    let camera_pos = Vec3::new(-2.0, 2.5, 5.0);
-    let camera_transform =
-        Transform::from_translation(camera_pos).looking_at(CAMERA_TARGET, Vec3::Y);
-    commands.insert_resource(OriginalCameraTransform(camera_transform));
+    match (*user_config).0.as_str(){
+        "star"=>spawn_star_decagram(&mut commands),
+        "double_chain"=>spawn_double_chain(&mut commands),
+        "butterfly"=>spawn_butterfly(&mut commands),
+        "tree"=>spawn_tree(&mut commands),
+        _=>spawn_star_decagram(&mut commands),
+    }
 
-    commands.spawn((Camera3d::default(), camera_transform)).insert(CameraPriority(1));
+    commands.spawn(Camera2d::default());
 }
 fn ui_settings(
     mut is_last_selected: Local<bool>,
@@ -237,24 +235,6 @@ fn ui_settings(
             .response
             .rect
             .width();
-        occupied_screen_space.top = egui::TopBottomPanel::top("top_panel")
-            .resizable(true)
-            .show(ctx, |ui| {
-                ui.label("Top resizeable panel");
-                ui.allocate_rect(ui.available_rect_before_wrap(), egui::Sense::hover());
-            })
-            .response
-            .rect
-            .height();
-        occupied_screen_space.bottom = egui::TopBottomPanel::bottom("bottom_panel")
-            .resizable(true)
-            .show(ctx, |ui| {
-                ui.label("Bottom resizeable panel");
-                ui.allocate_rect(ui.available_rect_before_wrap(), egui::Sense::hover());
-            })
-            .response
-            .rect
-            .height();
     }
 }
 
