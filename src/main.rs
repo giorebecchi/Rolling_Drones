@@ -5,5 +5,6 @@ mod clients;
 mod network_initializer;
 
 pub fn main(){
-    GUI::temp_side_panel::main();
+    //GUI::login_window::main();
+    simulation_control::simulation_control::test();
 }
