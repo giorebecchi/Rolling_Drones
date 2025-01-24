@@ -15,13 +15,15 @@ Clients - Chiara Strozzi
    the server has to forward the message
    - register to server (send request message to server to register itself)
    - retrieve the list of registered clients and display
-   - send message to communication server specifying the destination client
+   - send message to communication server specifying the destination client (message has to be fragmented first)
    - end chat function? to end communication between 2 clients
 
 3. serialization, fragmentation and reassembling of the messages
-    - can introduce an Assembler as a sub-component
-    - when sending a message it needs to be serialized AND fragmented if it exceeds a certain size
-    - when receiving a message the client needs to re-order the fragment and to re-assemble the message
+    - can introduce an Assembler as a sub-component ✅
+    - when sending a message it needs to be serialized AND then fragmented if it exceeds a certain size ✅
+    - when receiving a message the client needs to re-order the fragment and to re-assemble the message ✅
+    - when a fragment arrives check if it has already arrived before adding to hashmap, if it has it has to copy the data in the vector,
+    - when a client has received all the fragments and so re assembled all the message sends back an Ack
 
 Servers - Massimo Malchiodi / Filippo Baietta
 
