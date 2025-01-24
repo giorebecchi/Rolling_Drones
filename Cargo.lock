@@ -45,6 +45,7 @@ dependencies = [
  "rustbusters-drone",
  "rusteze_drone",
  "serde",
+ "serde_json",
  "skylink",
  "toml",
  "wg_2024",

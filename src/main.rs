@@ -5,5 +5,5 @@ mod clients;
 mod network_initializer;
 
 pub fn main(){
-    GUI::temp_side_panel::main();
+    clients::chat_client::main();
 }
