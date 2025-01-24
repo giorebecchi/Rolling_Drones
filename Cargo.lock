@@ -37,6 +37,7 @@ dependencies = [
  "bevy_dev_tools",
  "bevy_egui",
  "bevy_prototype_lyon",
+ "bincode",
  "crossbeam-channel",
  "fungi_drone",
  "lazy_static",
