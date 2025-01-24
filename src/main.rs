@@ -4,6 +4,7 @@ mod GUI;
 mod clients;
 mod network_initializer;
 mod servers;
+mod common_things;
 
 pub fn main(){
     GUI::login_window::main();
