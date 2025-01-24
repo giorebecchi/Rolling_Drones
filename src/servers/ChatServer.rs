@@ -2,18 +2,25 @@ use std::collections::{HashMap, HashSet};
 use crossbeam_channel::{select_biased, Receiver, Sender};
 use wg_2024::network::{NodeId, SourceRoutingHeader};
 use wg_2024::packet::{Ack, FloodRequest, FloodResponse, Nack, NackType, NodeType, Packet, PacketType};
+use crate::common_things::common::ServerType;
 
-pub struct server{
+pub struct Server{
     server_id: NodeId,
+    server_type: ServerType,
+    registered_clients: Vec<NodeId>,
+    flooding: Vec<FloodResponse>,
     packet_recv: Receiver<Packet>,
     already_visited: HashSet<(NodeId,u64)>,
     pub packet_send: HashMap<NodeId, Sender<Packet>>,
 }
 
-impl server{
+impl Server{
     fn new(id:NodeId, packet_recv: Receiver<Packet>, packet_send: HashMap<NodeId,Sender<Packet>>)->Self{
         Self{
             server_id:id,
+            server_type: ServerType::ComunicationServer,
+            registered_clients: Vec::new(),
+            flooding: Vec::new(),
             packet_recv:packet_recv,
             already_visited:HashSet::new(),
             packet_send:packet_send,
@@ -113,12 +120,6 @@ impl server{
         fr
     }
 }
-
-
-
-
-
-
 
 
 fn reverse_vector<T: Clone>(input: &[T]) -> Vec<T> {
