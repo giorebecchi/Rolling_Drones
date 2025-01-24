@@ -24,3 +24,4 @@ bevy_dev_tools = "0.15.1"
 bevy_egui="0.32"
 bevy_prototype_lyon = "0.13.0"
 serde = { version = "1.0.217", features = ["derive"] }
+bincode = "1.3.3"
