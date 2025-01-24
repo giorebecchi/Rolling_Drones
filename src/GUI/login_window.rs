@@ -3,20 +3,65 @@ use bevy::prelude::*;
 use bevy::winit::WinitSettings;
 use bevy_dev_tools::states::*;
 use bevy_egui::{egui, EguiContexts, EguiPlugin};
+use bevy_prototype_lyon::draw::Stroke;
+use bevy_prototype_lyon::entity::ShapeBundle;
+use bevy_prototype_lyon::geometry::GeometryBuilder;
+use bevy_prototype_lyon::plugin::ShapePlugin;
+use bevy_prototype_lyon::prelude::StrokeOptions;
+use bevy_prototype_lyon::shapes;
+use wg_2024::network::NodeId;
+use crate::GUI::star_decagram::spawn_star_decagram;
+use crate::GUI::double_chain::spawn_double_chain;
+use crate::GUI::butterfly::spawn_butterfly;
+use crate::GUI::tree::spawn_tree;
+
+
+
+#[derive(Default,Debug,Clone)]
+pub enum NodeType{
+    #[default]
+    Drone,
+    Server,
+    Client,
+}
+#[derive(Resource,Default,Debug,Clone)]
+pub struct NodeConfig{
+    pub node_type: NodeType,
+    pub id: NodeId,
+    pub position: Vec2,
+    pub connected_node_ids: Vec<NodeId>,
+}
+impl NodeConfig {
+    pub fn new(node_type: NodeType, id: NodeId, position: Vec2, connected_node_ids: Vec<NodeId>)->Self{
+        Self{
+            node_type,
+            id,
+            position,
+            connected_node_ids,
+        }
+    }
+}
+#[derive(Resource,Default,Debug,Clone)]
+pub struct NodesConfig(pub Vec<NodeConfig>);
+
 
 pub fn main() {
     App::new()
         .insert_resource(WinitSettings::desktop_app())
         .add_plugins(DefaultPlugins)
+        .add_plugins(ShapePlugin)
         .add_plugins(EguiPlugin)
         .init_resource::<OccupiedScreenSpace>()
+        .init_resource::<UserConfig>()
+        .init_resource::<NodesConfig>()
         .init_state::<AppState>()
         .add_systems(Startup, setup)
         .add_systems(OnEnter(AppState::Menu), setup_menu)
         .add_systems(Update, (menu, listen_keyboard_input_events).run_if(in_state(AppState::Menu)))
         .add_systems(OnExit(AppState::Menu), cleanup_menu)
         .add_systems(OnEnter(AppState::InGame), setup_network)
-        .add_systems(Update , ui_settings.run_if(in_state(AppState::InGame)))
+        .add_systems(Update , (ui_settings,draw_connections).run_if(in_state(AppState::InGame)))
+
 
         .add_systems(Update, log_transitions::<AppState>)
         .run();
@@ -28,8 +73,7 @@ enum AppState {
     Menu,
     InGame,
 }
-#[derive(Component, PartialEq, Eq, Hash)]
-struct CameraPriority(u32);
+
 #[derive(Default, Resource)]
 struct OccupiedScreenSpace {
     left: f32,
@@ -46,13 +90,15 @@ struct MenuData {
     button_entity: Entity,
     text_field: Entity,
 }
+#[derive(Resource,Default,Debug,Clone)]
+struct UserConfig(String);
 
 const NORMAL_BUTTON: Color = Color::srgb(0.15, 0.15, 0.15);
 const HOVERED_BUTTON: Color = Color::srgb(0.25, 0.25, 0.25);
 const PRESSED_BUTTON: Color = Color::srgb(0.35, 0.75, 0.35);
 
 fn setup(mut commands: Commands) {
-    commands.spawn(Camera2d).insert(CameraPriority(0));
+    commands.spawn(Camera2d);
 
 }
 
@@ -135,6 +181,7 @@ fn menu(
 fn listen_keyboard_input_events(
     mut events: EventReader<KeyboardInput>,
     mut current_text: Local<String>,
+    mut user_config : ResMut<UserConfig>,
 ) {
     for event in events.read() {
         if !event.state.is_pressed() {
@@ -145,6 +192,7 @@ fn listen_keyboard_input_events(
             Key::Enter => {
                 if !current_text.is_empty() {
                     println!("User typed: {}", *current_text);
+                    user_config.0=current_text.clone();
                     current_text.clear();
                 }
             }
@@ -162,40 +210,73 @@ fn listen_keyboard_input_events(
     }
 }
 
-fn cleanup_menu(mut commands: Commands, menu_data: Res<MenuData>) {
+fn cleanup_menu(mut commands: Commands, menu_data: Res<MenuData>,query: Query<Entity, With<Camera2d>>) {
     commands.entity(menu_data.button_entity).despawn_recursive();
     commands.entity(menu_data.text_field).despawn_recursive();
+    for camera_entity in &query{
+        commands.entity(camera_entity).despawn_recursive();
+    }
 }
 
 fn setup_network(
     mut commands: Commands,
-    mut meshes: ResMut<Assets<Mesh>>,
-    mut materials: ResMut<Assets<StandardMaterial>>,
+    user_config: Res<UserConfig>,
+    mut nodes_config: ResMut<NodesConfig>
+
 ) {
-    commands.spawn((
-        Mesh3d(meshes.add(Plane3d::default().mesh().size(5.0, 5.0))),
-        MeshMaterial3d(materials.add(Color::srgb(0.3, 0.5, 0.3))),
-    ));
-    commands.spawn((
-        Mesh3d(meshes.add(Cuboid::new(1.0, 1.0, 1.0))),
-        MeshMaterial3d(materials.add(Color::srgb(0.8, 0.7, 0.6))),
-        Transform::from_xyz(0.0, 0.5, 0.0),
-    ));
-    commands.spawn((
-        PointLight {
-            intensity: 1500.0,
-            shadows_enabled: true,
-            ..Default::default()
+
+    match (*user_config).0.as_str(){
+        "star"=>{
+            let nodes= spawn_star_decagram(&mut commands);
+            (*nodes_config).0=nodes;
         },
-        Transform::from_xyz(4.0, 8.0, 4.0),
-    ));
+        "double_chain"=>{
+            let nodes=spawn_double_chain(&mut commands);
+            (*nodes_config).0=nodes;
+        },
+        "butterfly"=>{
+            let nodes= spawn_butterfly(&mut commands);
+            (*nodes_config).0=nodes;
+        },
+        "tree"=>{
+            let nodes= spawn_tree(&mut commands);
+            (*nodes_config).0=nodes;
+        },
+        _=> {
+            let nodes = spawn_star_decagram(&mut commands);
+            (*nodes_config).0=nodes;
 
-    let camera_pos = Vec3::new(-2.0, 2.5, 5.0);
-    let camera_transform =
-        Transform::from_translation(camera_pos).looking_at(CAMERA_TARGET, Vec3::Y);
-    commands.insert_resource(OriginalCameraTransform(camera_transform));
+        },
+    }
 
-    commands.spawn((Camera3d::default(), camera_transform)).insert(CameraPriority(1));
+    commands.spawn(Camera2d::default());
+}
+pub fn draw_connections(
+    mut commands: Commands,
+    node_data: Res<NodesConfig>,
+) {
+    for node in &node_data.0 {
+        for &connected_id in &node.connected_node_ids {
+            if let Some(connected_node) = node_data.0.iter().find(|n| n.id == connected_id) {
+
+                let start = node.position;
+                let end = connected_node.position;
+
+                let line = shapes::Line(start, end);
+
+                commands.spawn((
+                    ShapeBundle {
+                        path: GeometryBuilder::build_as(&line),
+                        ..default()
+                    },
+                    Stroke {
+                        color: Color::WHITE,
+                        options: StrokeOptions::default().with_line_width(2.0),
+                    },
+                ));
+            }
+        }
+    }
 }
 fn ui_settings(
     mut is_last_selected: Local<bool>,
@@ -237,24 +318,6 @@ fn ui_settings(
             .response
             .rect
             .width();
-        occupied_screen_space.top = egui::TopBottomPanel::top("top_panel")
-            .resizable(true)
-            .show(ctx, |ui| {
-                ui.label("Top resizeable panel");
-                ui.allocate_rect(ui.available_rect_before_wrap(), egui::Sense::hover());
-            })
-            .response
-            .rect
-            .height();
-        occupied_screen_space.bottom = egui::TopBottomPanel::bottom("bottom_panel")
-            .resizable(true)
-            .show(ctx, |ui| {
-                ui.label("Bottom resizeable panel");
-                ui.allocate_rect(ui.available_rect_before_wrap(), egui::Sense::hover());
-            })
-            .response
-            .rect
-            .height();
     }
 }
 
