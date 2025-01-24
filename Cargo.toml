@@ -22,5 +22,5 @@ rusteze_drone = { git = "https://github.com/Rusteze-AP/drone.git", branch = "mai
 rustafarian-drone = { git = "https://github.com/Rustafarian-Unitn/rustafarian-drone"}
 bevy_dev_tools = "0.15.1"
 bevy_egui="0.32"
-bevy_prototype_lyon= "0.13.0"
+bevy_prototype_lyon = "0.13.0"
 serde = { version = "1.0.217", features = ["derive"] }

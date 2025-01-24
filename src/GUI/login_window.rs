@@ -3,26 +3,65 @@ use bevy::prelude::*;
 use bevy::winit::WinitSettings;
 use bevy_dev_tools::states::*;
 use bevy_egui::{egui, EguiContexts, EguiPlugin};
+use bevy_prototype_lyon::draw::Stroke;
+use bevy_prototype_lyon::entity::ShapeBundle;
+use bevy_prototype_lyon::geometry::GeometryBuilder;
+use bevy_prototype_lyon::plugin::ShapePlugin;
+use bevy_prototype_lyon::prelude::StrokeOptions;
+use bevy_prototype_lyon::shapes;
+use wg_2024::network::NodeId;
 use crate::GUI::star_decagram::spawn_star_decagram;
 use crate::GUI::double_chain::spawn_double_chain;
 use crate::GUI::butterfly::spawn_butterfly;
 use crate::GUI::tree::spawn_tree;
 
+
+
+#[derive(Default,Debug,Clone)]
+pub enum NodeType{
+    #[default]
+    Drone,
+    Server,
+    Client,
+}
+#[derive(Resource,Default,Debug,Clone)]
+pub struct NodeConfig{
+    pub node_type: NodeType,
+    pub id: NodeId,
+    pub position: Vec2,
+    pub connected_node_ids: Vec<NodeId>,
+}
+impl NodeConfig {
+    pub fn new(node_type: NodeType, id: NodeId, position: Vec2, connected_node_ids: Vec<NodeId>)->Self{
+        Self{
+            node_type,
+            id,
+            position,
+            connected_node_ids,
+        }
+    }
+}
+#[derive(Resource,Default,Debug,Clone)]
+pub struct NodesConfig(pub Vec<NodeConfig>);
+
+
 pub fn main() {
     App::new()
         .insert_resource(WinitSettings::desktop_app())
         .add_plugins(DefaultPlugins)
+        .add_plugins(ShapePlugin)
         .add_plugins(EguiPlugin)
         .init_resource::<OccupiedScreenSpace>()
         .init_resource::<UserConfig>()
+        .init_resource::<NodesConfig>()
         .init_state::<AppState>()
         .add_systems(Startup, setup)
         .add_systems(OnEnter(AppState::Menu), setup_menu)
         .add_systems(Update, (menu, listen_keyboard_input_events).run_if(in_state(AppState::Menu)))
         .add_systems(OnExit(AppState::Menu), cleanup_menu)
-        //.add_systems(OnEnter(AppState::InGame), spawn_star_decagram)
         .add_systems(OnEnter(AppState::InGame), setup_network)
-        .add_systems(Update , ui_settings.run_if(in_state(AppState::InGame)))
+        .add_systems(Update , (ui_settings,draw_connections).run_if(in_state(AppState::InGame)))
+
 
         .add_systems(Update, log_transitions::<AppState>)
         .run();
@@ -182,18 +221,62 @@ fn cleanup_menu(mut commands: Commands, menu_data: Res<MenuData>,query: Query<En
 fn setup_network(
     mut commands: Commands,
     user_config: Res<UserConfig>,
+    mut nodes_config: ResMut<NodesConfig>
 
 ) {
 
     match (*user_config).0.as_str(){
-        "star"=>spawn_star_decagram(&mut commands),
-        "double_chain"=>spawn_double_chain(&mut commands),
-        "butterfly"=>spawn_butterfly(&mut commands),
-        "tree"=>spawn_tree(&mut commands),
-        _=>spawn_star_decagram(&mut commands),
+        "star"=>{
+            let nodes= spawn_star_decagram(&mut commands);
+            (*nodes_config).0=nodes;
+        },
+        "double_chain"=>{
+            let nodes=spawn_double_chain(&mut commands);
+            (*nodes_config).0=nodes;
+        },
+        "butterfly"=>{
+            let nodes= spawn_butterfly(&mut commands);
+            (*nodes_config).0=nodes;
+        },
+        "tree"=>{
+            let nodes= spawn_tree(&mut commands);
+            (*nodes_config).0=nodes;
+        },
+        _=> {
+            let nodes = spawn_star_decagram(&mut commands);
+            (*nodes_config).0=nodes;
+
+        },
     }
 
     commands.spawn(Camera2d::default());
+}
+pub fn draw_connections(
+    mut commands: Commands,
+    node_data: Res<NodesConfig>,
+) {
+    for node in &node_data.0 {
+        for &connected_id in &node.connected_node_ids {
+            if let Some(connected_node) = node_data.0.iter().find(|n| n.id == connected_id) {
+
+                let start = node.position;
+                let end = connected_node.position;
+
+                let line = shapes::Line(start, end);
+
+                commands.spawn((
+                    ShapeBundle {
+                        path: GeometryBuilder::build_as(&line),
+                        ..default()
+                    },
+                    Stroke {
+                        color: Color::WHITE,
+                        options: StrokeOptions::default().with_line_width(2.0),
+                    },
+                ));
+            }
+        }
+    }
 }
 fn ui_settings(
     mut is_last_selected: Local<bool>,
