@@ -1,6 +1,7 @@
 use std::collections::{HashMap, HashSet};
 use crossbeam_channel::{select_biased, Receiver, Sender};
 use wg_2024::network::{NodeId, SourceRoutingHeader};
+use wg_2024::packet;
 use wg_2024::packet::{Ack, FloodRequest, FloodResponse, Nack, NackType, NodeType, Packet, PacketType};
 use crate::common_things::common::ServerType;
 
@@ -27,6 +28,7 @@ impl Server{
         }
     }
     fn run(&mut self) {
+        self.flooding();
         loop {
             select_biased!{
                 recv(self.packet_recv) -> packet => {
@@ -43,7 +45,7 @@ impl Server{
             PacketType::Ack(_) => {}
             PacketType::Nack(_) => {}
             PacketType::FloodRequest(_) => {self.handle_flood_request(p)}
-            PacketType::FloodResponse(_) => {}
+            PacketType::FloodResponse(_) => {self.handle_flood_response(p)}
         }
     }
 
@@ -118,6 +120,45 @@ impl Server{
             session_id: s_id,
         };
         fr
+    }
+
+    fn handle_flood_response(&mut self, p:Packet){
+        if let PacketType::FloodResponse(mut flood) = p.pack_type{
+            let mut safetoadd = true;
+            for i in self.flooding.iter(){
+                if i.flood_id<flood.flood_id{
+                    self.flooding.clear();
+                    break;
+                }else if i.flood_id==flood.flood_id{
+
+                }else { safetoadd = false; break; }
+            }
+            if safetoadd{
+                self.flooding.push(flood.clone());
+            }else {
+                println!("you received an outdated arion of the flooding");
+            }
+
+        }
+    }
+
+    fn flooding(&mut self){
+        let mut flood_id = 0;
+        for i in self.flooding.iter(){
+            flood_id = i.flood_id+1;
+        }
+        let flood = packet::Packet{
+            routing_header: Default::default(),
+            session_id: 0,
+            pack_type: PacketType::FloodRequest(FloodRequest{
+                flood_id,
+                initiator_id: self.server_id,
+                path_trace: vec![],
+            }),
+        };
+        for (id,neighbour) in self.packet_send.clone(){
+            neighbour.send(flood.clone()).unwrap();
+        }
     }
 }
 
