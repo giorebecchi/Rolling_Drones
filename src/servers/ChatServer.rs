@@ -145,7 +145,7 @@ impl Server{
     fn flooding(&mut self){
         let mut flood_id = 0;
         for i in self.flooding.iter(){
-            flood_id = i.flood_id;
+            flood_id = i.flood_id+1;
         }
         let flood = packet::Packet{
             routing_header: Default::default(),
