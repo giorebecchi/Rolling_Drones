@@ -22,10 +22,7 @@ use rustbusters_drone::RustBustersDrone;
 use rusteze_drone::RustezeDrone;
 use rustafarian_drone::RustafarianDrone;
 use crate::network_initializer::network_initializer::parse_config;
-
-
-
-
+use crate::servers;
 
 lazy_static! { static ref CONSOLE_MUTEX: Arc<Mutex<()>> = Arc::new(Mutex::new(())); }
 #[derive(Clone)]
@@ -375,6 +372,22 @@ pub fn test() {
 
         handles.push(handle);
     }
+
+    /*for (i, cfg_server) in config.server.into_iter().enumerate() {
+        let rcv = packet_channels[&cfg_server.id].1.clone();
+        let packet_send = cfg_server
+            .connected_drone_ids
+            .clone()
+            .into_iter()
+            .map(|nid| (nid, packet_channels[&nid].0.clone()))
+            .collect::<HashMap<_, _>>();
+        let handle = thread::spawn(move || {
+            let mut server = servers::ChatServer::Server::new(cfg_server.id,rcv,packet_send);
+            server.run();
+        });
+        handles.push(handle);
+    }*/
+
 
     let controller = Arc::new(Mutex::new(SimulationController {
         drones: controller_drones,

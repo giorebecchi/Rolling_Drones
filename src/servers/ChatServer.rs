@@ -2,8 +2,9 @@ use std::collections::{HashMap, HashSet};
 use crossbeam_channel::{select_biased, Receiver, Sender};
 use wg_2024::network::{NodeId, SourceRoutingHeader};
 use wg_2024::packet;
-use wg_2024::packet::{Ack, FloodRequest, FloodResponse, Nack, NackType, NodeType, Packet, PacketType};
+use wg_2024::packet::{Ack, FloodRequest, FloodResponse, Fragment, Nack, NackType, NodeType, Packet, PacketType};
 use crate::common_things::common::ServerType;
+use crate::servers::assembler::*;
 
 pub struct Server{
     server_id: NodeId,
@@ -13,10 +14,11 @@ pub struct Server{
     packet_recv: Receiver<Packet>,
     already_visited: HashSet<(NodeId,u64)>,
     pub packet_send: HashMap<NodeId, Sender<Packet>>,
+    fragments : Vec<Fragment>,
 }
 
 impl Server{
-    fn new(id:NodeId, packet_recv: Receiver<Packet>, packet_send: HashMap<NodeId,Sender<Packet>>)->Self{
+    pub fn new(id:NodeId, packet_recv: Receiver<Packet>, packet_send: HashMap<NodeId,Sender<Packet>>)->Self{
         Self{
             server_id:id,
             server_type: ServerType::ComunicationServer,
@@ -25,9 +27,10 @@ impl Server{
             packet_recv:packet_recv,
             already_visited:HashSet::new(),
             packet_send:packet_send,
+            fragments : Vec::new()
         }
     }
-    fn run(&mut self) {
+    pub(crate) fn run(&mut self) {
         self.flooding();
         loop {
             select_biased!{
@@ -41,7 +44,7 @@ impl Server{
     }
     pub fn handle_packet(&mut self, p:Packet){
         match p.clone().pack_type {
-            PacketType::MsgFragment(_) => {self.handle_msg_fragment(p)}
+            PacketType::MsgFragment(_) => {println!("received packet {p}")/*self.handle_msg_fragment(p)*/}
             PacketType::Ack(_) => {}
             PacketType::Nack(_) => {}
             PacketType::FloodRequest(_) => {self.handle_flood_request(p)}
@@ -53,31 +56,28 @@ impl Server{
 
         if packet.routing_header.hop_index < packet.routing_header.hops.len() -1 {
             packet.routing_header.hop_index += 1;
-
             let next_hop = packet.routing_header.hops[packet.routing_header.hop_index];
-
-
             if let Some(sender) = self.packet_send.get(&next_hop) {
-                if let Err(_) = sender.send(packet.clone()) {
-
-                    self.handle_drone_event(packet.clone());
-
-                }
-            } else {
-                self.handle_drone_event(packet.clone());
-
+                sender.send(packet.clone()).unwrap();
             }
         } else {
-            let nack=create_nack(packet.clone(),NackType::DestinationIsDrone);
-            self.send_nack(nack);
+            println!("destination reached!!");
             return;
         }
     }
 
-    fn handle_msg_fragment(&mut self, p:Packet){
+    /*fn handle_msg_fragment(&mut self, p:Packet){
         self.forward_packet(create_ack(p.clone()));
+        if let PacketType::MsgFragment(fragment) = p.pack_type{
+            self.fragments.push(fragment.clone());
+            if self.fragments.len() as u64 == fragment.total_n_fragments{
+                let totalmsg = deserialize_data(self.fragments.clone()).unwrap();
+                match totalmsg {
 
-    }
+                }
+            }
+        }
+    }*/
 
     fn handle_flood_request(&mut self, packet : Packet){
         if let PacketType::FloodRequest(mut flood) = packet.pack_type{
@@ -124,6 +124,7 @@ impl Server{
 
     fn handle_flood_response(&mut self, p:Packet){
         if let PacketType::FloodResponse(mut flood) = p.pack_type{
+            println!("server {} has received flood response {}", self.server_id,flood.clone());
             let mut safetoadd = true;
             for i in self.flooding.iter(){
                 if i.flood_id<flood.flood_id{
@@ -143,6 +144,7 @@ impl Server{
     }
 
     fn flooding(&mut self){
+        println!("server {} is starting a flooding",self.server_id);
         let mut flood_id = 0;
         for i in self.flooding.iter(){
             flood_id = i.flood_id+1;

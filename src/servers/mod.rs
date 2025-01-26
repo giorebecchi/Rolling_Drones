@@ -1,2 +1,2 @@
 mod assembler;
-mod ChatServer;
+pub(crate) mod ChatServer;
