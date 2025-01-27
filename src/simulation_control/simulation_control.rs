@@ -10,7 +10,7 @@ use wg_2024::packet::NodeType;
 use wg_2024::controller::{DroneCommand,DroneEvent};
 use wg_2024::drone::{Drone};
 use wg_2024::network::{NodeId, SourceRoutingHeader};
-use wg_2024::packet::{Ack, FloodRequest, Fragment, Nack, NackType, Packet, PacketType};
+use wg_2024::packet::{Ack, Fragment, Nack, NackType, Packet, PacketType};
 use fungi_drone::FungiDrone;
 use bagel_bomber::BagelBomber;
 use bevy::prelude::Resource;
@@ -22,8 +22,9 @@ use wg_2024_rust::drone::RustDrone;
 use rustbusters_drone::RustBustersDrone;
 use rusteze_drone::RustezeDrone;
 use rustafarian_drone::RustafarianDrone;
+use wg_2024::packet::PacketType::FloodRequest;
 use crate::network_initializer::network_initializer::parse_config;
-
+use crate::servers::ChatServer::Server;
 
 
 lazy_static! { static ref CONSOLE_MUTEX: Arc<Mutex<()>> = Arc::new(Mutex::new(())); }
@@ -47,7 +48,7 @@ impl SimulationController {
                     let _lock = CONSOLE_MUTEX.lock().unwrap();
                      match drone_event{
                         DroneEvent::PacketSent(ref packet) => {
-                            println!("Simulation control: drone sent packet");
+                            println!("flood: {}", packet.pack_type);
                         }
                         DroneEvent::PacketDropped(ref packet) => {
                             println!("Simulation control: drone dropped packet");
@@ -208,7 +209,7 @@ impl SimulationController {
     }
     fn initiate_flood(&mut self, packet: Packet){
         println!("Initiating flood");
-        if let PacketType::FloodRequest(flood_request)=packet.clone().pack_type {
+        if let FloodRequest(flood_request)=packet.clone().pack_type {
             for node_neighbours in packet.clone().routing_header.hops{
                 if let Some(sender) = self.packet_channel.get(&node_neighbours) {
                     sender.send(packet.clone()).unwrap();
@@ -266,7 +267,6 @@ pub fn test() {
             .into_iter()
             .map(|nid| (nid, packet_channels[&nid].0.clone()))
             .collect::<HashMap<_, _>>();
-
 
         let handle = thread::spawn(move || {
             match i {
@@ -381,6 +381,7 @@ pub fn test() {
                         packet_send,
                         cfg_drone.pdr,
                     );
+                    println!("droneemerda {}",cfg_drone.id);
                     drone.run();
                 }
                 _ => {
@@ -392,6 +393,24 @@ pub fn test() {
 
         handles.push(handle);
     }
+
+    for  cfg_server in config.server.into_iter() {
+        let rcv = packet_channels[&cfg_server.id].1.clone();
+        let packet_send = cfg_server
+            .connected_drone_ids
+            .clone()
+            .into_iter()
+            .map(|nid| (nid, packet_channels[&nid].0.clone()))
+            .collect::<HashMap<_, _>>();
+        let mut server = Arc::new(Mutex::new(Server::new(cfg_server.id,rcv,packet_send)));
+        let mut server_clone = Arc::clone(&server);
+        let handle = thread::spawn(move || {
+            let mut server = server_clone.lock().unwrap();
+            server.run();
+        });
+        handles.push(handle);
+    }
+
 
     let controller = Arc::new(Mutex::new(SimulationController {
         drones: controller_drones,
@@ -412,16 +431,18 @@ pub fn test() {
         let mut controller = controller.lock().unwrap();
         controller.initiate_flood(Packet{
             routing_header: SourceRoutingHeader{
-                hop_index: 0,
+                hop_index:0,
                 hops: vec![1],
             },
-            session_id: 0,
-            pack_type: PacketType::FloodRequest(FloodRequest{
-                path_trace: vec![(0,NodeType::Client)],
-                initiator_id: 0,
+            pack_type: FloodRequest(wg_2024::packet::FloodRequest{
                 flood_id: 10,
-            })
+                initiator_id: 0,
+                path_trace: vec![(0,NodeType::Client)],
+            }),
+            session_id: 20,
         });
+       // controller.msg_fragment(fragment_double_chain);
+
     }
 
     for handle in handles {

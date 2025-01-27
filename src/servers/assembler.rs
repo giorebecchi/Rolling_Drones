@@ -4,7 +4,7 @@ use wg_2024::packet::{Fragment, Packet, PacketType};
 use std::error::Error;
 use wg_2024::network::SourceRoutingHeader;
 
-fn serialize_data<T: Serialize>(data: &T, routing_header:SourceRoutingHeader) -> Result<Vec<Packet>, Box<dyn Error>> {
+pub fn serialize_data<T: Serialize>(data: &T, routing_header:SourceRoutingHeader) -> Result<Vec<Packet>, Box<dyn Error>> {
     // Serialize the data into bytes
     let serialized_data = bincode::serialize(&data)?;
 
@@ -35,7 +35,7 @@ fn serialize_data<T: Serialize>(data: &T, routing_header:SourceRoutingHeader) ->
     Ok(fragments)
 }
 
-fn deserialize_data<T: for<'de> Deserialize<'de>>(fragments: Vec<Fragment>) -> Result<T, Box<dyn Error>> {
+pub fn deserialize_data<T: for<'de> Deserialize<'de>>(fragments: &mut Vec<Fragment>) -> Result<T, Box<dyn Error>> {
     // Ensure fragments are sorted by index
     let mut fragments = fragments;
     fragments.sort_by_key(|f| f.fragment_index);
