@@ -27,6 +27,7 @@ pub struct MessageChat{ //which needs to be fragmented
     pub to_id: NodeId //id destination client
 }
 
+#[derive(Clone, Serialize, Deserialize, Debug)]
 pub enum ServerType{
     ComunicationServer,
     TesxtServer,

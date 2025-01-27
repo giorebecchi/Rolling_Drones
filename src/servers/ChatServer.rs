@@ -1,11 +1,13 @@
 use std::collections::{HashMap, HashSet};
 use crossbeam_channel::{select_biased, Receiver, Sender};
+use serde::Serialize;
 use wg_2024::network::{NodeId, SourceRoutingHeader};
 use wg_2024::packet;
 use wg_2024::packet::{Ack, FloodRequest, FloodResponse, Fragment, Nack, NackType, NodeType, Packet, PacketType};
 use crate::common_things::common::*;
 use crate::servers::assembler::*;
 
+#[derive(Clone)]
 pub struct Server{
     server_id: NodeId,
     server_type: ServerType,
@@ -65,6 +67,12 @@ impl Server{
         }
     }
 
+    fn send_packet<T>(&self, p:T)where T : Serialize{
+        /*for i in serialize_data(p, ){
+
+        }*/
+    }
+
     fn handle_msg_fragment(&mut self, p:Packet){
         self.forward_packet(create_ack(p.clone()));
         if let PacketType::MsgFragment(fragment) = p.pack_type{
@@ -74,7 +82,7 @@ impl Server{
                     if fragment.total_n_fragments == vec.len() as u64{
                         if let Ok(totalmsg) = deserialize_data(vec){
                             match totalmsg{
-                                ChatRequest::ServerType => {}
+                                ChatRequest::ServerType => {/*self.send_packet(self.clone().server_type, p.routing_header.hops.reverse());*/}
                                 ChatRequest::RegisterClient(_) => {}
                                 ChatRequest::GetListClients => {}
                                 ChatRequest::SendMessage(_) => {}
@@ -98,17 +106,21 @@ impl Server{
                 return;
             }else {
                 self.already_visited.insert((flood.initiator_id, flood.flood_id));
-                flood.path_trace.push((self.server_id, NodeType::Server));
-                let new_packet = Packet{
-                    pack_type : PacketType::FloodRequest(flood.clone()),
-                    routing_header: packet.routing_header,
-                    session_id: packet.session_id,
-                };
-                let (previous, _) = flood.path_trace[flood.path_trace.len() - 2];
-                for (idd, neighbour) in self.packet_send.clone() {
-                    if idd == previous {
-                    } else {
-                        neighbour.send(new_packet.clone()).unwrap();
+                if self.packet_send.len()==1{
+                    self.forward_packet(self.create_flood_response(packet.session_id,flood));
+                }else {
+                    flood.path_trace.push((self.server_id, NodeType::Server));
+                    let new_packet = Packet{
+                        pack_type : PacketType::FloodRequest(flood.clone()),
+                        routing_header: packet.routing_header,
+                        session_id: packet.session_id,
+                    };
+                    let (previous, _) = flood.path_trace[flood.path_trace.len() - 2];
+                    for (idd, neighbour) in self.packet_send.clone() {
+                        if idd == previous {
+                        } else {
+                            neighbour.send(new_packet.clone()).unwrap();
+                        }
                     }
                 }
             }
