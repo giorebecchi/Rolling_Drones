@@ -48,7 +48,7 @@ impl SimulationController {
                     let _lock = CONSOLE_MUTEX.lock().unwrap();
                      match drone_event{
                         DroneEvent::PacketSent(ref packet) => {
-                            println!("flood: {}", packet.pack_type);
+                            println!("Simulation control: drone sent packet");
                         }
                         DroneEvent::PacketDropped(ref packet) => {
                             println!("Simulation control: drone dropped packet");

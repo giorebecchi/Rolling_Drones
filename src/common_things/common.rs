@@ -23,7 +23,7 @@ pub enum ChatRequest{
 
 #[derive(Serialize,Deserialize)]
 pub struct MessageChat{ //which needs to be fragmented
-    pub general: Packet,
+    //pub general: Packet,
     pub content: String,
     pub from_id: NodeId,//id client sender
     pub to_id: NodeId //id destination client
