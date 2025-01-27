@@ -8,7 +8,7 @@ version = "0.1.0"
 source = "git+https://github.com/Ossyk/Krusty_Club.git#2c698ec4f66baf2e9d3fa22b344e9bb3b0fa0ea0"
 dependencies = [
  "crossbeam-channel",
- "rand 0.9.0-beta.3",
+ "rand 0.9.0",
  "serde",
  "toml",
  "wg_2024",
@@ -20,7 +20,7 @@ version = "0.1.0"
 source = "git+https://github.com/anass03/LeDron_James.git#3f3bd633e912c643820305289baf9cda7bb8850b"
 dependencies = [
  "crossbeam-channel",
- "rand 0.9.0-beta.3",
+ "rand 0.9.0",
  "serde",
  "serde_json",
  "wg_2024",
@@ -42,7 +42,7 @@ dependencies = [
  "fungi_drone",
  "lazy_static",
  "lockheedrustin-drone",
- "rand 0.9.0-beta.3",
+ "rand 0.9.0",
  "rustafarian-drone",
  "rustbusters-drone",
  "rusteze_drone",
@@ -413,7 +413,7 @@ dependencies = [
 [[package]]
 name = "bagel_bomber"
 version = "0.1.0"
-source = "git+https://github.com/daw-dev/bagel-bomber.git#3b94966e28621a5a25d761689fe90c012559a8db"
+source = "git+https://github.com/daw-dev/bagel-bomber.git#e704fd518bfe4ff0f7aba12a7cc693db0f54a48e"
 dependencies = [
  "crossbeam-channel",
  "lazy_static",
@@ -1932,9 +1932,9 @@ dependencies = [
 
 [[package]]
 name = "cpufeatures"
-version = "0.2.16"
+version = "0.2.17"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "16b80225097f2e5ae4e7179dd2266824648f3e2f49d9134d584b76389d31c4c3"
+checksum = "59ed5838eebb26a2bb2e58f6d5b5316989ae9d08bab10e0e6d103e656d1b0280"
 dependencies = [
  "libc",
 ]
@@ -2574,16 +2574,13 @@ dependencies = [
 
 [[package]]
 name = "getrandom"
-version = "0.3.0-rc.0"
+version = "0.3.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "8a78f88e84d239c7f2619ae8b091603c26208e1cb322571f5a29d6806f56ee5e"
+checksum = "71393ecc86efbf00e4ca13953979ba8b94cfe549a4b74cc26d8b62f4d8feac2b"
 dependencies = [
  "cfg-if",
- "js-sys",
  "libc",
- "rustix",
  "wasi 0.13.3+wasi-0.2.2",
- "wasm-bindgen",
  "windows-targets 0.52.6",
 ]
 
@@ -3362,7 +3359,7 @@ dependencies = [
 [[package]]
 name = "lockheedrustin-drone"
 version = "0.1.0"
-source = "git+https://github.com/Lockheed-Rustin/drone.git#c26bca97d83e3c0c4398bc4085fb138c07fc0d04"
+source = "git+https://github.com/Lockheed-Rustin/drone.git#98152e84d850d66642ff4070356fb05c372ff540"
 dependencies = [
  "crossbeam-channel",
  "rand 0.8.5",
@@ -4254,12 +4251,12 @@ dependencies = [
 
 [[package]]
 name = "rand"
-version = "0.9.0-beta.3"
+version = "0.9.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "6fccbfebb3972a41a31c605a59207d9fba5489b9a87d9d87024cb6df73a32ec7"
+checksum = "3779b94aeb87e8bd4e834cee3650289ee9e0d5677f976ecdb6d219e5f4f6cd94"
 dependencies = [
- "rand_chacha 0.9.0-beta.1",
- "rand_core 0.9.0-beta.1",
+ "rand_chacha 0.9.0",
+ "rand_core 0.9.0",
  "zerocopy 0.8.14",
 ]
 
@@ -4275,12 +4272,12 @@ dependencies = [
 
 [[package]]
 name = "rand_chacha"
-version = "0.9.0-beta.1"
+version = "0.9.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "f16da77124f4ee9fabd55ce6540866e9101431863b4876de58b68797f331adf2"
+checksum = "d3022b5f1df60f26e1ffddd6c66e8aa15de382ae63b3a0c1bfc0e4d3e3f325cb"
 dependencies = [
  "ppv-lite86",
- "rand_core 0.9.0-beta.1",
+ "rand_core 0.9.0",
 ]
 
 [[package]]
@@ -4294,11 +4291,11 @@ dependencies = [
 
 [[package]]
 name = "rand_core"
-version = "0.9.0-beta.1"
+version = "0.9.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "a98fa0b8309344136abe6244130311e76997e546f76fae8054422a7539b43df7"
+checksum = "b08f3c9802962f7e1b25113931d94f43ed9725bebc59db9d0c3e9a23b67e15ff"
 dependencies = [
- "getrandom 0.3.0-rc.0",
+ "getrandom 0.3.0",
  "zerocopy 0.8.14",
 ]
 
@@ -4487,7 +4484,7 @@ dependencies = [
 [[package]]
 name = "rustbusters-drone"
 version = "1.0.0"
-source = "git+https://github.com/Rustbusters/drone.git#f798c5243fb7703ce0cc384773b99f8f2ac8f268"
+source = "git+https://github.com/Rustbusters/drone.git#98b30e3cc16b6211687a8caf2c24ee7d6f5ef73a"
 dependencies = [
  "crossbeam-channel",
  "lazy_static",

@@ -360,6 +360,7 @@ pub fn test() {
                         packet_send,
                         cfg_drone.pdr,
                     );
+                    println!("droneemerda {}",cfg_drone.id);
                     drone.run();
                 }
                 _ => {
@@ -372,7 +373,7 @@ pub fn test() {
         handles.push(handle);
     }
 
-    for (i, cfg_server) in config.server.into_iter().enumerate() {
+    for  cfg_server in config.server.into_iter() {
         let rcv = packet_channels[&cfg_server.id].1.clone();
         let packet_send = cfg_server
             .connected_drone_ids
@@ -380,8 +381,10 @@ pub fn test() {
             .into_iter()
             .map(|nid| (nid, packet_channels[&nid].0.clone()))
             .collect::<HashMap<_, _>>();
+        let mut server = Arc::new(Mutex::new(Server::new(cfg_server.id,rcv,packet_send)));
+        let mut server_clone = Arc::clone(&server);
         let handle = thread::spawn(move || {
-            let mut server = Server::new(cfg_server.id,rcv,packet_send);
+            let mut server = server_clone.lock().unwrap();
             server.run();
         });
         handles.push(handle);
@@ -405,7 +408,7 @@ pub fn test() {
     let fragment_double_chain = create_fragments(vec![0,1,2,3,4,5,10,11]);
     {
         let mut controller = controller.lock().unwrap();
-        controller.msg_fragment(fragment_double_chain);
+       // controller.msg_fragment(fragment_double_chain);
     }
 
     for handle in handles {

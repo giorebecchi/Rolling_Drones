@@ -35,7 +35,7 @@ pub fn serialize_data<T: Serialize>(data: &T, routing_header:SourceRoutingHeader
     Ok(fragments)
 }
 
-pub fn deserialize_data<T: for<'de> Deserialize<'de>>(fragments: Vec<Fragment>) -> Result<T, Box<dyn Error>> {
+pub fn deserialize_data<T: for<'de> Deserialize<'de>>(fragments: &mut Vec<Fragment>) -> Result<T, Box<dyn Error>> {
     // Ensure fragments are sorted by index
     let mut fragments = fragments;
     fragments.sort_by_key(|f| f.fragment_index);

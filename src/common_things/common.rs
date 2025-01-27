@@ -1,3 +1,4 @@
+use serde::{Deserialize, Serialize};
 use wg_2024::network::NodeId;
 
 //comandi sim_control
@@ -10,6 +11,7 @@ pub enum CommandChat {
 }
 
 //comandi da client a server
+#[derive(Serialize,Deserialize)]
 pub enum ChatRequest{
     ServerType,
     RegisterClient(NodeId),//node id del client stesso
@@ -18,6 +20,7 @@ pub enum ChatRequest{
     EndChat(NodeId),//node id del client stesso
 }
 
+#[derive(Serialize,Deserialize)]
 pub struct MessageChat{ //which needs to be fragmented
     pub content: String,
     pub from_id: NodeId,//id client sender
