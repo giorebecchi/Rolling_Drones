@@ -18,7 +18,7 @@ pub fn spawn_double_chain(mut commands: &mut Commands)->Vec<NodeConfig> {
             let x = (i as f32 - (node_count_per_line - 1) as f32 / 2.0) * horizontal_spacing;
             let y = vertical_offset;
 
-            set_up_bundle(x,y,&mut commands);
+            set_up_bundle(x,y,&mut commands,drone.id);
             top_positions.push(Vec2::new(x, y));
             let node = NodeConfig::new(NodeType::Drone, drone.id, Vec2::new(x, y), drone.connected_node_ids);
             drones.push(node);
@@ -26,7 +26,7 @@ pub fn spawn_double_chain(mut commands: &mut Commands)->Vec<NodeConfig> {
             let x = ((i-5) as f32 - (node_count_per_line - 1) as f32 / 2.0) * horizontal_spacing;
             let y = -vertical_offset;
 
-            set_up_bundle(x,y,&mut commands);
+            set_up_bundle(x,y,&mut commands,drone.id);
 
             bottom_positions.push(Vec2::new(x, y));
             let node = NodeConfig::new(NodeType::Drone, drone.id, Vec2::new(x, y), drone.connected_node_ids);

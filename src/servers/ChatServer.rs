@@ -60,16 +60,16 @@ impl Server{
             if let Some(sender) = self.packet_send.get(&next_hop) {
                 if let Err(_) = sender.send(packet.clone()) {
 
-                    self.handle_drone_event(packet.clone());
+                   // self.handle_drone_event(packet.clone());
 
                 }
             } else {
-                self.handle_drone_event(packet.clone());
+                //self.handle_drone_event(packet.clone());
 
             }
         } else {
             let nack=create_nack(packet.clone(),NackType::DestinationIsDrone);
-            self.send_nack(nack);
+            //self.send_nack(nack);
             return;
         }
     }
