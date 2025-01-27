@@ -1,5 +1,5 @@
+use std::collections::HashMap;
 use std::string::String;
-use bevy::utils::HashMap;
 use wg_2024::packet;
 use wg_2024::controller;
 use serde::{Serialize, Deserialize};

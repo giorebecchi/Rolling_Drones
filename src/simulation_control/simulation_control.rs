@@ -13,6 +13,7 @@ use wg_2024::network::{NodeId, SourceRoutingHeader};
 use wg_2024::packet::{Ack, Fragment, Nack, NackType, Packet, PacketType};
 use fungi_drone::FungiDrone;
 use bagel_bomber::BagelBomber;
+use bevy::prelude::Resource;
 use Krusty_Club::Krusty_C;
 use skylink::SkyLinkDrone;
 use LeDron_James::Drone as Le_Drone;
@@ -25,6 +26,7 @@ use wg_2024::packet::PacketType::FloodRequest;
 use crate::network_initializer::network_initializer::parse_config;
 use crate::servers::ChatServer::Server;
 
+
 lazy_static! { static ref CONSOLE_MUTEX: Arc<Mutex<()>> = Arc::new(Mutex::new(())); }
 #[derive(Clone)]
 struct SimulationController {
@@ -33,7 +35,8 @@ struct SimulationController {
     node_event_recv: Receiver<DroneEvent>,
     neighbours: HashMap<NodeId, Vec<NodeId>>,
 }
-
+#[derive(Resource,Default,Debug)]
+pub struct EventLog(pub String);
 
 
 impl SimulationController {
@@ -54,7 +57,9 @@ impl SimulationController {
                             println!("Simulation control: packet sent to destination");
                         }
                     }
-                    self.handle_event(drone_event.clone());
+
+                        let mut log=EventLog(String::new());
+                    self.handle_event(drone_event.clone(),&mut log);
                 }
 
             }
@@ -63,10 +68,25 @@ impl SimulationController {
 
     }
 
-    fn handle_event(&mut self, command: DroneEvent) {
+    fn handle_event(&mut self, command: DroneEvent,mut graphic_log: &mut EventLog) {
+        let mut string=String::new();
         match command {
             DroneEvent::PacketSent(packet) => {
-                self.print_packet(packet);
+                match packet.pack_type{
+                    PacketType::FloodRequest(flood)=>{
+                        let mut should_print = true;
+                        if should_print {
+                            string.push_str((format!("Packet type: FloodRequest\nstarted\n
+                         from: {}", flood.initiator_id)).as_str());
+                            should_print = false;
+                            graphic_log.0=string;
+
+                        }
+                    }
+                    _=>{
+                        string.push_str("");
+                    }
+                }
             }
             DroneEvent::PacketDropped(packet) => {
                 self.print_packet(packet);
@@ -422,6 +442,7 @@ pub fn test() {
             session_id: 20,
         });
        // controller.msg_fragment(fragment_double_chain);
+
     }
 
     for handle in handles {

@@ -63,6 +63,7 @@ impl Server{
             }
         } else {
             println!("destination reached!!");
+
             return;
         }
     }
