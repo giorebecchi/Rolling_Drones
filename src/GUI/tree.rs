@@ -15,18 +15,14 @@ pub fn spawn_tree(mut commands: &mut Commands) -> Vec<NodeConfig> {
 
     let mut drones = Vec::new();
 
-    // Root position
-    let x = 0.0;
-    let y = vertical_offset;
-    root_position.push(Vec2::new(x, y));
-    set_up_bundle(x, y, &mut commands);
+
 
     for (i, drone) in config.drone.into_iter().enumerate() {
         if i == 0 {
             // Root node
             let x = 0.0;
             let y = vertical_offset;
-            set_up_bundle(x, y, &mut commands);
+            set_up_bundle(x, y, &mut commands,drone.id);
 
             let node = NodeConfig::new(NodeType::Drone, drone.id, Vec2::new(x, y), drone.connected_node_ids);
             drones.push(node);
@@ -37,7 +33,7 @@ pub fn spawn_tree(mut commands: &mut Commands) -> Vec<NodeConfig> {
             let x = (i as f32 - 1.5) * horizontal_spacing; // Centered
             let y = -vertical_offset;
 
-            set_up_bundle(x, y, &mut commands);
+            set_up_bundle(x, y, &mut commands,drone.id);
 
             let node = NodeConfig::new(NodeType::Drone, drone.id, Vec2::new(x, y), drone.connected_node_ids);
             drones.push(node);
@@ -48,7 +44,7 @@ pub fn spawn_tree(mut commands: &mut Commands) -> Vec<NodeConfig> {
             let x = (i as f32 - 4.0) * horizontal_spacing; // Centered
             let y = -vertical_offset * 3.0;
 
-            set_up_bundle(x, y, &mut commands);
+            set_up_bundle(x, y, &mut commands,drone.id);
 
             let node = NodeConfig::new(NodeType::Drone, drone.id, Vec2::new(x, y), drone.connected_node_ids);
             drones.push(node);
@@ -65,7 +61,7 @@ pub fn spawn_tree(mut commands: &mut Commands) -> Vec<NodeConfig> {
             };
             let y = -vertical_offset * 5.0;
 
-            set_up_bundle(x, y, &mut commands);
+            set_up_bundle(x, y, &mut commands,drone.id);
 
             let node = NodeConfig::new(NodeType::Drone, drone.id, Vec2::new(x, y), drone.connected_node_ids);
             drones.push(node);
