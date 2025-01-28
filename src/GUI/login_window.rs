@@ -9,9 +9,14 @@ use crate::GUI::double_chain::spawn_double_chain;
 use crate::GUI::butterfly::spawn_butterfly;
 use crate::GUI::tree::spawn_tree;
 use crate::simulation_control::simulation_control::*;
-
+use egui::widgets::TextEdit;
 #[derive(Component)]
 struct InputText;
+
+#[derive(Resource, Default)]
+struct DroneCrash{
+    content: String
+}
 
 #[derive(Default,Debug,Clone)]
 pub enum NodeType{
@@ -49,13 +54,15 @@ pub fn main() {
         .init_resource::<OccupiedScreenSpace>()
         .init_resource::<UserConfig>()
         .init_resource::<NodesConfig>()
-        .init_resource::<EventLog>()
+        .init_resource::<DroneCrash>()
+        .init_resource::<SimulationController>()
         .init_state::<AppState>()
         .add_systems(Startup, setup)
         .add_systems(OnEnter(AppState::Menu), setup_menu)
         .add_systems(Update, (menu, listen_keyboard_input_events).run_if(in_state(AppState::Menu)))
         .add_systems(OnExit(AppState::Menu), cleanup_menu)
         .add_systems(OnEnter(AppState::InGame), setup_network)
+        .add_systems(Update, test.run_if(in_state(AppState::InGame)))
         .add_systems(Update , (ui_settings,draw_connections).run_if(in_state(AppState::InGame)))
 
 
@@ -87,7 +94,7 @@ struct MenuData {
     text_field: Entity,
 }
 #[derive(Resource,Default,Debug,Clone)]
-struct UserConfig(String);
+pub struct UserConfig(pub String);
 
 
 const NORMAL_BUTTON: Color = Color::srgb(0.15, 0.15, 0.15);
@@ -314,9 +321,8 @@ fn ui_settings(
     mut contexts: EguiContexts,
     mut occupied_screen_space: ResMut<OccupiedScreenSpace>,
     mut nodes : ResMut<NodesConfig>,
-    mut logs: Res<EventLog>
+    mut drone_crash: ResMut<DroneCrash>
 ) {
-    test();
 
     if let Some(context)=contexts.try_ctx_mut() {
         let ctx = context;
@@ -331,12 +337,18 @@ fn ui_settings(
                     .clicked()
                 {
                     *is_last_selected = false;
-                    let mut crashed=nodes.0.iter_mut().position(|node| node.id==1).map(|index| nodes.0.remove(index));
+                    let id=match drone_crash.content.clone().parse::<u8>(){
+                        Ok(x)=>x,
+                        Err(_)=>panic!("Unexpected input in the Crash field"),
+                    };
+
+                    let mut crashed=nodes.0.iter_mut().position(|node| node.id==id).map(|index| nodes.0.remove(index));
                     if let Some(mut crash)=crashed{
                         crash.connected_node_ids.clear();
                     }
 
                 }
+                ui.add(TextEdit::singleline(&mut (*drone_crash).content));
                 if ui
                     .add(egui::widgets::Button::new("Another button").selected(*is_last_selected))
                     .clicked()
@@ -353,7 +365,6 @@ fn ui_settings(
             .show(ctx, |ui| {
                 ui.label("Simulation events");
                 ui.allocate_rect(ui.available_rect_before_wrap(), egui::Sense::hover());
-                ui.add(egui::widgets::Label::new(format!("{:?}",*logs)));
             })
             .response
             .rect
