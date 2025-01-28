@@ -1,10 +1,13 @@
 use std::collections::{HashMap, HashSet};
 use crossbeam_channel::{select_biased, Receiver, Sender};
+use serde::Serialize;
 use wg_2024::network::{NodeId, SourceRoutingHeader};
 use wg_2024::packet;
-use wg_2024::packet::{Ack, FloodRequest, FloodResponse, Nack, NackType, NodeType, Packet, PacketType};
-use crate::common_things::common::ServerType;
+use wg_2024::packet::{Ack, FloodRequest, FloodResponse, Fragment, Nack, NackType, NodeType, Packet, PacketType};
+use crate::common_things::common::*;
+use crate::servers::assembler::*;
 
+#[derive(Clone)]
 pub struct Server{
     server_id: NodeId,
     server_type: ServerType,
@@ -13,10 +16,11 @@ pub struct Server{
     packet_recv: Receiver<Packet>,
     already_visited: HashSet<(NodeId,u64)>,
     pub packet_send: HashMap<NodeId, Sender<Packet>>,
+    fragments : HashMap<(NodeId,u64),Vec<Fragment>>,
 }
 
 impl Server{
-    fn new(id:NodeId, packet_recv: Receiver<Packet>, packet_send: HashMap<NodeId,Sender<Packet>>)->Self{
+    pub fn new(id:NodeId, packet_recv: Receiver<Packet>, packet_send: HashMap<NodeId,Sender<Packet>>)->Self{
         Self{
             server_id:id,
             server_type: ServerType::ComunicationServer,
@@ -25,10 +29,10 @@ impl Server{
             packet_recv:packet_recv,
             already_visited:HashSet::new(),
             packet_send:packet_send,
+            fragments : HashMap::new()
         }
     }
-    fn run(&mut self) {
-        self.flooding();
+    pub(crate) fn run(&mut self) {
         loop {
             select_biased!{
                 recv(self.packet_recv) -> packet => {
@@ -41,7 +45,7 @@ impl Server{
     }
     pub fn handle_packet(&mut self, p:Packet){
         match p.clone().pack_type {
-            PacketType::MsgFragment(_) => {self.handle_msg_fragment(p)}
+            PacketType::MsgFragment(_) => {println!("received packet {p}")/*self.handle_msg_fragment(p)*/}
             PacketType::Ack(_) => {}
             PacketType::Nack(_) => {}
             PacketType::FloodRequest(_) => {self.handle_flood_request(p)}
@@ -53,30 +57,48 @@ impl Server{
 
         if packet.routing_header.hop_index < packet.routing_header.hops.len() -1 {
             packet.routing_header.hop_index += 1;
-
             let next_hop = packet.routing_header.hops[packet.routing_header.hop_index];
-
-
             if let Some(sender) = self.packet_send.get(&next_hop) {
-                if let Err(_) = sender.send(packet.clone()) {
 
-                    //self.handle_drone_event(packet.clone());
-
-                }
-            } else {
-                //self.handle_drone_event(packet.clone());
-
+                sender.send(packet.clone()).unwrap_or_default();
             }
         } else {
-            let nack=create_nack(packet.clone(),NackType::DestinationIsDrone);
-            //self.send_nack(nack);
+            println!("destination reached!!");
+
             return;
         }
     }
 
+    fn send_packet<T>(&self, p:T)where T : Serialize{
+        /*for i in serialize_data(p, ){
+
+        }*/
+    }
+
     fn handle_msg_fragment(&mut self, p:Packet){
         self.forward_packet(create_ack(p.clone()));
-
+        if let PacketType::MsgFragment(fragment) = p.pack_type{
+            if self.fragments.contains_key(&(p.routing_header.hops.clone()[0],p.session_id)){
+                if let Some((mut vec)) = self.fragments.get_mut(&(p.routing_header.hops[0],p.session_id)){
+                    vec.push(fragment.clone());
+                    if fragment.total_n_fragments == vec.len() as u64{
+                        if let Ok(totalmsg) = deserialize_data(vec){
+                            match totalmsg{
+                                ChatRequest::ServerType => {/*self.send_packet(self.clone().server_type, p.routing_header.hops.reverse());*/}
+                                ChatRequest::RegisterClient(_) => {}
+                                ChatRequest::GetListClients => {}
+                                ChatRequest::SendMessage(_) => {}
+                                ChatRequest::EndChat(_) => {}
+                            }
+                        }
+                    }
+                }
+            }else {
+                let mut vec = Vec::new();
+                vec.push(fragment.clone());
+                self.fragments.insert((p.routing_header.hops.clone()[0], p.session_id), vec);
+            }
+        }
     }
 
     fn handle_flood_request(&mut self, packet : Packet){
@@ -86,17 +108,21 @@ impl Server{
                 return;
             }else {
                 self.already_visited.insert((flood.initiator_id, flood.flood_id));
-                flood.path_trace.push((self.server_id, NodeType::Server));
-                let new_packet = Packet{
-                    pack_type : PacketType::FloodRequest(flood.clone()),
-                    routing_header: packet.routing_header,
-                    session_id: packet.session_id,
-                };
-                let (previous, _) = flood.path_trace[flood.path_trace.len() - 2];
-                for (idd, neighbour) in self.packet_send.clone() {
-                    if idd == previous {
-                    } else {
-                        neighbour.send(new_packet.clone()).unwrap();
+                if self.packet_send.len()==1{
+                    self.forward_packet(self.create_flood_response(packet.session_id,flood));
+                }else {
+                    flood.path_trace.push((self.server_id, NodeType::Server));
+                    let new_packet = Packet{
+                        pack_type : PacketType::FloodRequest(flood.clone()),
+                        routing_header: packet.routing_header,
+                        session_id: packet.session_id,
+                    };
+                    let (previous, _) = flood.path_trace[flood.path_trace.len() - 2];
+                    for (idd, neighbour) in self.packet_send.clone() {
+                        if idd == previous {
+                        } else {
+                            neighbour.send(new_packet.clone()).unwrap();
+                        }
                     }
                 }
             }
@@ -124,6 +150,7 @@ impl Server{
 
     fn handle_flood_response(&mut self, p:Packet){
         if let PacketType::FloodResponse(mut flood) = p.pack_type{
+            println!("server {} has received flood response {}", self.server_id,flood.clone());
             let mut safetoadd = true;
             for i in self.flooding.iter(){
                 if i.flood_id<flood.flood_id{
@@ -142,18 +169,19 @@ impl Server{
         }
     }
 
-    fn flooding(&mut self){
+    pub(crate) fn flooding(&mut self){
+        println!("server {} is starting a flooding",self.server_id);
         let mut flood_id = 0;
         for i in self.flooding.iter(){
             flood_id = i.flood_id+1;
         }
         let flood = packet::Packet{
-            routing_header: Default::default(),
-            session_id: 0,
+            routing_header: SourceRoutingHeader{hop_index:1, hops:Vec::new()},
+            session_id: flood_id,
             pack_type: PacketType::FloodRequest(FloodRequest{
                 flood_id,
                 initiator_id: self.server_id,
-                path_trace: vec![],
+                path_trace: vec![(self.server_id, NodeType::Server)],
             }),
         };
         for (id,neighbour) in self.packet_send.clone(){
