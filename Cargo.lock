@@ -4446,7 +4446,7 @@ dependencies = [
 [[package]]
 name = "rusteze_drone"
 version = "0.1.0"
-source = "git+https://github.com/Rusteze-AP/drone.git?branch=main#934c80dfefc0d41d5b6b406bbbb0382e43b9843e"
+source = "git+https://github.com/Rusteze-AP/drone.git?branch=main#0ceecaa4a2e37a05aed406bfcca41f9996a6e59a"
 dependencies = [
  "crossbeam",
  "logger",

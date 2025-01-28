@@ -353,7 +353,8 @@ fn ui_settings(
             .show(ctx, |ui| {
                 ui.label("Simulation events");
                 ui.allocate_rect(ui.available_rect_before_wrap(), egui::Sense::hover());
-                ui.add(egui::widgets::Label::new(format!("{:?}",*logs)));
+               // ui.add(egui::widgets::)
+
             })
             .response
             .rect

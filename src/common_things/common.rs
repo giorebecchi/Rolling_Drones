@@ -32,8 +32,25 @@ pub struct MessageChat{ //which needs to be fragmented
 #[derive(Clone, Serialize, Deserialize, Debug)]
 pub enum ServerType{
     ComunicationServer,
-    TesxtServer,
-    MediaServer
+    MediaServer,
+    TextServer,
 }
+
+// comamndi simulation controller -> client
+pub enum TextRequest{
+    ServerType(NodeId),
+    GetTextList(NodeId),
+    GetTextFile(NodeId, String),
+}
+
+
+// comandi client -> server;
+pub enum TextMessage{
+    ServerType,
+    GetTextList,
+    GetTextFile(String),
+}
+
+
 
 //poi bisogna fare la stessa cosa anche per il text e media
