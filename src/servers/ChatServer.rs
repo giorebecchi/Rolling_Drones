@@ -53,8 +53,7 @@ impl Server{
         }
     }
 
-    fn forward_packet(&mut self, mut packet: Packet) {
-
+    fn forward_packet(&self, mut packet: Packet) {
         if packet.routing_header.hop_index < packet.routing_header.hops.len() -1 {
             packet.routing_header.hop_index += 1;
             let next_hop = packet.routing_header.hops[packet.routing_header.hop_index];
@@ -69,10 +68,13 @@ impl Server{
         }
     }
 
-    fn send_packet<T>(&self, p:T)where T : Serialize{
-        /*for i in serialize_data(p, ){
-
-        }*/
+    fn send_packet<T>(&self, p:T, header: SourceRoutingHeader)where T : Fragmentation{
+        if let Ok(vec) = p.serialize_data(header){
+            //aggiungere un field nella struct server per salvare tutti i vari pacchetti nel caso in cui fossero droppati ecc.
+            for i in vec.iter(){
+                self.forward_packet(i.clone());
+            }
+        }
     }
 
     fn handle_msg_fragment(&mut self, p:Packet){
@@ -82,9 +84,9 @@ impl Server{
                 if let Some((mut vec)) = self.fragments.get_mut(&(p.routing_header.hops[0],p.session_id)){
                     vec.push(fragment.clone());
                     if fragment.total_n_fragments == vec.len() as u64{
-                        if let Ok(totalmsg) = deserialize_data(vec){
+                        if let Ok(totalmsg) = ChatRequest::deserialize_data(vec){
                             match totalmsg{
-                                ChatRequest::ServerType => {/*self.send_packet(self.clone().server_type, p.routing_header.hops.reverse());*/}
+                                ChatRequest::ServerType => {self.clone().send_packet(self.clone().server_type, self.get_route(p.routing_header.hops[0], NodeType::Client));}
                                 ChatRequest::RegisterClient(_) => {}
                                 ChatRequest::GetListClients => {}
                                 ChatRequest::SendMessage(_) => {}
@@ -163,7 +165,7 @@ impl Server{
             if safetoadd{
                 self.flooding.push(flood.clone());
             }else {
-                println!("you received an outdated arion of the flooding");
+                println!("you received an outdated version of the flooding");
             }
 
         }
@@ -186,6 +188,32 @@ impl Server{
         };
         for (id,neighbour) in self.packet_send.clone(){
             neighbour.send(flood.clone()).unwrap();
+        }
+    }
+    fn get_route(&mut self, id:NodeId, nt:NodeType)->SourceRoutingHeader{
+        self.flooding();
+        let mut possible_route=Vec::new();
+        for i in self.flooding.iter(){
+            if i.path_trace.contains(&(id,nt)){
+                let mut vec = Vec::new();
+                for z in 0..i.path_trace.len(){
+                    vec=i.path_trace.iter().map(|x| x.0).collect::<Vec<NodeId>>();
+                    if i.path_trace[z] == (id,nt) {
+                        possible_route.push(vec);
+                        break;
+                    }
+                }
+            }
+        }
+        let mut final_route = possible_route[0].clone();
+        for alternative_route in possible_route.iter(){
+            if alternative_route.len()<final_route.len(){
+                final_route = alternative_route.clone();
+            }
+        }
+        SourceRoutingHeader{
+            hop_index: 0,
+            hops: final_route,
         }
     }
 }
