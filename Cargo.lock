@@ -17,7 +17,7 @@ dependencies = [
 [[package]]
 name = "LeDron_James"
 version = "0.1.0"
-source = "git+https://github.com/anass03/LeDron_James.git#3f3bd633e912c643820305289baf9cda7bb8850b"
+source = "git+https://github.com/anass03/LeDron_James.git#7dd65e52fc2e30e3e9b60199f5a0a78a404abf9a"
 dependencies = [
  "crossbeam-channel",
  "rand 0.9.0",
@@ -2555,9 +2555,9 @@ dependencies = [
 
 [[package]]
 name = "getrandom"
-version = "0.3.0"
+version = "0.3.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "71393ecc86efbf00e4ca13953979ba8b94cfe549a4b74cc26d8b62f4d8feac2b"
+checksum = "43a49c392881ce6d5c3b8cb70f98717b7c07aabbdff06687b9030dbfbe2725f8"
 dependencies = [
  "cfg-if",
  "libc",
@@ -2887,9 +2887,9 @@ dependencies = [
 
 [[package]]
 name = "httparse"
-version = "1.9.5"
+version = "1.10.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "7d71d3574edd2771538b901e6549113b4006ece66150fb69c0fb6d9a2adae946"
+checksum = "f2d708df4e7140240a16cd6ab0ab65c972d7433ab77819ea693fde9c43811e2a"
 
 [[package]]
 name = "httpdate"
@@ -4224,7 +4224,7 @@ version = "0.9.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "b08f3c9802962f7e1b25113931d94f43ed9725bebc59db9d0c3e9a23b67e15ff"
 dependencies = [
- "getrandom 0.3.0",
+ "getrandom 0.3.1",
  "zerocopy 0.8.14",
 ]
 
@@ -4401,7 +4401,7 @@ checksum = "6c20b6793b5c2fa6553b250154b78d6d0db37e72700ae35fad9387a46f487c97"
 [[package]]
 name = "rustafarian-drone"
 version = "1.0.0"
-source = "git+https://github.com/Rustafarian-Unitn/rustafarian-drone#b45a016b8576d9c497221b760f049869e2893438"
+source = "git+https://github.com/Rustafarian-Unitn/rustafarian-drone#5b4df145a4300b0190b6b3336ea4b9070132be6f"
 dependencies = [
  "crossbeam",
  "crossbeam-channel",
@@ -4446,7 +4446,7 @@ dependencies = [
 [[package]]
 name = "rusteze_drone"
 version = "0.1.0"
-source = "git+https://github.com/Rusteze-AP/drone.git?branch=main#934c80dfefc0d41d5b6b406bbbb0382e43b9843e"
+source = "git+https://github.com/Rusteze-AP/drone.git?branch=main#0ceecaa4a2e37a05aed406bfcca41f9996a6e59a"
 dependencies = [
  "crossbeam",
  "logger",
@@ -4502,9 +4502,9 @@ dependencies = [
 
 [[package]]
 name = "ryu"
-version = "1.0.18"
+version = "1.0.19"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "f3cb5ba0dc43242ce17de99c180e96db90b235b8a9fdc9543c96d2209116bd9f"
+checksum = "6ea1a2d0a644769cc99faa24c3ad26b379b786fe7c36fd3c546254801650e6dd"
 
 [[package]]
 name = "same-file"
@@ -4659,7 +4659,7 @@ dependencies = [
 [[package]]
 name = "skylink"
 version = "0.1.0"
-source = "git+https://github.com/Suge42/Skylink_drone.git#56191177167293cf25f29e2e028d75bf5f9e8535"
+source = "git+https://github.com/Suge42/Skylink_drone.git#da75f5fb39c44714d2cc5a8d0886c030d28f5789"
 dependencies = [
  "crossbeam-channel",
  "fastrand",
@@ -5279,9 +5279,9 @@ checksum = "1df77b101bcc4ea3d78dafc5ad7e4f58ceffe0b2b16bf446aeb50b6cb4157656"
 
 [[package]]
 name = "unicode-ident"
-version = "1.0.15"
+version = "1.0.16"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "11cd88e12b17c6494200a9c1b683a04fcac9573ed74cd1b62aeb2727c5592243"
+checksum = "a210d160f08b701c8721ba1c726c11662f877ea6b7094007e1ca9a1041945034"
 
 [[package]]
 name = "unicode-linebreak"
@@ -6428,9 +6428,9 @@ dependencies = [
 
 [[package]]
 name = "winnow"
-version = "0.6.24"
+version = "0.6.25"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "c8d71a593cc5c42ad7876e2c1fda56f314f3754c084128833e64f1345ff8a03a"
+checksum = "ad699df48212c6cc6eb4435f35500ac6fd3b9913324f938aea302022ce19d310"
 dependencies = [
  "memchr",
 ]

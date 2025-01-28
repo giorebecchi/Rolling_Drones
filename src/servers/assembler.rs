@@ -8,7 +8,7 @@ use wg_2024::packet::PacketType::MsgFragment;
 use crate::common_things::common::{ChatRequest, ChatResponse, MessageChat, ServerType};
 
 pub trait Fragmentation{
-    fn serialize_data(&self, routing_header:SourceRoutingHeader)->Result<Vec<Packet>, Box<dyn Error>> where Self:Serialize{
+    fn serialize_data(&self, routing_header:SourceRoutingHeader, session_id : u64)->Result<Vec<Packet>, Box<dyn Error>> where Self:Serialize{
         let serialized_data = serde_json::to_string(&self)?;
         let tot_size = serialized_data.len();
         let tot_fragment = ((tot_size + FRAGMENT_DSIZE - 1 ) / FRAGMENT_DSIZE )as u64;
@@ -20,7 +20,7 @@ pub trait Fragmentation{
             let fragment = &serialized_data[start..end];
             let packet = Packet{
                 routing_header: routing_header.clone(),
-                session_id:0,
+                session_id:session_id,
                 pack_type:MsgFragment(Fragment::from_string(i, tot_fragment, fragment.to_string()))
             };
         }

@@ -11,12 +11,14 @@ use crate::servers::assembler::*;
 pub struct Server{
     server_id: NodeId,
     server_type: ServerType,
+    session_id: u64,
     registered_clients: Vec<NodeId>,
     flooding: Vec<FloodResponse>,
     packet_recv: Receiver<Packet>,
     already_visited: HashSet<(NodeId,u64)>,
     pub packet_send: HashMap<NodeId, Sender<Packet>>,
-    fragments : HashMap<(NodeId,u64),Vec<Fragment>>,
+    fragments_recv : HashMap<(NodeId,u64),Vec<Fragment>>,
+    fragments_send : HashMap<(u64),Vec<Fragment>>,
 }
 
 impl Server{
@@ -24,12 +26,14 @@ impl Server{
         Self{
             server_id:id,
             server_type: ServerType::ComunicationServer,
+            session_id:0,
             registered_clients: Vec::new(),
             flooding: Vec::new(),
             packet_recv:packet_recv,
             already_visited:HashSet::new(),
             packet_send:packet_send,
-            fragments : HashMap::new()
+            fragments_recv : HashMap::new(),
+            fragments_send : HashMap::new()
         }
     }
     pub(crate) fn run(&mut self) {
@@ -45,7 +49,7 @@ impl Server{
     }
     pub fn handle_packet(&mut self, p:Packet){
         match p.clone().pack_type {
-            PacketType::MsgFragment(_) => {println!("received packet {p}")/*self.handle_msg_fragment(p)*/}
+            PacketType::MsgFragment(_) => {println!("received packet {p}");self.handle_msg_fragment(p)}
             PacketType::Ack(_) => {}
             PacketType::Nack(_) => {}
             PacketType::FloodRequest(_) => {self.handle_flood_request(p)}
@@ -68,8 +72,16 @@ impl Server{
         }
     }
 
-    fn send_packet<T>(&self, p:T, header: SourceRoutingHeader)where T : Fragmentation{
-        if let Ok(vec) = p.serialize_data(header){
+    fn send_packet<T>(&mut self, p:T, header: SourceRoutingHeader)where T : Fragmentation+Serialize{
+        if let Ok(vec) = p.serialize_data(header,self.session_id){
+            let mut fragments_send = Vec::new();
+            for i in vec.iter(){
+                if let PacketType::MsgFragment(fragment) = i.clone().pack_type{
+                    fragments_send.push(fragment);
+                }
+            }
+            self.fragments_send.insert(self.session_id.clone(), fragments_send);
+            self.session_id+=1;
             //aggiungere un field nella struct server per salvare tutti i vari pacchetti nel caso in cui fossero droppati ecc.
             for i in vec.iter(){
                 self.forward_packet(i.clone());
@@ -80,13 +92,13 @@ impl Server{
     fn handle_msg_fragment(&mut self, p:Packet){
         self.forward_packet(create_ack(p.clone()));
         if let PacketType::MsgFragment(fragment) = p.pack_type{
-            if self.fragments.contains_key(&(p.routing_header.hops.clone()[0],p.session_id)){
-                if let Some((mut vec)) = self.fragments.get_mut(&(p.routing_header.hops[0],p.session_id)){
+            if self.fragments_recv.contains_key(&(p.routing_header.hops.clone()[0],p.session_id)){
+                if let Some((mut vec)) = self.fragments_recv.get_mut(&(p.routing_header.hops[0],p.session_id)){
                     vec.push(fragment.clone());
                     if fragment.total_n_fragments == vec.len() as u64{
                         if let Ok(totalmsg) = ChatRequest::deserialize_data(vec){
                             match totalmsg{
-                                ChatRequest::ServerType => {self.clone().send_packet(self.clone().server_type, self.get_route(p.routing_header.hops[0], NodeType::Client));}
+                                ChatRequest::ServerType => {let route = self.get_route(p.routing_header.hops[0], NodeType::Client);self.send_packet(self.clone().server_type, route);}
                                 ChatRequest::RegisterClient(_) => {}
                                 ChatRequest::GetListClients => {}
                                 ChatRequest::SendMessage(_) => {}
@@ -98,7 +110,7 @@ impl Server{
             }else {
                 let mut vec = Vec::new();
                 vec.push(fragment.clone());
-                self.fragments.insert((p.routing_header.hops.clone()[0], p.session_id), vec);
+                self.fragments_recv.insert((p.routing_header.hops.clone()[0], p.session_id), vec);
             }
         }
     }
