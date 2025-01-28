@@ -1,19 +1,17 @@
-#![allow(unused)]
-
 use rand::Rng;
-use crossbeam_channel::{select_biased, unbounded, Receiver, RecvError, Sender, TryRecvError};
+use crossbeam_channel::{select_biased, unbounded, Receiver, Sender};
 use std::collections::HashMap;
-use std::{fs,thread};
+use std::thread;
 use std::sync::{Arc,Mutex};
 use lazy_static::lazy_static;
 use wg_2024::packet::NodeType;
 use wg_2024::controller::{DroneCommand,DroneEvent};
 use wg_2024::drone::{Drone};
 use wg_2024::network::{NodeId, SourceRoutingHeader};
-use wg_2024::packet::{Ack, Fragment, Nack, NackType, Packet, PacketType};
+use wg_2024::packet::{Fragment, Packet, PacketType};
 use fungi_drone::FungiDrone;
 use bagel_bomber::BagelBomber;
-use bevy::prelude::Resource;
+use bevy::prelude::{Res, ResMut, Resource};
 use Krusty_Club::Krusty_C;
 use skylink::SkyLinkDrone;
 use LeDron_James::Drone as Le_Drone;
@@ -23,20 +21,33 @@ use rustbusters_drone::RustBustersDrone;
 use rusteze_drone::RustezeDrone;
 use rustafarian_drone::RustafarianDrone;
 use wg_2024::packet::PacketType::FloodRequest;
+use crate::GUI::login_window::UserConfig;
 use crate::network_initializer::network_initializer::parse_config;
 use crate::servers::ChatServer::Server;
 
 
 lazy_static! { static ref CONSOLE_MUTEX: Arc<Mutex<()>> = Arc::new(Mutex::new(())); }
-#[derive(Clone)]
-struct SimulationController {
-    drones: HashMap<NodeId, Sender<DroneCommand>>,
-    packet_channel: HashMap<NodeId, Sender<Packet>>,
-    node_event_recv: Receiver<DroneEvent>,
-    neighbours: HashMap<NodeId, Vec<NodeId>>,
+#[derive(Clone,Resource)]
+pub struct SimulationController {
+    pub drones: HashMap<NodeId, Sender<DroneCommand>>,
+    pub packet_channel: HashMap<NodeId, Sender<Packet>>,
+    pub node_event_send: Sender<DroneEvent>,
+    pub node_event_recv: Receiver<DroneEvent>,
+    pub neighbours: HashMap<NodeId, Vec<NodeId>>,
 }
-#[derive(Resource,Default,Debug)]
-pub struct EventLog(pub String);
+impl Default for SimulationController{
+    fn default() -> Self {
+        let (sender, receiver) = unbounded();
+        Self {
+            node_event_send: sender,
+            node_event_recv: receiver,
+            drones: HashMap::new(),
+            packet_channel: HashMap::new(),
+            neighbours: HashMap::new(),
+        }
+    }
+}
+
 
 
 impl SimulationController {
@@ -58,8 +69,7 @@ impl SimulationController {
                         }
                     }
 
-                        let mut log=EventLog(String::new());
-                    self.handle_event(drone_event.clone(),&mut log);
+                    self.handle_event(drone_event.clone());
                 }
 
             }
@@ -68,33 +78,8 @@ impl SimulationController {
 
     }
 
-    fn handle_event(&mut self, command: DroneEvent,mut graphic_log: &mut EventLog) {
-        let mut string=String::new();
-        match command {
-            DroneEvent::PacketSent(packet) => {
-                match packet.pack_type{
-                    PacketType::FloodRequest(flood)=>{
-                        let mut should_print = true;
-                        if should_print {
-                            string.push_str((format!("Packet type: FloodRequest\nstarted\n
-                         from: {}", flood.initiator_id)).as_str());
-                            should_print = false;
-                            graphic_log.0=string;
+    fn handle_event(&mut self, command: DroneEvent) {
 
-                        }
-                    }
-                    _=>{
-                        string.push_str("");
-                    }
-                }
-            }
-            DroneEvent::PacketDropped(packet) => {
-                self.print_packet(packet);
-            }
-            DroneEvent::ControllerShortcut(packet) => {
-                self.send_to_destination(packet);
-            }
-        }
     }
     fn print_packet(&mut self, packet: Packet) {
         // print!("  source id: {:#?}  |", packet.routing_header.hops[0]);
@@ -225,12 +210,20 @@ impl SimulationController {
 
 
 
-pub fn test() {
-    let config = parse_config("assets/configurations/double_chain.toml");
-    let mut neighbours = HashMap::new();
-    let mut controller_drones = HashMap::new();
-    let mut packet_drones = HashMap::new();
-    let (node_event_send, node_event_recv) = unbounded();
+pub fn test(mut simulation_controller: ResMut<SimulationController>, config: Res<UserConfig>) {
+    let mut file_path= match (((*config).0).as_str()){
+        "star"=>"assets/configurations/star.toml",
+        "double_chain"=>"assets/configurations/double_chain.toml",
+        "butterfly"=>"assets/configurations/butterfly.toml",
+        "tree"=>"assets/configurations/tree.toml",
+        _=>"assets/configurations/star.toml",
+    };
+    let config = parse_config(file_path);
+    let mut neighbours = simulation_controller.neighbours.clone();
+    let mut controller_drones = simulation_controller.drones.clone();
+    let mut packet_drones = simulation_controller.packet_channel.clone();
+    let mut node_event_send = simulation_controller.node_event_send.clone();
+    let mut node_event_recv=simulation_controller.node_event_recv.clone();
 
 
     let mut packet_channels = HashMap::new();
@@ -244,7 +237,6 @@ pub fn test() {
         packet_channels.insert(server.id, unbounded());
     }
 
-    let mut handles = Vec::new();
 
 
     for (i, cfg_drone) in config.drone.into_iter().enumerate() {
@@ -268,7 +260,7 @@ pub fn test() {
             .map(|nid| (nid, packet_channels[&nid].0.clone()))
             .collect::<HashMap<_, _>>();
 
-        let handle = thread::spawn(move || {
+        thread::spawn(move || {
             match i {
                 0 => {
                     let mut drone = BagelBomber::new(
@@ -391,7 +383,6 @@ pub fn test() {
             }
         });
 
-        handles.push(handle);
     }
 
     for  cfg_server in config.server.into_iter() {
@@ -404,27 +395,32 @@ pub fn test() {
             .collect::<HashMap<_, _>>();
         let mut server = Arc::new(Mutex::new(Server::new(cfg_server.id,rcv,packet_send)));
         let mut server_clone = Arc::clone(&server);
-        let handle = thread::spawn(move || {
+        thread::spawn(move || {
             let mut server = server_clone.lock().unwrap();
             server.run();
         });
-        handles.push(handle);
     }
 
 
     let controller = Arc::new(Mutex::new(SimulationController {
-        drones: controller_drones,
+        node_event_send: node_event_send.clone(),
+        drones: controller_drones.clone(),
         node_event_recv: node_event_recv.clone(),
-        neighbours,
-        packet_channel: packet_drones,
+        neighbours: neighbours.clone(),
+        packet_channel: packet_drones.clone(),
     }));
+    simulation_controller.node_event_send= node_event_send.clone();
+    simulation_controller.drones=controller_drones.clone();
+    simulation_controller.node_event_recv= node_event_recv.clone();
+    simulation_controller.neighbours=neighbours;
+    simulation_controller.packet_channel=packet_drones;
+
 
     let controller_clone = Arc::clone(&controller);
-    let controller_handle = thread::spawn(move || {
+    thread::spawn(move || {
         let mut controller = controller_clone.lock().unwrap();
         controller.run()
     });
-
 
     let fragment_double_chain = create_fragments(vec![0,1,2,3,4,5,10,11]);
     {
@@ -445,10 +441,7 @@ pub fn test() {
 
     }
 
-    for handle in handles {
-        handle.join().unwrap();
-    }
-    controller_handle.join().unwrap();
+
 }
 
 
