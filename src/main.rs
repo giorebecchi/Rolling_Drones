@@ -9,5 +9,5 @@ mod common_things;
 pub fn main(){
     //GUI::login_window::main();
     //simulation_control::simulation_control::test();
-    //clients::assembler::main();
+    clients::assembler::main();
 }

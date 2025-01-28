@@ -7,8 +7,8 @@ use serde::{Serialize, Deserialize};
 use wg_2024::config::{Client};
 use wg_2024::network::{NodeId, SourceRoutingHeader};
 use wg_2024::packet::{FloodRequest, FloodResponse, Fragment, NodeType, Packet, PacketType, FRAGMENT_DSIZE};
-use crate::clients::assembler::{Fragmentation, MessageChat, Serialization};
-use crate::common_things::common::{ChatRequest, CommandChat};
+use crate::clients::assembler::{Fragmentation, Serialization};
+use crate::common_things::common::{ChatRequest, MessageChat, CommandChat};
 use crate::servers::ChatServer::Server;
 
 //missing flooding, handling incoming packets and handling errors
@@ -21,7 +21,7 @@ pub struct ChatClient {
     pub servers: Vec<NodeId>,//to store id server once the flood is done
     pub visited_nodes: HashSet<(u64, NodeId)>,
     pub flood: Vec<FloodResponse> ,//to store all the flood responses found
-    pub unique_flood_id: u64,
+    pub unique_flood_id: u64
     // pub simulation_control: HashMap<NodeId, Sender<Packet>>
 }
 impl ChatClient {
@@ -96,7 +96,7 @@ impl ChatClient {
         }
         match self.find_route(&id_server) {
             Ok(route) => {
-                if let Some((next_hop, _)) = route.get(1){
+                if let Some(next_hop) = route.get(1){
                     self.send_request(&next_hop, ChatRequest::ServerType)
                 }
             }
@@ -131,7 +131,7 @@ impl ChatClient {
 
         match self.find_route(&id_server) {
             Ok(route) => {
-                if let Some((next_hop, _)) = route.get(1){
+                if let Some(next_hop) = route.get(1){
                     println!("Sent request to register this client to the server {}", id_server);
                     self.send_request(&next_hop, ChatRequest::RegisterClient(self.config.id.clone()))
                 }
@@ -151,7 +151,7 @@ impl ChatClient {
 
         match self.find_route(&id_server) {
             Ok(route) => {
-                if let Some((next_hop, _)) = route.get(1){
+                if let Some(next_hop) = route.get(1){
                     println!("sent request to get list clients of registered servers to server: {}", id_server);
                     self.send_request(&next_hop, ChatRequest::GetListClients)
                 }
@@ -186,7 +186,7 @@ impl ChatClient {
 
         match self.find_route(&id_server) {
             Ok(route) => {
-                if let Some((next_hop, _)) = route.get(1){
+                if let Some(next_hop) = route.get(1){
                     self.send_request(&next_hop, ChatRequest::EndChat(self.config.id.clone()))
                 }
             }
@@ -264,13 +264,13 @@ impl ChatClient {
         }
     }
 
-    pub fn find_route(& mut self, destination_id : &NodeId)-> Result<Vec<(NodeId, NodeType)>, String>{
-        let mut shortest_route: Option<Vec<(NodeId, NodeType)>> = None;
+    pub fn find_route(& mut self, destination_id : &NodeId)-> Result<Vec<NodeId>, String>{
+        let mut shortest_route: Option<Vec<NodeId>> = None;
         for flood_resp in &self.flood{
             if flood_resp.path_trace.contains(&(*destination_id, NodeType::Server)){
                 let length = flood_resp.path_trace.len();
                 if shortest_route.is_none() || length < shortest_route.as_ref().unwrap().len(){
-                    shortest_route = Some(flood_resp.path_trace.clone());
+                    shortest_route = Some(flood_resp.path_trace.iter().map(|(id,_ )| *id).collect());
                 }
             }
         }
