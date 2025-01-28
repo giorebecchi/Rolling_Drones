@@ -67,8 +67,8 @@ impl Server{
         }
     }
 
-    fn send_packet<T>(&self, p:T, header: SourceRoutingHeader)where T : Serialize{
-        if let Ok(vec) = serialize_data(p,header){
+    fn send_packet<T>(&self, p:T, header: SourceRoutingHeader)where T : Fragmentation{
+        if let Ok(vec) = p.serialize_data(header){
             //aggiungere un field nella struct server per salvare tutti i vari pacchetti nel caso in cui fossero droppati ecc.
             for i in vec.iter(){
                 self.forward_packet(i.clone());
@@ -83,9 +83,9 @@ impl Server{
                 if let Some((mut vec)) = self.fragments.get_mut(&(p.routing_header.hops[0],p.session_id)){
                     vec.push(fragment.clone());
                     if fragment.total_n_fragments == vec.len() as u64{
-                        if let Ok(totalmsg) = deserialize_data(vec){
+                        if let Ok(totalmsg) = ChatRequest::deserialize_data(vec){
                             match totalmsg{
-                                ChatRequest::ServerType => {self.send_packet(self.clone().server_type, self.get_route(p.routing_header.hop_index[0], NodeType::Client));}
+                                ChatRequest::ServerType => {self.clone().send_packet(self.clone().server_type, self.get_route(p.routing_header.hops[0], NodeType::Client));}
                                 ChatRequest::RegisterClient(_) => {}
                                 ChatRequest::GetListClients => {}
                                 ChatRequest::SendMessage(_) => {}

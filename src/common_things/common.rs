@@ -21,6 +21,15 @@ pub enum ChatRequest{
     EndChat(NodeId),//node id del client stesso
 }
 
+pub enum ChatResponse{
+    ServerType(ServerType),
+    RegisterClient(bool),
+    RegisteredClients(Vec<NodeId>),
+    SendMessage(Result<String, String>),
+    EndChat(bool),
+
+}
+
 #[derive(Serialize,Deserialize)]
 pub struct MessageChat{ //which needs to be fragmented
     //pub general: Packet,
