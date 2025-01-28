@@ -12,7 +12,7 @@ pub enum CommandChat {
 }
 
 //comandi da client a server
-#[derive(Serialize,Deserialize)]
+#[derive(Serialize, Deserialize, Debug)]
 pub enum ChatRequest{
     ServerType,
     RegisterClient(NodeId),//node id del client stesso
@@ -21,6 +21,7 @@ pub enum ChatRequest{
     EndChat(NodeId),//node id del client stesso
 }
 
+#[derive(Serialize, Deserialize, Debug)]
 pub enum ChatResponse{
     ServerType(ServerType),
     RegisterClient(bool),
@@ -36,6 +37,12 @@ pub struct MessageChat{ //which needs to be fragmented
     pub content: String,
     pub from_id: NodeId,//id client sender
     pub to_id: NodeId //id destination client
+}
+
+#[derive(Clone, Serialize, Deserialize, Debug)]
+pub struct MessageWeb{
+    pub file_name: String,
+    pub media: bool
 }
 
 #[derive(Clone, Serialize, Deserialize, Debug)]
