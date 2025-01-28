@@ -8,6 +8,7 @@ use crate::GUI::star_decagram::spawn_star_decagram;
 use crate::GUI::double_chain::spawn_double_chain;
 use crate::GUI::butterfly::spawn_butterfly;
 use crate::GUI::tree::spawn_tree;
+use crate::simulation_control::simulation_control::*;
 
 #[derive(Component)]
 struct InputText;
@@ -48,6 +49,7 @@ pub fn main() {
         .init_resource::<OccupiedScreenSpace>()
         .init_resource::<UserConfig>()
         .init_resource::<NodesConfig>()
+        .init_resource::<EventLog>()
         .init_state::<AppState>()
         .add_systems(Startup, setup)
         .add_systems(OnEnter(AppState::Menu), setup_menu)
@@ -311,8 +313,10 @@ fn ui_settings(
     mut is_last_selected: Local<bool>,
     mut contexts: EguiContexts,
     mut occupied_screen_space: ResMut<OccupiedScreenSpace>,
-    mut nodes : ResMut<NodesConfig>
+    mut nodes : ResMut<NodesConfig>,
+    mut logs: Res<EventLog>
 ) {
+    test();
 
     if let Some(context)=contexts.try_ctx_mut() {
         let ctx = context;
@@ -350,6 +354,7 @@ fn ui_settings(
                 ui.label("Simulation events");
                 ui.allocate_rect(ui.available_rect_before_wrap(), egui::Sense::hover());
                // ui.add(egui::widgets::)
+
             })
             .response
             .rect
