@@ -5,21 +5,11 @@ use wg_2024::controller;
 use serde::{Serialize, Deserialize};
 use serde::de::DeserializeOwned;
 use serde::de::Unexpected::Str;
-use wg_2024::network::NodeId;
-use wg_2024::packet::{Fragment, FRAGMENT_DSIZE};
-
-
-#[derive(Clone, Serialize, Deserialize, Debug)]
-pub struct MessageChat{ //which needs to be fragmented
-    pub content: String,
-    pub from_id: NodeId,
-    pub to_id: NodeId //id communication server
-}
-#[derive(Clone, Serialize, Deserialize, Debug)]
-pub struct MessageWeb{
-    pub file_name: String,
-    pub media: bool
-}
+use wg_2024::network::{NodeId, SourceRoutingHeader};
+use wg_2024::packet::{Fragment, NodeType, Packet, FRAGMENT_DSIZE};
+use crate::common_things::common::{ChatRequest, ServerType};
+use crate::common_things::common::MessageChat;
+use crate::common_things::common::MessageWeb;
 
 pub trait Serialization{
     fn stringify(&self) -> String where Self: Serialize{ //to serialize
@@ -59,6 +49,19 @@ pub trait Fragmentation: Serialization{
         let message = Serialization::from_string(&convert_to_string)?;
         Ok(message)
     }
+    fn create_packet(fragments: &HashMap<u64, Fragment>, path: Vec<NodeId>)->Vec<Packet>{
+        let mut res = Vec::new();
+        for (_, fragment) in fragments{
+            let packet = Packet::new_fragment(
+                SourceRoutingHeader::new(path.clone(), 0),
+                0, //to increment
+                fragment.clone()
+            );
+            res.push(packet);
+        }
+        res
+    }
+
 }
 
 impl MessageChat{
@@ -76,6 +79,12 @@ impl Serialization for MessageChat{}
 impl Serialization for MessageWeb{}
 impl Fragmentation for MessageChat{}
 impl Fragmentation for MessageWeb{}
+impl Serialization for ServerType{}
+impl Fragmentation for ServerType{}
+
+impl Serialization for ChatRequest{}
+impl Fragmentation for ChatRequest{}
+
 
 pub fn main(){
     let message_test = MessageChat{
@@ -102,6 +111,9 @@ pub fn main(){
         Err(_) => println!("error in reassembling message")
     }
     println!();
+    let packet = MessageChat::create_packet(&fragments, vec![1,3,4] );
+    println!("The packet is {:?}", packet);
+    println!();
 
     let message_web_test = MessageWeb{
         file_name: "ciao kleppa come stai foto?".to_string(),
@@ -122,6 +134,49 @@ pub fn main(){
         Ok(message) => {println!("Message reassembled: {:?}", message)},
         Err(_) => println!("error in reassembling message")
     }
+    println!();
+
+    let server_type = ServerType::ComunicationServer;
+
+    let serialized_server = server_type.stringify();
+    println!("serialized server: {}", serialized_server);
+    println!();
+
+    let fragments_enum = server_type.fragment_message();
+    for fragment in &fragments_enum {
+        println!("fragment index: {}, fragment: {}", fragment.0, fragment.1)
+    }
+    println!();
+
+    let reassembled_enum = ServerType::reassemble_msg(&fragments_enum);
+    match reassembled_enum{
+        Ok(server_type) => {println!("Message reassembled: {:?}", server_type)},
+        Err(_) => println!("error in reassembling message")
+    }
+    println!();
+
+    let request = ChatRequest::SendMessage(message_test);
+    println!("serialized request: {:?}", request.stringify());
+    println!();
+
+    let fragment_request = ChatRequest::fragment_message(&request);
+    for fragment in &fragment_request{
+        println!("fragment index: {}, fragment: {}", fragment.0, fragment.1)
+    }
+    println!();
+
+    let reassembled_request = ChatRequest::reassemble_msg(&fragment_request);
+    match reassembled_request {
+        Ok(request) => {println!("reassembled request: {:?}", request)},
+        Err(_) => println!("error in reassembling message")
+    }
+    println!();
+
+    let packets = ChatRequest::create_packet(&fragment_request, vec![3,6,8] );
+    println!("The packet is {:?}", packets);
+
+
+
 }
 
 

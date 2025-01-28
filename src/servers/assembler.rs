@@ -1,52 +1,46 @@
 use std::fs;
 use serde::{Serialize, Deserialize};
-use wg_2024::packet::{Fragment, Packet, PacketType};
+use wg_2024::packet::{Fragment, Packet, PacketType, FRAGMENT_DSIZE};
 use std::error::Error;
+use serde::de::DeserializeOwned;
 use wg_2024::network::SourceRoutingHeader;
+use wg_2024::packet::PacketType::MsgFragment;
+use crate::common_things::common::{ChatRequest, ChatResponse, MessageChat, ServerType};
 
-pub fn serialize_data<T: Serialize>(data: &T, routing_header:SourceRoutingHeader) -> Result<Vec<Packet>, Box<dyn Error>> {
-    // Serialize the data into bytes
-    let serialized_data = bincode::serialize(&data)?;
+pub trait Fragmentation{
+    fn serialize_data(&self, routing_header:SourceRoutingHeader, session_id : u64)->Result<Vec<Packet>, Box<dyn Error>> where Self:Serialize{
+        let serialized_data = serde_json::to_string(&self)?;
+        let tot_size = serialized_data.len();
+        let tot_fragment = ((tot_size + FRAGMENT_DSIZE - 1 ) / FRAGMENT_DSIZE )as u64;
+        let mut vec = Vec::new();
 
-    // Calculate the number of fragments needed
-    let fragment_size = 128; // Fixed fragment size
-    let total_n_fragments = (serialized_data.len() as f64 / fragment_size as f64).ceil() as u64;
-
-    let mut fragments = Vec::new();
-
-    // Create the fragments
-    for (i, chunk) in serialized_data.chunks(fragment_size).enumerate() {
-        let mut data = [0u8; 128];
-        let length = chunk.len() as u8;
-        data[..length as usize].copy_from_slice(chunk);
-
-        fragments.push(Packet{
-            routing_header: routing_header.clone(),
-            session_id: 0,
-            pack_type: PacketType::MsgFragment(Fragment{
-                fragment_index: i as u64,
-                total_n_fragments,
-                length,
-                data,
-            }),
-        });
+        for i in 0..tot_fragment{
+            let start = i as usize * FRAGMENT_DSIZE;
+            let end = usize::min(start+FRAGMENT_DSIZE,tot_size);
+            let fragment = &serialized_data[start..end];
+            let packet = Packet{
+                routing_header: routing_header.clone(),
+                session_id:session_id,
+                pack_type:MsgFragment(Fragment::from_string(i, tot_fragment, fragment.to_string()))
+            };
+        }
+        Ok(vec)
     }
 
-    Ok(fragments)
-}
-
-pub fn deserialize_data<T: for<'de> Deserialize<'de>>(fragments: &mut Vec<Fragment>) -> Result<T, Box<dyn Error>> {
-    // Ensure fragments are sorted by index
-    let mut fragments = fragments;
-    fragments.sort_by_key(|f| f.fragment_index);
-
-    // Combine the data from all fragments
-    let mut serialized_data = Vec::new();
-    for fragment in fragments {
-        serialized_data.extend_from_slice(&fragment.data[..fragment.length as usize]);
+    fn deserialize_data(fragments:&mut Vec<Fragment>) ->Result<Self,String> where Self:DeserializeOwned + Sized{
+        fragments.sort_by_key(|f| f.fragment_index);
+        let serialized_data = fragments.iter()
+            .flat_map(|fragment| &fragment.data[..fragment.length as usize])
+            .cloned()
+            .collect();
+        let convert_to_string = String::from_utf8(serialized_data).map_err(|e| e.to_string())?;
+        let message = serde_json::from_str(&convert_to_string).map_err(|e| e.to_string())?;
+        Ok(message)
     }
-
-    // Deserialize into the original type
-    let data: T = bincode::deserialize(&serialized_data)?;
-    Ok(data)
 }
+
+impl Fragmentation for ServerType{}
+impl Fragmentation for MessageChat{}
+impl Fragmentation for ChatRequest{}
+impl Fragmentation for ChatResponse{}
+
