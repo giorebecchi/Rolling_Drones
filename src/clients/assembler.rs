@@ -6,7 +6,7 @@ use serde::{Serialize, Deserialize};
 use serde::de::DeserializeOwned;
 use serde::de::Unexpected::Str;
 use wg_2024::network::NodeId;
-use wg_2024::packet::{Fragment, FRAGMENT_DSIZE};
+use wg_2024::packet::{Fragment, NodeType, Packet, FRAGMENT_DSIZE};
 
 
 #[derive(Clone, Serialize, Deserialize, Debug)]
@@ -59,6 +59,7 @@ pub trait Fragmentation: Serialization{
         let message = Serialization::from_string(&convert_to_string)?;
         Ok(message)
     }
+
 }
 
 impl MessageChat{
@@ -76,6 +77,14 @@ impl Serialization for MessageChat{}
 impl Serialization for MessageWeb{}
 impl Fragmentation for MessageChat{}
 impl Fragmentation for MessageWeb{}
+
+
+
+//crea il pacchetto da mandare di tipo MessageFragment con il frammento dentro
+// fn create_packet(fragments: HashMap<u64, Fragment>, route: Vec<NodeId, NodeType> )-> Vec<Packet>{
+//     let mut packets = Vec::new();
+//
+// }
 
 pub fn main(){
     let message_test = MessageChat{
