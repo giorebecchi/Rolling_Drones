@@ -59,6 +59,7 @@ impl Server{
             packet.routing_header.hop_index += 1;
             let next_hop = packet.routing_header.hops[packet.routing_header.hop_index];
             if let Some(sender) = self.packet_send.get(&next_hop) {
+
                 sender.send(packet.clone()).unwrap_or_default();
             }
         } else {
