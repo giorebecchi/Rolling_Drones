@@ -69,12 +69,12 @@ impl Server{
     }
 
     fn send_packet<T>(&self, p:T, header: SourceRoutingHeader)where T : Fragmentation{
-        if let Ok(vec) = p.serialize_data(header){
-            //aggiungere un field nella struct server per salvare tutti i vari pacchetti nel caso in cui fossero droppati ecc.
-            for i in vec.iter(){
-                self.forward_packet(i.clone());
-            }
-        }
+        // if let Ok(vec) = p.serialize_data(header){
+        //     //aggiungere un field nella struct server per salvare tutti i vari pacchetti nel caso in cui fossero droppati ecc.
+        //     for i in vec.iter(){
+        //         self.forward_packet(i.clone());
+        //     }
+        // }
     }
 
     fn handle_msg_fragment(&mut self, p:Packet){
@@ -89,7 +89,7 @@ impl Server{
                                 ChatRequest::ServerType => {self.clone().send_packet(self.clone().server_type, self.get_route(p.routing_header.hops[0], NodeType::Client));}
                                 ChatRequest::RegisterClient(_) => {}
                                 ChatRequest::GetListClients => {}
-                                ChatRequest::SendMessage(_) => {}
+                                ChatRequest::SendMessage(_, _) => {}
                                 ChatRequest::EndChat(_) => {}
                             }
                         }
