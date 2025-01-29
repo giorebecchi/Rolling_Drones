@@ -48,22 +48,40 @@ pub fn spawn_butterfly(mut commands: &mut Commands)->Vec<NodeConfig> {
     drones
 
 }
-pub fn set_up_bundle(x: f32, y:f32,commands: &mut Commands,id: NodeId){
+pub fn set_up_bundle(
+    x: f32,
+    y: f32,
+    commands: &mut Commands,
+    id: NodeId,
+) {
 
-    let sprite_position=Vec3::new(x,y,0.);
+    commands.spawn((
+        SpriteBundle {
+            transform: Transform::from_translation(Vec3::new(x, y, 0.0)),
+            sprite: Sprite {
+                color: Color::srgb(0., 0., 1.),
+                custom_size: Some(Vec2::splat(30.0)),
+                ..Default::default()
+            },
+            ..Default::default()
+        },
+        Name::new(format!("Point_{id}")),
+    ));
 
-    commands.spawn(SpriteBundle {
-        transform: Transform{
-            translation: sprite_position,
-            ..default()
+    commands.spawn((
+        Text2d::new(format!("{id}")),
+        TextFont {
+            font_size: 12.0,
+            ..Default::default()
         },
-        sprite: Sprite {
-            color: Color::srgb(0.,0.,1.),
-            custom_size: Some(Vec2::splat(15.0)),
-            ..default()
-        },
-        ..default()
-    });
+        TextColor(Color::srgb(1.,0.,0.)),
+        TextLayout::new_with_justify(JustifyText::Center),
+        TransformBundle::from_transform(
+            Transform::from_translation(Vec3::new(x+20., y+10., 0.0)),
+        ),
+        Name::new(format!("Text_{id}")),
+    ));
+
 
 
 }
