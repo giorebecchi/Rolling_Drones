@@ -24,7 +24,8 @@ use wg_2024::packet::PacketType::FloodRequest;
 use crate::GUI::login_window::UserConfig;
 use crate::network_initializer::network_initializer::parse_config;
 use crate::servers::ChatServer::Server;
-
+use crate::clients::chat_client::ChatClient;
+use crate::common_things::common::CommandChat;
 
 lazy_static! { static ref CONSOLE_MUTEX: Arc<Mutex<()>> = Arc::new(Mutex::new(())); }
 #[derive(Clone,Resource)]
@@ -427,7 +428,7 @@ pub fn test(mut simulation_controller: ResMut<SimulationController>, config: Res
             let mut client = client_clone.lock().unwrap();
             client.run();
         });
-        handles.push(handle);
+        // handles.push(handle);
     }
 
 
