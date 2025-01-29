@@ -72,6 +72,7 @@ impl Server{
         }
     }
 
+
     fn send_packet<T>(&mut self, p:T, header: SourceRoutingHeader)where T : Fragmentation+Serialize{
         if let Ok(vec) = p.serialize_data(header,self.session_id){
             let mut fragments_send = Vec::new();
@@ -101,7 +102,7 @@ impl Server{
                                 ChatRequest::ServerType => {let route = self.get_route(p.routing_header.hops[0], NodeType::Client);self.send_packet(self.clone().server_type, route);}
                                 ChatRequest::RegisterClient(_) => {}
                                 ChatRequest::GetListClients => {}
-                                ChatRequest::SendMessage(_) => {}
+                                ChatRequest::SendMessage(_, _) => {}
                                 ChatRequest::EndChat(_) => {}
                             }
                         }

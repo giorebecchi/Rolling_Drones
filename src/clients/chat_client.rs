@@ -1,4 +1,5 @@
 use std::collections::{HashMap, HashSet};
+use std::process::id;
 use crossbeam_channel::{select_biased, unbounded, Receiver, RecvError, Sender};
 use wg_2024::packet;
 use wg_2024::controller;
@@ -15,27 +16,29 @@ use crate::servers::ChatServer::Server;
 pub struct ChatClient {
     pub config: Client,
     pub receiver_msg: Receiver<Packet>,
-    pub receiver_commands: Receiver<CommandChat>,
-    pub send_req: HashMap<NodeId, Sender<ChatRequest>>,
+    pub receiver_commands: Receiver<CommandChat>, //comand received by the simulation control
     pub send_packets: HashMap<NodeId, Sender<Packet>>,
+    pub simulation_control: HashMap<NodeId, Sender<Packet>>,
     pub servers: Vec<NodeId>,//to store id server once the flood is done
     pub visited_nodes: HashSet<(u64, NodeId)>,
     pub flood: Vec<FloodResponse> ,//to store all the flood responses found
-    pub unique_flood_id: u64
-    // pub simulation_control: HashMap<NodeId, Sender<Packet>>
+    pub unique_flood_id: u64,
+    pub session_id_packet: u64
+
 }
 impl ChatClient {
-    pub fn new(id: NodeId, receiver_msg: Receiver<Packet>, send_packets: HashMap<NodeId, Sender<Packet>>, receiver_commands: Receiver<CommandChat>, send_req: HashMap<NodeId, Sender<ChatRequest>>) -> Self {
+    pub fn new(id: NodeId, receiver_msg: Receiver<Packet>, send_packets: HashMap<NodeId, Sender<Packet>>, receiver_commands: Receiver<CommandChat>, simulation_control: HashMap<NodeId, Sender<Packet>>) -> Self {
         Self {
             config: Client { id, connected_drone_ids: Vec::new() },
             receiver_msg,
             receiver_commands,
-            send_req,
+            simulation_control,
             send_packets,
             servers: Vec::new(),
             visited_nodes: HashSet::new(),
             flood: Vec::new(),
-            unique_flood_id: 0
+            unique_flood_id: 0,
+            session_id_packet: 0
         }
     }
     pub fn run(&mut self) {
@@ -66,9 +69,9 @@ impl ChatClient {
             CommandChat::GetListClients(id_server) => {
                 self.get_list_clients(id_server);
             }
-            CommandChat::SendMessage(destination_id, content) => {
+            CommandChat::SendMessage(destination_id, id_server,  content) => {
                 let message_to_send = MessageChat::new(content, self.config.id.clone(), destination_id);
-                self.send_message(message_to_send);
+                self.send_message(message_to_send, id_server);
             }
             CommandChat::EndChat(server_id) => {
                 self.end_chat(server_id);
@@ -89,16 +92,26 @@ impl ChatClient {
         //if the client has to send it to a specific server (?)
         if self.servers.is_empty(){
             self.initiate_flooding();
-            if !self.servers.contains(&id_server){
-                println!("server not found ");
-                return;
-            }//to start flooding if it wasn't done before
         }
+        if !self.servers.contains(&id_server){
+            println!("server not found ");
+            return;
+        }
+        let request_to_send = ChatRequest::ServerType;
+        let fragmented_request = ChatRequest::fragment_message(&request_to_send);
+
+
+
         match self.find_route(&id_server) {
             Ok(route) => {
-                if let Some(next_hop) = route.get(1){
-                    self.send_request(&next_hop, ChatRequest::ServerType)
+                let packets_to_send = ChatRequest::create_packet(&fragmented_request, route.clone(), &mut self.session_id_packet);
+                for packet in packets_to_send {
+                    if let Some(next_hop) = route.get(1){
+                        self.send_packet(next_hop, packet);
+                    }else { println!("No next hop found") }
                 }
+                println!("Sent request to get the server type to server: {}", id_server);
+
             }
             Err(_) => {println!("No route found for the destination server")}
         }
@@ -123,18 +136,24 @@ impl ChatClient {
         //to register client to the server specified in the command by simulation control.
         if self.flood.is_empty(){
             self.initiate_flooding();
-            if !self.servers.contains(&id_server){
-                println!("The server was not found during flooding");
-                return;
-            }
         }
+        if !self.servers.contains(&id_server){
+            println!("The server was not found during flooding");
+            return;
+        }
+        let request = ChatRequest::RegisterClient(self.config.id.clone());
+        let fragments = ChatRequest::fragment_message(&request);
 
         match self.find_route(&id_server) {
             Ok(route) => {
-                if let Some(next_hop) = route.get(1){
-                    println!("Sent request to register this client to the server {}", id_server);
-                    self.send_request(&next_hop, ChatRequest::RegisterClient(self.config.id.clone()))
+                let packets_to_send = ChatRequest::create_packet(&fragments, route.clone(),  & mut self.session_id_packet);
+                for packet in packets_to_send {
+                    if let Some(next_hop) = route.get(1){
+                        self.send_packet(next_hop, packet);
+                    }
                 }
+                println!("Sent request to register this client to the server {}", id_server);
+
             }
             Err(_) => {println!("No route found for the destination client")}
         }
@@ -143,52 +162,76 @@ impl ChatClient {
     pub fn get_list_clients(&mut self, id_server: NodeId) {
         if self.servers.is_empty(){
             self.initiate_flooding();
-            if !self.servers.contains(&id_server){
-                println!("server not found after the flooding");
-                return;
-            }
         }
+        if !self.servers.contains(&id_server){
+            println!("server not found after the flooding");
+            return;
+        }
+        let request = ChatRequest::GetListClients;
+        let fragments = ChatRequest::fragment_message(&request);
 
         match self.find_route(&id_server) {
             Ok(route) => {
-                if let Some(next_hop) = route.get(1){
-                    println!("sent request to get list clients of registered servers to server: {}", id_server);
-                    self.send_request(&next_hop, ChatRequest::GetListClients)
+                let packets_to_send = ChatRequest::create_packet(&fragments, route.clone(), & mut self.session_id_packet);
+                for packet in packets_to_send {
+                    if let Some(next_hop) = route.get(1){
+                        self.send_packet(next_hop, packet);
+                    }
                 }
+                println!("sent request to get list clients of registered servers to server: {}", id_server);
+
             }
             Err(_) => {println!("No route found for the destination client")}
         }
     }
-    pub fn send_message(&mut self, message: MessageChat) {
+    pub fn send_message(&mut self, message: MessageChat, id_server: NodeId) {
         if self.flood.is_empty(){
             self.initiate_flooding();
-            if !self.servers.is_empty(){
-                println!("servers not found after the flooding");
-                return;
-            }
         }
-        //i should check the length of each path to find the shortest one to a communication server of the ones saved
-        //if the server is not a communication server?
-        //how can i check the type of each server during flooding
+        if !self.servers.contains(&id_server){
+            println!("servers not found after the flooding");
+            return;
+        }
 
+        let request = ChatRequest::SendMessage(message, id_server);
+        let fragments = ChatRequest::fragment_message(&request);
 
-
+        match self.find_route(&id_server){
+            Ok(route) => {
+                let packets_to_send = ChatRequest::create_packet(&fragments, route.clone(), & mut self.session_id_packet);
+                for packet in packets_to_send {
+                    if let Some(next_hop) = route.get(1){
+                        self.send_packet(next_hop, packet);
+                    }
+                }
+                println!("Sent request to forward message to server: {}", id_server)
+            }
+            Err(_) => {println!("No route found for the destination client")}
+        }
 
     }
     pub fn end_chat(&mut self, id_server: NodeId) {
         if self.servers.is_empty(){
             self.initiate_flooding();
-            if !self.servers.contains(&id_server){
-                println!("The server was not found during flooding");
-                return;
-            }
         }
+
+        if !self.servers.contains(&id_server){
+            println!("The server specified was not found ");
+            return;
+        }
+
+        let request = ChatRequest::EndChat(self.config.id.clone());
+        let fragments = ChatRequest::fragment_message(&request);
 
         match self.find_route(&id_server) {
             Ok(route) => {
-                if let Some(next_hop) = route.get(1){
-                    self.send_request(&next_hop, ChatRequest::EndChat(self.config.id.clone()))
+                let packets_to_send = ChatRequest::create_packet(&fragments, route.clone(),  & mut self.session_id_packet);
+                for packet in packets_to_send {
+                    if let Some(next_hop) = route.get(1){
+                        self.send_packet(next_hop, packet);
+                    }
                 }
+                println!("Sent request to end chat to server: {}", id_server);
             }
             Err(_) => {println!("No route found for the destination client")}
         }
@@ -224,7 +267,7 @@ impl ChatClient {
                 if let Some(first_hop) = Some(packet.routing_header.hops[0] ) {
                     if let Some(sender) = self.send_packets.get(&first_hop) {
                        if let Err(e) = sender.send(flood_request.generate_response(packet.session_id)){
-                           println!("Error sending the flood request: {}", e)
+                           println!("Error sending the flood response: {}", e)
                        }
                     }else { println!("No sender found") }
                 }else { println!("No next hop found") }
@@ -234,9 +277,20 @@ impl ChatClient {
             self.visited_nodes.insert((flood_request.flood_id, flood_request.initiator_id)); //mark as visited
             flood_request.path_trace.push((self.config.id, NodeType::Client));
 
-            if let Some(sender) = packet.routing_header.hops.get(0){
+            if self.send_packets.len() == 1{ //check if the client has only one node connected to it
+                if let Some(first_hop) = Some(packet.routing_header.hops[0] ) {
+                    if let Some(sender) = self.send_packets.get(&first_hop){
+                        if let Err(e) = sender.send(flood_request.generate_response(packet.session_id)){
+                            println!("Error sending the flood response: {}", e)
+                        }
+                    }else { println!("No sender found in the case of the client having only 1 connection") }
+                }else { println!("No next hop found") }
+                return;
+            }
+
+            if let Some(_) = packet.routing_header.hops.get(0){ //normal case when the client forwards it to the every neighbor
                 for (neighbor, sender) in &self.send_packets{
-                    if *neighbor != packet.routing_header.hops[0]{ //forward to everyone that's not the one sending the
+                    if *neighbor != packet.routing_header.hops[0]{ //forward to everyone that's not the one sending the request
                         let mut forward_packet = packet.clone();
                         forward_packet.pack_type = PacketType::FloodRequest(flood_request.clone());
                         if let Err(e) = sender.send(forward_packet){
@@ -279,13 +333,6 @@ impl ChatClient {
         }else { Err(String::from("route not found")) }
     }
 
-    pub fn send_request(& mut self, destination_id: &NodeId, request: ChatRequest){ //THE DESTINATION ID NEEDS TO BE THE ONE OF FIRST  DRONE IN THE FASTEST PATH TO REACH DESTINATION
-        if let Some(sender) = self.send_req.get(&destination_id){
-            if let Err(err) = sender.send(request){
-                println!("Error sending command: {}", err); //have to send back nack
-            }
-        }else { println!("no sender") } //have to send back nack
-    }
     pub fn send_packet(& mut self, destination_id: &NodeId, packet: Packet){
         if let Some(sender) = self.send_packets.get(&destination_id){
             if let Err(err) = sender.send(packet){
@@ -296,18 +343,5 @@ impl ChatClient {
 }
 
 pub fn main(){
-    let (packet_tx, packet_rx) = unbounded();
-    let (command_tx, command_rx) = unbounded();
 
-    let mut send_packets = HashMap::new();
-    send_packets.insert(1, packet_tx);
-
-    let send_req = HashMap::new();
-
-    let mut chat_client = ChatClient::new(0, packet_rx, send_packets, command_rx, send_req);
-
-    // Mock server discovery and request
-    command_tx.send(CommandChat::ServerType(1)).unwrap();
-
-    chat_client.run(); // This will process commands and send requests
 }

@@ -227,11 +227,14 @@ pub fn test(mut simulation_controller: ResMut<SimulationController>, config: Res
 
 
     let mut packet_channels = HashMap::new();
+    let mut command_chat_channel = HashMap::new();
+
     for drone in config.drone.iter() {
         packet_channels.insert(drone.id, unbounded());
     }
     for client in config.client.iter() {
         packet_channels.insert(client.id, unbounded());
+        command_chat_channel.insert(client.id, unbounded());
     }
     for server in config.server.iter() {
         packet_channels.insert(server.id, unbounded());
@@ -399,6 +402,32 @@ pub fn test(mut simulation_controller: ResMut<SimulationController>, config: Res
             let mut server = server_clone.lock().unwrap();
             server.run();
         });
+    }
+
+    for cfg_client in config.client.into_iter() {
+        let rcv_packet = packet_channels[&cfg_client.id].1.clone();
+        let rcv_command: Receiver<CommandChat> = command_chat_channel[&cfg_client.id].1.clone();
+        let packet_send =
+            cfg_client
+            .connected_drone_ids
+            .clone()
+            .into_iter()
+            .map(|nid| (nid, packet_channels[&nid].0.clone()))
+            .collect::<HashMap<_, _>>();
+        let control_send = cfg_client
+            .connected_drone_ids
+            .clone()
+            .into_iter()
+            .map(|node_id| (node_id, packet_channels[&node_id].0.clone()))
+            .collect::<HashMap<_, _>>();
+
+        let mut client = Arc::new(Mutex::new(ChatClient::new(cfg_client.id, rcv_packet, packet_send, rcv_command, control_send )));
+        let mut client_clone = Arc::clone(&client);
+        let handle = thread::spawn(move || {
+            let mut client = client_clone.lock().unwrap();
+            client.run();
+        });
+        handles.push(handle);
     }
 
 
