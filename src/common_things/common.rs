@@ -3,12 +3,14 @@ use wg_2024::network::NodeId;
 use wg_2024::packet::Packet;
 
 //comandi sim_control
+#[derive(Clone)]
 pub enum CommandChat {
     ServerType(NodeId),//node id server
     RegisterClient(NodeId),//node id server
     GetListClients(NodeId),//node id server
     SendMessage(NodeId, NodeId, String),//node id del client a cui mandare la string, node id server da cui passare
     EndChat(NodeId),//node id del server
+    Crash
 }
 
 //comandi da client a server
