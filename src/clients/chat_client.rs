@@ -282,9 +282,7 @@ impl ChatClient {
     pub fn handle_flood_req(& mut self, packet: Packet){
         if let PacketType::FloodRequest(mut flood_request) = packet.clone().pack_type {
             if self.visited_nodes.contains(&(flood_request.flood_id, flood_request.initiator_id)) { //case if client has already received the request
-                flood_request.path_trace.push((self.config.id, NodeType::Client));
-
-                if let Some(first_hop) = Some(packet.routing_header.hops[0] ) {
+                if let Some(first_hop) = Some(flood_request.path_trace[1].0) {
                     if let Some(sender) = self.send_packets.get(&first_hop) {
                        if let Err(e) = sender.send(flood_request.generate_response(packet.session_id)){
                            println!("Error sending the flood response: {}", e)
@@ -295,10 +293,10 @@ impl ChatClient {
             }
 
             self.visited_nodes.insert((flood_request.flood_id, flood_request.initiator_id)); //mark as visited
-            flood_request.path_trace.push((self.config.id, NodeType::Client));
+
 
             if self.send_packets.len() == 1{ //check if the client has only one node connected to it
-                if let Some(first_hop) = Some(packet.routing_header.hops[0] ) {
+                if let Some(first_hop) = Some(flood_request.path_trace[1].0 ) {
                     if let Some(sender) = self.send_packets.get(&first_hop){
                         if let Err(e) = sender.send(flood_request.generate_response(packet.session_id)){
                             println!("Error sending the flood response: {}", e)
@@ -308,9 +306,9 @@ impl ChatClient {
                 return;
             }
 
-            if let Some(_) = packet.routing_header.hops.get(0){ //normal case when the client forwards it to the every neighbor
+            if let Some(_) = flood_request.path_trace.get(1){ //normal case when the client forwards it to the every neighbor
                 for (neighbor, sender) in &self.send_packets{
-                    if *neighbor != packet.routing_header.hops[0]{ //forward to everyone that's not the one sending the request
+                    if *neighbor != flood_request.path_trace[1].0 { //forward to everyone that's not the one sending the request
                         let mut forward_packet = packet.clone();
                         forward_packet.pack_type = PacketType::FloodRequest(flood_request.clone());
                         if let Err(e) = sender.send(forward_packet){
