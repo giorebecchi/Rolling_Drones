@@ -1,9 +1,8 @@
 use bevy::prelude::*;
-use crate::GUI::butterfly::set_up_bundle;
 use crate::GUI::login_window::{NodeConfig, NodeType};
 use crate::network_initializer::network_initializer::parse_config;
 
-pub fn spawn_tree(mut commands: &mut Commands) -> Vec<NodeConfig> {
+pub fn spawn_tree() -> Vec<NodeConfig> {
     let config = parse_config("assets/configurations/tree.toml");
     let base_horizontal_spacing = 100.0;
     let vertical_offset = 50.0;
@@ -22,7 +21,6 @@ pub fn spawn_tree(mut commands: &mut Commands) -> Vec<NodeConfig> {
             // Root node
             let x = 0.0;
             let y = vertical_offset;
-            set_up_bundle(x, y, &mut commands,drone.id);
 
             let node = NodeConfig::new(NodeType::Drone, drone.id, Vec2::new(x, y), drone.connected_node_ids);
             drones.push(node);
@@ -33,7 +31,6 @@ pub fn spawn_tree(mut commands: &mut Commands) -> Vec<NodeConfig> {
             let x = (i as f32 - 1.5) * horizontal_spacing; // Centered
             let y = -vertical_offset;
 
-            set_up_bundle(x, y, &mut commands,drone.id);
 
             let node = NodeConfig::new(NodeType::Drone, drone.id, Vec2::new(x, y), drone.connected_node_ids);
             drones.push(node);
@@ -44,7 +41,7 @@ pub fn spawn_tree(mut commands: &mut Commands) -> Vec<NodeConfig> {
             let x = (i as f32 - 4.0) * horizontal_spacing; // Centered
             let y = -vertical_offset * 3.0;
 
-            set_up_bundle(x, y, &mut commands,drone.id);
+
 
             let node = NodeConfig::new(NodeType::Drone, drone.id, Vec2::new(x, y), drone.connected_node_ids);
             drones.push(node);
@@ -61,7 +58,6 @@ pub fn spawn_tree(mut commands: &mut Commands) -> Vec<NodeConfig> {
             };
             let y = -vertical_offset * 5.0;
 
-            set_up_bundle(x, y, &mut commands,drone.id);
 
             let node = NodeConfig::new(NodeType::Drone, drone.id, Vec2::new(x, y), drone.connected_node_ids);
             drones.push(node);

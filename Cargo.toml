@@ -14,7 +14,7 @@ bagel_bomber = { git = "https://github.com/daw-dev/bagel-bomber.git", default-fe
 skylink = { git = "https://github.com/Suge42/Skylink_drone.git" }
 fungi_drone = { git = "https://github.com/Fungi-B-D/Fungi-Drone.git" }
 Krusty_Club = { git = "https://github.com/Ossyk/Krusty_Club.git" }
-LeDron_James = { git = "https://github.com/anass03/LeDron_James.git" }
+LeDron_James = { git = "https://github.com/anass03/LeDron_James.git",default-features = false}
 lockheedrustin-drone = { git = "https://github.com/Lockheed-Rustin/drone.git" }
 wg_2024-rust = { git = "https://github.com/LuigiMiazzo17/unitn-advancedProgramming-WGL_2024-drone.git" }
 rustbusters-drone = { git = "https://github.com/Rustbusters/drone.git", features= [] }
@@ -25,4 +25,8 @@ bevy_egui="0.32"
 serde = { version = "1.0.217", features = ["derive"] }
 serde_json = "1.0.137"
 bincode = "1.3.3"
+rolling_drone = { git = "https://github.com/giorebecchi/RollingDrone.git"}
+[dev-dependencies]
+rusty_tester = { git = "https://github.com/rusty-drone-2024/rusty-tester" }
+
 
