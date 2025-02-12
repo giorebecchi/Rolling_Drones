@@ -31,7 +31,7 @@ pub enum ChatResponse{
 
 }
 
-#[derive(Serialize,Deserialize)]
+#[derive(Serialize,Deserialize,Debug)]
 pub struct MessageChat{ //which needs to be fragmented
     //pub general: Packet,
     pub content: String,

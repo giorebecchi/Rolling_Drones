@@ -1,15 +1,20 @@
 use bevy::input::keyboard::{Key, KeyboardInput};
 use bevy::prelude::*;
+use bevy::sprite::Anchor;
+use bevy::text::TextBounds;
 use bevy::winit::WinitSettings;
 use bevy_dev_tools::states::*;
 use bevy_egui::{egui, EguiContexts, EguiPlugin};
-use wg_2024::network::NodeId;
+use wg_2024::network::{NodeId, SourceRoutingHeader};
 use crate::GUI::star_decagram::spawn_star_decagram;
 use crate::GUI::double_chain::spawn_double_chain;
 use crate::GUI::butterfly::spawn_butterfly;
 use crate::GUI::tree::spawn_tree;
 use crate::simulation_control::simulation_control::*;
 use egui::widgets::TextEdit;
+use wg_2024::packet::Packet;
+use wg_2024::packet::PacketType::FloodRequest;
+
 #[derive(Component)]
 struct InputText;
 
@@ -61,9 +66,8 @@ pub fn main() {
         .add_systems(OnEnter(AppState::Menu), setup_menu)
         .add_systems(Update, (menu, listen_keyboard_input_events).run_if(in_state(AppState::Menu)))
         .add_systems(OnExit(AppState::Menu), cleanup_menu)
-        .add_systems(OnEnter(AppState::InGame), setup_network)
-        .add_systems(Update, test.run_if(in_state(AppState::InGame)))
-        .add_systems(Update , (ui_settings,draw_connections).run_if(in_state(AppState::InGame)))
+        .add_systems(OnEnter(AppState::InGame), (setup_network,test))
+        .add_systems(Update , (ui_settings,draw_connections,set_up_bundle).run_if(in_state(AppState::InGame)))
 
 
         .add_systems(Update, log_transitions::<AppState>)
@@ -276,29 +280,79 @@ fn setup_network(
 
     match (*user_config).0.as_str(){
         "star"=>{
-            let nodes= spawn_star_decagram(&mut commands);
+            let nodes= spawn_star_decagram();
             (*nodes_config).0=nodes;
         },
         "double_chain"=>{
-            let nodes=spawn_double_chain(&mut commands);
+            let nodes=spawn_double_chain();
             (*nodes_config).0=nodes;
         },
         "butterfly"=>{
-            let nodes= spawn_butterfly(&mut commands);
+            let nodes= spawn_butterfly();
             (*nodes_config).0=nodes;
         },
         "tree"=>{
-            let nodes= spawn_tree(&mut commands);
+            let nodes= spawn_tree();
             (*nodes_config).0=nodes;
         },
         _=> {
-            let nodes = spawn_star_decagram(&mut commands);
+            let nodes = spawn_star_decagram();
             (*nodes_config).0=nodes;
 
         },
     }
 
     commands.spawn(Camera2d::default());
+}
+pub fn set_up_bundle(
+    node_data: Res<NodesConfig>,
+    mut commands: Commands,
+    asset_server: Res<AssetServer>
+) {
+    for node_data in node_data.0.iter() {
+
+
+
+        commands.spawn((
+            Sprite {
+                image: asset_server.load("images/Rolling_Drone.png"),
+                custom_size: Some(Vec2::new(45.,45.)),
+                ..default()
+            },
+            Transform::from_xyz(node_data.position[0],node_data.position[1],0.)
+        )).with_children(|parent|{
+            parent.spawn((
+                Text2d::new(format!("{}",node_data.id)),
+                TextFont{
+                    font: asset_server.load("fonts/FiraSans-Bold.ttf"),
+                    font_size: 12.,
+                    ..default()
+                },
+                TextColor(Color::srgb(1.,0.,0.)),
+                Transform::from_translation(Vec3::new(node_data.position[0],node_data.position[1],0.))
+
+            ));
+        });
+        //let shifted_x = node_data.position[0] + 20.;
+        //let shifted_y = node_data.position[1] + 10.;
+//
+        //commands.spawn((
+        //    Text2d::new(format!("{}",node_data.id)),
+        //    TextFont {
+        //        font_size: 12.0,
+        //        ..Default::default()
+        //    },
+        //    TextColor(Color::srgb(1., 0., 0.)),
+        //    TextLayout::new_with_justify(JustifyText::Center),
+        //    TransformBundle::from_transform(
+        //        Transform::from_translation(Vec3::new(shifted_x, shifted_y, 0.0)),
+        //    ),
+        //    Name::new(format!("Text_{}",node_data.id)),
+        //));
+    }
+
+
+
 }
 pub fn draw_connections(
     mut gizmos : Gizmos,
@@ -317,10 +371,10 @@ pub fn draw_connections(
     }
 }
 fn ui_settings(
-    mut is_last_selected: Local<bool>,
     mut contexts: EguiContexts,
     mut occupied_screen_space: ResMut<OccupiedScreenSpace>,
     mut nodes : ResMut<NodesConfig>,
+    mut sim : ResMut<SimulationController>,
     mut drone_crash: ResMut<DroneCrash>
 ) {
 
@@ -333,14 +387,15 @@ fn ui_settings(
             .show(ctx, |ui| {
                 ui.label("Simulation Commands");
                 if ui
-                    .add(egui::widgets::Button::new("Crash drone").selected(!*is_last_selected))
+                    .add(egui::widgets::Button::new("Crash drone"))
                     .clicked()
                 {
-                    *is_last_selected = false;
                     let id=match drone_crash.content.clone().parse::<u8>(){
                         Ok(x)=>x,
                         Err(_)=>panic!("Unexpected input in the Crash field"),
                     };
+                    sim.crash(id);
+
 
                     let mut crashed=nodes.0.iter_mut().position(|node| node.id==id).map(|index| nodes.0.remove(index));
                     if let Some(mut crash)=crashed{
@@ -348,13 +403,27 @@ fn ui_settings(
                     }
 
                 }
+
                 ui.add(TextEdit::singleline(&mut (*drone_crash).content));
                 if ui
-                    .add(egui::widgets::Button::new("Another button").selected(*is_last_selected))
+                    .add(egui::widgets::Button::new("Flood"))
                     .clicked()
                 {
-                    *is_last_selected = true;
+                    sim.initiate_flood(Packet{
+                        routing_header: SourceRoutingHeader{
+                            hop_index:0,
+                            hops: vec![1],
+                        },
+                        pack_type: FloodRequest(wg_2024::packet::FloodRequest{
+                            flood_id: 10,
+                            initiator_id: 0,
+                            path_trace: vec![(0, wg_2024::packet::NodeType::Client)],
+                        }),
+                        session_id: 20,
+                    });
+
                 }
+
                 ui.allocate_rect(ui.available_rect_before_wrap(), egui::Sense::hover());
             })
             .response
@@ -363,7 +432,9 @@ fn ui_settings(
         occupied_screen_space.right = egui::SidePanel::right("right_panel")
             .resizable(true)
             .show(ctx, |ui| {
-                ui.label("Simulation events");
+                if sim.access {
+                    ui.label(format!("{}", sim.log));
+                }
                 ui.allocate_rect(ui.available_rect_before_wrap(), egui::Sense::hover());
             })
             .response
