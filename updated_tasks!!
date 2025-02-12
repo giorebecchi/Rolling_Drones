@@ -13,12 +13,12 @@ Clients - Chiara Strozzi
 2. Chat client: client register itself to the Communication server, it can retrieve the list of registered clients and initiate a chat with them.
    to initiate the chat it needs to send the message to the communication server specifying the destination client
    the server has to forward the message
-   - register to server (send request message to server to register itself)
+   - register to server (send request message to server to register itself) ✅
    - retrieve the list of registered clients and display
-   - send message to communication server specifying the destination client (message has to be fragmented first)
-   - end chat function? to end communication between 2 clients
+   - send message to communication server specifying the destination client (message has to be fragmented first) ✅
+   - end chat function? to end communication between 2 clients ✅
 
-3. serialization, fragmentation and reassembling of the messages
+3. serialization, fragmentation and reassembling of the messages ✅
     - can introduce an Assembler as a sub-component ✅
     - when sending a message it needs to be serialized AND then fragmented if it exceeds a certain size ✅
     - when receiving a message the client needs to re-order the fragment and to re-assemble the message ✅

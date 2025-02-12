@@ -1,5 +1,6 @@
 use std::collections::{HashMap, HashSet};
 use std::process::id;
+use bevy::pbr::add_clusters;
 use crossbeam_channel::{select_biased, unbounded, Receiver, RecvError, Sender};
 use wg_2024::packet;
 use wg_2024::controller;
@@ -42,10 +43,17 @@ impl ChatClient {
         }
     }
     pub fn run(&mut self) {
-        loop {
-            select_biased! {
+        let mut crash = false;
+        while !crash{
+                select_biased! {
                 recv(self.receiver_commands) -> command =>{
                     if let Ok(command) = command {
+                            match command.clone(){
+                                CommandChat::Crash => {
+                                    crash = true;
+                                },
+                                _ => {}
+                            }
                         self.handle_sim_command(command);
                     }
                 }
@@ -55,7 +63,9 @@ impl ChatClient {
                     }
                 }
             }
+
         }
+
     }
 
     pub fn handle_sim_command(&mut self, command: CommandChat) {
@@ -76,11 +86,14 @@ impl ChatClient {
             CommandChat::EndChat(server_id) => {
                 self.end_chat(server_id);
             }
+            _ => {}
         }
     }
     pub fn handle_incoming(&mut self, message: Packet) {
         match message.pack_type {
-            PacketType::MsgFragment(fragment) => {},
+            PacketType::MsgFragment(_) => {
+                self.handle_fragments(message);
+            },
             PacketType::Ack(ack) => {},
             PacketType::Nack(nack) => {},
             PacketType::FloodRequest(_) => { self.handle_flood_req(message); },
@@ -237,6 +250,13 @@ impl ChatClient {
         }
     }
 
+    //incoming messagges
+    pub fn handle_fragments(& mut self, packet: Packet){
+        if let PacketType::MsgFragment(fragment) = packet.pack_type{
+
+        }
+    }
+
     pub fn initiate_flooding(&mut self) { //this sends a flood request to its immediate neighbours
         let mut flood_id = self.unique_flood_id;
         self.unique_flood_id += 1;
@@ -339,6 +359,21 @@ impl ChatClient {
                 println!("Error sending command: {}", err); //have to send back nack
             }
         }else { println!("no sender") } //have to send back nack
+    }
+
+    pub fn ack(& mut self, packet: &Packet)-> Packet{
+        let mut fragment_index = 0;
+        if let PacketType::MsgFragment(fragment) = packet.clone().pack_type {
+            fragment_index = fragment.fragment_index;
+        }
+        let mut hops = Vec::new();
+        for h in packet.routing_header.hops.iter().rev(){
+            hops.push(*h);
+        }
+        let source_routing_header = SourceRoutingHeader::new(hops, 0);
+
+        let ack_packet = Packet::new_ack(source_routing_header, packet.session_id, fragment_index );
+        ack_packet
     }
 }
 
