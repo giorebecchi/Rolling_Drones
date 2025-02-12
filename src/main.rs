@@ -10,8 +10,7 @@ pub fn main(){
 
     //GUI::test_try::main();
     GUI::login_window::main();
-
     //simulation_control::simulation_control::test();
-
     //clients::assembler::main();
+
 }

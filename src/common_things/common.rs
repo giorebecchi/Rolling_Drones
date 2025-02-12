@@ -7,7 +7,7 @@ pub enum CommandChat {
     ServerType(NodeId),//node id server
     RegisterClient(NodeId),//node id server
     GetListClients(NodeId),//node id server
-    SendMessage(NodeId, String),//node id del client a cui mandare la string
+    SendMessage(NodeId, NodeId, String),//node id del client a cui mandare la string, node id server da cui passare
     EndChat(NodeId),//node id del server
 }
 
@@ -17,7 +17,7 @@ pub enum ChatRequest{
     ServerType,
     RegisterClient(NodeId),//node id del client stesso
     GetListClients,
-    SendMessage(MessageChat),
+    SendMessage(MessageChat, NodeId), //message and server id communcation server (per ora poi se riesco a trovare modo cambio)
     EndChat(NodeId),//node id del client stesso
 }
 
@@ -30,6 +30,7 @@ pub enum ChatResponse{
     EndChat(bool),
 
 }
+
 
 #[derive(Serialize,Deserialize,Debug)]
 pub struct MessageChat{ //which needs to be fragmented
