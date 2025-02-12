@@ -267,7 +267,7 @@ impl ChatClient {
             FloodRequest {
                 flood_id,
                 initiator_id: self.config.id.clone(),
-                path_trace: Vec::new(),
+                path_trace: vec![(self.config.id, NodeType::Client)],
             }
         );
 
