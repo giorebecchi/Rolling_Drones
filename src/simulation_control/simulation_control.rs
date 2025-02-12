@@ -34,6 +34,7 @@ pub struct SimulationController {
     pub node_event_send: Sender<DroneEvent>,
     pub node_event_recv: Receiver<DroneEvent>,
     pub neighbours: HashMap<NodeId, Vec<NodeId>>,
+    pub client : HashMap<NodeId, Sender<CommandChat>>,
     pub log: String,
     pub access: bool,
     pub seen_floods: HashSet<(NodeId,u64,NodeId)>
@@ -48,6 +49,7 @@ impl Default for SimulationController{
             drones: HashMap::new(),
             packet_channel: HashMap::new(),
             neighbours: HashMap::new(),
+            client:  HashMap::new(),
             log : String::new(),
             access: false,
             seen_floods: HashSet::new()
@@ -66,21 +68,23 @@ impl SimulationController {
                     let _lock = CONSOLE_MUTEX.lock().unwrap();
                      match drone_event{
                         DroneEvent::PacketSent(ref packet) => {
-                            if let FloodRequest(flood)=packet.pack_type.clone(){
+                            // if let FloodRequest(flood)=packet.pack_type.clone(){
+                            //
+                            //         let (current_node,node_type)=flood.path_trace[flood.path_trace.len()-1];
+                            //         if self.seen_floods.insert((flood.initiator_id,flood.flood_id,current_node)){
+                            //             self.log=format!("{}\nNode of type: {:?} with id : {} sent floodRequest with id : {} started from : {}",self.log,node_type,current_node ,flood.flood_id,flood.initiator_id);
+                            //
+                            //         }
+                            //         let nodes=self.neighbours.keys().into_iter().map(|x| x).collect::<Vec<&NodeId>>();
+                            //         let should_be_nodes=self.seen_floods.iter().map(|(_,_,x)| x).collect::<Vec<&NodeId>>();
+                            //         if nodes.len()==should_be_nodes.len(){
+                            //             self.access=true;
+                            //             println!("{}",self.log);
+                            //         }
+                            //
 
-                                    let (current_node,node_type)=flood.path_trace[flood.path_trace.len()-1];
-                                    if self.seen_floods.insert((flood.initiator_id,flood.flood_id,current_node)){
-                                        self.log=format!("{}\nNode of type: {:?} with id : {} sent floodRequest with id : {} started from : {}",self.log,node_type,current_node ,flood.flood_id,flood.initiator_id);
-
-                                    }
-                                    let nodes=self.neighbours.keys().into_iter().map(|x| x).collect::<Vec<&NodeId>>();
-                                    let should_be_nodes=self.seen_floods.iter().map(|(_,_,x)| x).collect::<Vec<&NodeId>>();
-                                    if nodes.len()==should_be_nodes.len(){
-                                        self.access=true;
-                                        println!("{}",self.log);
-                                    }
-
-                                }
+                                //}
+                                println!("SC: {:?}",packet.pack_type);
                         }
                         DroneEvent::PacketDropped(ref packet) => {
                             println!("Simulation control: drone dropped packet");
@@ -251,6 +255,8 @@ pub fn test(mut simulation_controller: ResMut<SimulationController>, config: Res
 
     let mut packet_channels = HashMap::new();
     let mut command_chat_channel = HashMap::new();
+    let mut client= simulation_controller.client.clone();
+
 
     for drone in config.drone.iter() {
         packet_channels.insert(drone.id, unbounded());
@@ -428,6 +434,7 @@ pub fn test(mut simulation_controller: ResMut<SimulationController>, config: Res
     for cfg_client in config.client.into_iter() {
         let rcv_packet = packet_channels[&cfg_client.id].1.clone();
         let rcv_command: Receiver<CommandChat> = command_chat_channel[&cfg_client.id].1.clone();
+        client.insert(cfg_client.id,command_chat_channel[&cfg_client.id].0.clone());
         let packet_send =
             cfg_client
             .connected_drone_ids
@@ -448,6 +455,10 @@ pub fn test(mut simulation_controller: ResMut<SimulationController>, config: Res
             let mut client = client_clone.lock().unwrap();
             client.run();
         });
+        {
+            let mut client_try=client.lock().unwrap();
+            // client_try.initiate_flooding();
+        }
         // handles.push(handle);
     }
 
@@ -458,6 +469,7 @@ pub fn test(mut simulation_controller: ResMut<SimulationController>, config: Res
         node_event_recv: node_event_recv.clone(),
         neighbours: neighbours.clone(),
         packet_channel: packet_drones.clone(),
+        client,
         log: String::new(),
         access: false,
         seen_floods: HashSet::new()
@@ -477,7 +489,9 @@ pub fn test(mut simulation_controller: ResMut<SimulationController>, config: Res
 
     //let fragment_double_chain = create_fragments(vec![0,1,2,3,4,5,10,11]);
     {
-        //let mut controller = controller.lock().unwrap();
+
+        let mut controller = controller.lock().unwrap();
+        controller.client.get(&0).unwrap().send(CommandChat::SendMessage(0,12,"ciao".to_string())).unwrap();
         //controller.initiate_flood(Packet{
         //    routing_header: SourceRoutingHeader{
         //        hop_index:0,
