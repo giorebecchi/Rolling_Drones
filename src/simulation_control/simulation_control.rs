@@ -7,7 +7,7 @@ use lazy_static::lazy_static;
 use wg_2024::controller::{DroneCommand,DroneEvent};
 use wg_2024::drone::{Drone};
 use wg_2024::network::{NodeId, SourceRoutingHeader};
-use wg_2024::packet::{Fragment, Packet, PacketType};
+use wg_2024::packet::{Fragment, NodeType, Packet, PacketType};
 use bevy::prelude::{Res, ResMut, Resource};
 use bagel_bomber::BagelBomber;
 use fungi_drone::FungiDrone;
@@ -84,7 +84,7 @@ impl SimulationController {
                             //
 
                                 //}
-                                println!("SC: {:?}",packet.pack_type);
+                                //println!("SC: {:?}",packet.pack_type);
                         }
                         DroneEvent::PacketDropped(ref packet) => {
                             println!("Simulation control: drone dropped packet");
@@ -491,8 +491,9 @@ pub fn test(mut simulation_controller: ResMut<SimulationController>, config: Res
     {
 
         let mut controller = controller.lock().unwrap();
-        //controller.client.get(&0).unwrap().send(CommandChat::SendMessage(11,12,"ciao".to_string())).unwrap();
-        //controller.initiate_flood(Packet{
+        controller.client.get(&0).unwrap().send(CommandChat::SendMessage(11,12,"ciao".to_string())).unwrap();
+        // controller.initiate_flood(Packet{
+
         //    routing_header: SourceRoutingHeader{
         //        hop_index:0,
         //        hops: vec![1],
@@ -503,8 +504,8 @@ pub fn test(mut simulation_controller: ResMut<SimulationController>, config: Res
         //        path_trace: vec![(0,NodeType::Client)],
         //    }),
         //    session_id: 20,
-        //});
-       // controller.msg_fragment(fragment_double_chain);
+        // });
+        //controller.msg_fragment(fragment_double_chain);
 
     }
 
