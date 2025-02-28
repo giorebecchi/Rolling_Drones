@@ -456,8 +456,8 @@ pub fn test(mut simulation_controller: ResMut<SimulationController>, config: Res
             client.run();
         });
         {
-            let mut client_try=client.lock().unwrap();
-            //client_try.initiate_flooding();
+            //let mut client_try=client.lock().unwrap();
+            // client_try.initiate_flooding();
         }
         // handles.push(handle);
     }
@@ -493,6 +493,7 @@ pub fn test(mut simulation_controller: ResMut<SimulationController>, config: Res
         let mut controller = controller.lock().unwrap();
         controller.client.get(&0).unwrap().send(CommandChat::SendMessage(11,12,"ciao".to_string())).unwrap();
         // controller.initiate_flood(Packet{
+
         //    routing_header: SourceRoutingHeader{
         //        hop_index:0,
         //        hops: vec![1],
