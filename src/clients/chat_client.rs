@@ -1,5 +1,8 @@
 use std::collections::{HashMap, HashSet};
 use std::process::id;
+use std::sync::{Arc, Mutex};
+use std::thread;
+use std::time::{Duration, Instant};
 use bevy::pbr::add_clusters;
 use crossbeam_channel::{select_biased, unbounded, Receiver, RecvError, Sender};
 use wg_2024::packet;
@@ -17,14 +20,15 @@ use crate::servers::ChatServer::Server;
 pub struct ChatClient {
     pub config: Client,
     pub receiver_msg: Receiver<Packet>,
-    pub receiver_commands: Receiver<CommandChat>, //comand received by the simulation control
+    pub receiver_commands: Receiver<CommandChat>, //command received by the simulation control
     pub send_packets: HashMap<NodeId, Sender<Packet>>,
     pub simulation_control: HashMap<NodeId, Sender<Packet>>,
     pub servers: Vec<NodeId>,//to store id server once the flood is done
     pub visited_nodes: HashSet<(u64, NodeId)>,
     pub flood: Vec<FloodResponse> ,//to store all the flood responses found
     pub unique_flood_id: u64,
-    pub session_id_packet: u64
+    pub session_id_packet: u64,
+    pub flooding_completed: Arc<Mutex<bool>>
 
 }
 impl ChatClient {
@@ -39,7 +43,8 @@ impl ChatClient {
             visited_nodes: HashSet::new(),
             flood: Vec::new(),
             unique_flood_id: 0,
-            session_id_packet: 0
+            session_id_packet: 0,
+            flooding_completed: Arc::new(Mutex::new(false)),
         }
     }
     pub fn run(&mut self) {
@@ -198,13 +203,12 @@ impl ChatClient {
         }
     }
     pub fn send_message(&mut self, message: MessageChat, id_server: NodeId) {
-        if self.flood.is_empty(){
+        if self.flood.is_empty() {
             self.initiate_flooding();
         }
-        if !self.servers.contains(&id_server){
-            println!("servers not found after the flooding");
-            return;
-        }
+        println!("servers: {:?}", self.servers);
+        println!("I've done the flooding");
+
 
         let request = ChatRequest::SendMessage(message, id_server);
         let fragments = ChatRequest::fragment_message(&request);
@@ -223,13 +227,14 @@ impl ChatClient {
         }
 
     }
+
     pub fn end_chat(&mut self, id_server: NodeId) {
         if self.servers.is_empty(){
             self.initiate_flooding();
         }
 
         if !self.servers.contains(&id_server){
-            println!("The server specified was not found ");
+            println!("server not found after the flooding");
             return;
         }
 
@@ -277,6 +282,36 @@ impl ChatClient {
             }
         }
 
+        let receiver = self.receiver_msg.clone();
+        let end_condition = Arc::clone(&self.flooding_completed);
+
+        let handle=thread::spawn(move || {
+            let timeout = Duration::from_secs(1);
+            let mut last_response = Instant::now();
+
+            loop {
+                match receiver.try_recv(){
+                    Ok(packet) => {
+                        if let PacketType::FloodResponse(_) = packet.pack_type{
+                            println!("{:?}", packet);
+                            last_response = Instant::now();
+                        }
+                    }
+                    Err(_) => {println!("No packet received within timeout");}
+                }
+                println!("{:?}", end_condition);
+                if last_response.elapsed() > timeout {
+                    let mut completed = end_condition.lock().unwrap();
+                    *completed = true;
+                    println!("{:?}", completed);
+                    println!("Flooding marked as complete.");
+                    break;
+                }
+                thread::sleep(Duration::from_millis(50))
+            }
+        });
+        handle.join().unwrap();
+        // println!("{:?}", self.flooding_completed);
     }
 
     pub fn handle_flood_req(& mut self, packet: Packet){
@@ -285,9 +320,9 @@ impl ChatClient {
                 if let Some(first_hop) = Some(flood_request.path_trace[1].0) {
                     if let Some(sender) = self.send_packets.get(&first_hop) {
                        if let Err(e) = sender.send(flood_request.generate_response(packet.session_id)){
-                           println!("Error sending the flood response: {}", e)
+                           println!("Error sending the flood flood request: {}", e)
                        }
-                    }else { println!("No sender found") }
+                    }else { println!("No sender found for first hop {}", first_hop) }
                 }else { println!("No next hop found") }
                 return;
             }
@@ -299,7 +334,7 @@ impl ChatClient {
                 if let Some(first_hop) = Some(flood_request.path_trace[1].0 ) {
                     if let Some(sender) = self.send_packets.get(&first_hop){
                         if let Err(e) = sender.send(flood_request.generate_response(packet.session_id)){
-                            println!("Error sending the flood response: {}", e)
+                            println!("Error sending the flood request: {}", e)
                         }
                     }else { println!("No sender found in the case of the client having only 1 connection") }
                 }else { println!("No next hop found") }
@@ -307,6 +342,7 @@ impl ChatClient {
             }
 
             if let Some(_) = flood_request.path_trace.get(1){ //normal case when the client forwards it to the every neighbor
+                println!("forwarding to all direct neighbours");
                 for (neighbor, sender) in &self.send_packets{
                     if *neighbor != flood_request.path_trace[1].0 { //forward to everyone that's not the one sending the request
                         let mut forward_packet = packet.clone();
@@ -324,6 +360,7 @@ impl ChatClient {
 
     pub fn handle_flood_response(& mut self, packet: Packet){
         if let PacketType::FloodResponse(flood_response) = packet.clone().pack_type {
+            println!("Flood response: {:?}", flood_response);
             if !flood_response.path_trace.is_empty(){
                 for (node_id, node_type) in &flood_response.path_trace{
                     if *node_type == NodeType::Server && !self.servers.contains(&node_id){
@@ -333,7 +370,9 @@ impl ChatClient {
 
                 self.flood.push(flood_response); //storing all the flood responses to then access the path traces and find the quickest one
             }
+
         }
+
     }
 
     pub fn find_route(& mut self, destination_id : &NodeId)-> Result<Vec<NodeId>, String>{
