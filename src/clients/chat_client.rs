@@ -28,12 +28,12 @@ pub struct ChatClient {
     pub flood: Vec<FloodResponse> ,//to store all the flood responses found
     pub unique_flood_id: u64,
     pub session_id_packet: u64,
-    pub flooding_completed: Arc<Mutex<bool>>
+    pub flooding_end: Arc<Mutex<bool>>,
 
 }
 impl ChatClient {
     pub fn new(id: NodeId, receiver_msg: Receiver<Packet>, send_packets: HashMap<NodeId, Sender<Packet>>, receiver_commands: Receiver<CommandChat>, simulation_control: HashMap<NodeId, Sender<Packet>>) -> Self {
-        Self {
+       let mut client = Self {
             config: Client { id, connected_drone_ids: Vec::new() },
             receiver_msg,
             receiver_commands,
@@ -44,8 +44,10 @@ impl ChatClient {
             flood: Vec::new(),
             unique_flood_id: 0,
             session_id_packet: 0,
-            flooding_completed: Arc::new(Mutex::new(false)),
-        }
+            flooding_end: Arc::new(Mutex::new(false)),
+        };
+        client.initiate_flooding();
+        client
     }
     pub fn run(&mut self) {
         let mut crash = false;
@@ -204,9 +206,9 @@ impl ChatClient {
         }
     }
     pub fn send_message(&mut self, message: MessageChat, id_server: NodeId) {
-        if self.flood.is_empty() {
-            self.initiate_flooding();
-        }
+        // if self.flood.is_empty() {
+        //     self.initiate_flooding();
+        // }
         println!("servers: {:?}", self.servers);
         println!("I've done the flooding");
 
@@ -216,11 +218,14 @@ impl ChatClient {
 
         match self.find_route(&id_server){
             Ok(route) => {
+                println!("route: {:?}",route);
                 let packets_to_send = ChatRequest::create_packet(&fragments, route.clone(), & mut self.session_id_packet);
                 for packet in packets_to_send {
+
                     println!("route: {}",packet.routing_header);
                     if let Some(next_hop) = packet.clone().routing_header.hops.get(1){
                         println!("next hop: {}",next_hop);
+
                         self.send_packet(next_hop, packet);
                     }
                 }
@@ -284,7 +289,6 @@ impl ChatClient {
                 println!("Error sending the flood request")
             }
         }
-
 
 
     }
