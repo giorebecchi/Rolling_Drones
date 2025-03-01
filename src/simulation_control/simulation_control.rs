@@ -68,23 +68,7 @@ impl SimulationController {
                     let _lock = CONSOLE_MUTEX.lock().unwrap();
                      match drone_event{
                         DroneEvent::PacketSent(ref packet) => {
-                            // if let FloodRequest(flood)=packet.pack_type.clone(){
-                            //
-                            //         let (current_node,node_type)=flood.path_trace[flood.path_trace.len()-1];
-                            //         if self.seen_floods.insert((flood.initiator_id,flood.flood_id,current_node)){
-                            //             self.log=format!("{}\nNode of type: {:?} with id : {} sent floodRequest with id : {} started from : {}",self.log,node_type,current_node ,flood.flood_id,flood.initiator_id);
-                            //
-                            //         }
-                            //         let nodes=self.neighbours.keys().into_iter().map(|x| x).collect::<Vec<&NodeId>>();
-                            //         let should_be_nodes=self.seen_floods.iter().map(|(_,_,x)| x).collect::<Vec<&NodeId>>();
-                            //         if nodes.len()==should_be_nodes.len(){
-                            //             self.access=true;
-                            //             println!("{}",self.log);
-                            //         }
-                            //
-
-                                //}
-                                //println!("SC: {:?}",packet.pack_type);
+                            //println!("Packet {:?} sent", packet);
                         }
                         DroneEvent::PacketDropped(ref packet) => {
                             println!("Simulation control: drone dropped packet");
@@ -491,7 +475,7 @@ pub fn test(mut simulation_controller: ResMut<SimulationController>, config: Res
     {
 
         let mut controller = controller.lock().unwrap();
-        controller.client.get(&0).unwrap().send(CommandChat::SendMessage(11,12,"ciao".to_string())).unwrap();
+          controller.client.get(&0).unwrap().send(CommandChat::SendMessage(11,12,"ciao".to_string())).unwrap();
         // controller.initiate_flood(Packet{
 
         //    routing_header: SourceRoutingHeader{

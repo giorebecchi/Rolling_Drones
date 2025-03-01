@@ -28,12 +28,12 @@ pub struct ChatClient {
     pub flood: Vec<FloodResponse> ,//to store all the flood responses found
     pub unique_flood_id: u64,
     pub session_id_packet: u64,
-    pub flooding_completed: Arc<Mutex<bool>>
+    pub flooding_end: Arc<Mutex<bool>>,
 
 }
 impl ChatClient {
     pub fn new(id: NodeId, receiver_msg: Receiver<Packet>, send_packets: HashMap<NodeId, Sender<Packet>>, receiver_commands: Receiver<CommandChat>, simulation_control: HashMap<NodeId, Sender<Packet>>) -> Self {
-        Self {
+       let mut client = Self {
             config: Client { id, connected_drone_ids: Vec::new() },
             receiver_msg,
             receiver_commands,
@@ -44,8 +44,10 @@ impl ChatClient {
             flood: Vec::new(),
             unique_flood_id: 0,
             session_id_packet: 0,
-            flooding_completed: Arc::new(Mutex::new(false)),
-        }
+            flooding_end: Arc::new(Mutex::new(false)),
+        };
+        client.initiate_flooding();
+        client
     }
     pub fn run(&mut self) {
         let mut crash = false;
@@ -203,9 +205,9 @@ impl ChatClient {
         }
     }
     pub fn send_message(&mut self, message: MessageChat, id_server: NodeId) {
-        if self.flood.is_empty() {
-            self.initiate_flooding();
-        }
+        // if self.flood.is_empty() {
+        //     self.initiate_flooding();
+        // }
         println!("servers: {:?}", self.servers);
         println!("I've done the flooding");
 
@@ -215,9 +217,11 @@ impl ChatClient {
 
         match self.find_route(&id_server){
             Ok(route) => {
+                println!("route: {:?}",route);
                 let packets_to_send = ChatRequest::create_packet(&fragments, route.clone(), & mut self.session_id_packet);
                 for packet in packets_to_send {
                     if let Some(next_hop) = route.get(1){
+                        println!("next hop: {:?}",next_hop);
                         self.send_packet(next_hop, packet);
                     }
                 }
@@ -283,35 +287,58 @@ impl ChatClient {
         }
 
         let receiver = self.receiver_msg.clone();
-        let end_condition = Arc::clone(&self.flooding_completed);
 
-        let handle=thread::spawn(move || {
-            let timeout = Duration::from_secs(1);
-            let mut last_response = Instant::now();
+        let mut flood_responses: Vec<FloodResponse> = Vec::new();
+        let arc_flood_responses = Arc::new(Mutex::new(flood_responses));
+        let mut fr=Arc::clone(&arc_flood_responses);
+        let mut end_condition = Arc::clone(&self.flooding_end);
 
-            loop {
-                match receiver.try_recv(){
-                    Ok(packet) => {
-                        if let PacketType::FloodResponse(_) = packet.pack_type{
-                            println!("{:?}", packet);
-                            last_response = Instant::now();
-                        }
-                    }
-                    Err(_) => {println!("No packet received within timeout");}
-                }
-                println!("{:?}", end_condition);
-                if last_response.elapsed() > timeout {
-                    let mut completed = end_condition.lock().unwrap();
-                    *completed = true;
-                    println!("{:?}", completed);
-                    println!("Flooding marked as complete.");
-                    break;
-                }
-                thread::sleep(Duration::from_millis(50))
-            }
-        });
-        handle.join().unwrap();
-        // println!("{:?}", self.flooding_completed);
+
+
+        // let handle = thread::spawn(move || {
+        //    let timeout = Duration::from_secs(1);
+        //    let mut last_response = Instant::now();
+        //    let mut vec = fr.lock().unwrap();
+        //
+        //    loop {
+        //        match receiver.try_recv(){
+        //            Ok(packet) => {
+        //                if let PacketType::FloodResponse(a) = packet.pack_type{
+        //                    last_response = Instant::now();
+        //                }
+        //            }
+        //            Err(_) => {println!("No packet received within timeout");}
+        //        }
+        //        println!("{:?}", end_condition);
+        //        if last_response.elapsed() > timeout {
+        //            let mut completed = end_condition.lock().unwrap();
+        //            *completed = true;
+        //            println!("{:?}", completed);
+        //            println!("Flooding marked as complete.");
+        //            break;
+        //        }
+        //        thread::sleep(Duration::from_millis(50))
+        //    }
+        // //     let mut vec = fr.lock().unwrap();
+        // //     let mut first_flood_response = false;
+        // //     while let Ok(packet) = receiver.recv() {
+        // //         if let PacketType::FloodResponse(flood_response) = packet.pack_type{
+        // //             vec.push(flood_response);
+        // //             first_flood_response = true;
+        // //         }
+        // //         if first_flood_response {
+        // //             while let Ok(packet)=receiver.try_recv(){
+        // //                 if let PacketType::FloodResponse(flood_response) = packet.pack_type{
+        // //                     vec.push(flood_response);
+        // //                 }
+        // //             }
+        // //             break;
+        // //         }
+        // //     }
+        // });
+        // handle.join().unwrap();
+        // self.flood = arc_flood_responses.lock().unwrap().to_vec();
+        // println!("{:?}", self.flood);
     }
 
     pub fn handle_flood_req(& mut self, packet: Packet){
