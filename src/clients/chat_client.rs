@@ -49,6 +49,7 @@ impl ChatClient {
     }
     pub fn run(&mut self) {
         let mut crash = false;
+        self.initiate_flooding();
         while !crash{
                 select_biased! {
                 recv(self.receiver_commands) -> command =>{
@@ -217,11 +218,12 @@ impl ChatClient {
             Ok(route) => {
                 let packets_to_send = ChatRequest::create_packet(&fragments, route.clone(), & mut self.session_id_packet);
                 for packet in packets_to_send {
-                    if let Some(next_hop) = route.get(1){
+                    println!("route: {}",packet.routing_header);
+                    if let Some(next_hop) = packet.clone().routing_header.hops.get(1){
+                        println!("next hop: {}",next_hop);
                         self.send_packet(next_hop, packet);
                     }
                 }
-                println!("Sent request to forward message to server: {}", id_server)
             }
             Err(_) => {println!("No route found for the destination client")}
         }
@@ -230,6 +232,7 @@ impl ChatClient {
 
     pub fn end_chat(&mut self, id_server: NodeId) {
         if self.servers.is_empty(){
+            println!("here");
             self.initiate_flooding();
         }
 
@@ -282,39 +285,12 @@ impl ChatClient {
             }
         }
 
-        let receiver = self.receiver_msg.clone();
-        let end_condition = Arc::clone(&self.flooding_completed);
 
-        let handle=thread::spawn(move || {
-            let timeout = Duration::from_secs(1);
-            let mut last_response = Instant::now();
 
-            loop {
-                match receiver.try_recv(){
-                    Ok(packet) => {
-                        if let PacketType::FloodResponse(_) = packet.pack_type{
-                            println!("{:?}", packet);
-                            last_response = Instant::now();
-                        }
-                    }
-                    Err(_) => {println!("No packet received within timeout");}
-                }
-                println!("{:?}", end_condition);
-                if last_response.elapsed() > timeout {
-                    let mut completed = end_condition.lock().unwrap();
-                    *completed = true;
-                    println!("{:?}", completed);
-                    println!("Flooding marked as complete.");
-                    break;
-                }
-                thread::sleep(Duration::from_millis(50))
-            }
-        });
-        handle.join().unwrap();
-        // println!("{:?}", self.flooding_completed);
     }
 
     pub fn handle_flood_req(& mut self, packet: Packet){
+        println!("sus packet: {}",packet);
         if let PacketType::FloodRequest(mut flood_request) = packet.clone().pack_type {
             if self.visited_nodes.contains(&(flood_request.flood_id, flood_request.initiator_id)) { //case if client has already received the request
                 if let Some(first_hop) = Some(flood_request.path_trace[1].0) {
@@ -332,6 +308,7 @@ impl ChatClient {
 
             if self.send_packets.len() == 1{ //check if the client has only one node connected to it
                 if let Some(first_hop) = Some(flood_request.path_trace[1].0 ) {
+                    println!("first_hop: {}",first_hop);
                     if let Some(sender) = self.send_packets.get(&first_hop){
                         if let Err(e) = sender.send(flood_request.generate_response(packet.session_id)){
                             println!("Error sending the flood request: {}", e)
@@ -360,7 +337,6 @@ impl ChatClient {
 
     pub fn handle_flood_response(& mut self, packet: Packet){
         if let PacketType::FloodResponse(flood_response) = packet.clone().pack_type {
-            println!("Flood response: {:?}", flood_response);
             if !flood_response.path_trace.is_empty(){
                 for (node_id, node_type) in &flood_response.path_trace{
                     if *node_type == NodeType::Server && !self.servers.contains(&node_id){
@@ -390,10 +366,14 @@ impl ChatClient {
         }else { Err(String::from("route not found")) }
     }
 
-    pub fn send_packet(& mut self, destination_id: &NodeId, packet: Packet){
+    pub fn send_packet(& mut self, destination_id: &NodeId, mut packet: Packet){
+        packet.routing_header.hop_index+=1;
+        println!("send_packets: {:?}",self.send_packets);
         if let Some(sender) = self.send_packets.get(&destination_id){
-            if let Err(err) = sender.send(packet){
+            if let Err(err) = sender.send(packet.clone()){
                 println!("Error sending command: {}", err); //have to send back nack
+            }else{
+                println!("success: {}",packet.routing_header);
             }
         }else { println!("no sender") } //have to send back nack
     }

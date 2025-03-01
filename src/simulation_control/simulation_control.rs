@@ -3,6 +3,7 @@ use crossbeam_channel::{select_biased, unbounded, Receiver, Sender};
 use std::collections::{HashMap, HashSet};
 use std::thread;
 use std::sync::{Arc,Mutex};
+use std::time::Duration;
 use lazy_static::lazy_static;
 use wg_2024::controller::{DroneCommand,DroneEvent};
 use wg_2024::drone::{Drone};
@@ -295,7 +296,7 @@ pub fn test(mut simulation_controller: ResMut<SimulationController>, config: Res
         thread::spawn(move || {
             match i {
                 0 => {
-                    let mut drone = BagelBomber::new(//BagelBomber
+                    let mut drone = LockheedRustin::new(//BagelBomber
                         cfg_drone.id,
                         node_event_send,
                         controller_drone_recv,
@@ -491,6 +492,7 @@ pub fn test(mut simulation_controller: ResMut<SimulationController>, config: Res
     {
 
         let mut controller = controller.lock().unwrap();
+        thread::sleep(Duration::from_millis(200));
         controller.client.get(&0).unwrap().send(CommandChat::SendMessage(11,12,"ciao".to_string())).unwrap();
         // controller.initiate_flood(Packet{
 
