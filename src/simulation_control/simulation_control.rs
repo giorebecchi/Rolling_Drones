@@ -442,7 +442,7 @@ pub fn test(mut simulation_controller: ResMut<SimulationController>, config: Res
         });
         {
             //let mut client_try=client.lock().unwrap();
-            // client_try.initiate_flooding();
+            // client_try.initiate_flooding()
         }
         // handles.push(handle);
     }
@@ -477,7 +477,8 @@ pub fn test(mut simulation_controller: ResMut<SimulationController>, config: Res
 
         let mut controller = controller.lock().unwrap();
         thread::sleep(Duration::from_millis(200));
-        controller.client.get(&0).unwrap().send(CommandChat::SendMessage(11,12,"ciao".to_string())).unwrap();
+        // controller.client.get(&0).unwrap().send(CommandChat::SendMessage(11,12,"ciao".to_string())).unwrap();
+         controller.client.get(&0).unwrap().send(CommandChat::ServerType(12)).unwrap();
 
         // controller.initiate_flood(Packet{
 
