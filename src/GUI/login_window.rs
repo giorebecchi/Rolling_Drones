@@ -20,6 +20,8 @@ struct InputText;
 struct DroneCrash{
     content: String
 }
+#[derive(Resource, Default)]
+struct NodeEntities(pub Vec<Entity>);
 
 #[derive(Default,Debug,Clone)]
 pub enum NodeType{
@@ -59,8 +61,10 @@ pub fn main() {
         .init_resource::<NodesConfig>()
         .init_resource::<DroneCrash>()
         .init_resource::<SimulationController>()
+        .init_resource::<NodeEntities>()
         .init_state::<AppState>()
         .add_systems(Update, ui_settings)
+        .add_systems(Startup, setup_camera)
         .add_systems(OnEnter(AppState::InGame), (setup_network,test))
         .add_systems(Update , (draw_connections,set_up_bundle).run_if(in_state(AppState::InGame)))
 
@@ -87,9 +91,11 @@ struct OccupiedScreenSpace {
 #[derive(Resource,Default,Debug,Clone)]
 pub struct UserConfig(pub String);
 
+fn setup_camera(mut commands: Commands){
+    commands.spawn(Camera2d::default());
+}
 
 fn setup_network(
-    mut commands: Commands,
     user_config: Res<UserConfig>,
     mut nodes_config: ResMut<NodesConfig>
 
@@ -119,20 +125,23 @@ fn setup_network(
         },
     }
 
-    commands.spawn(Camera2d::default());
 }
 pub fn set_up_bundle(
     node_data: Res<NodesConfig>,
     mut commands: Commands,
+    mut entity_vector: ResMut<NodeEntities>,
     asset_server: Res<AssetServer>
 ) {
+
     for node_data in node_data.0.iter() {
 
-
-
-        commands.spawn((
+        let entity=commands.spawn((
             Sprite {
-                image: asset_server.load("images/Rolling_Drone.png"),
+                image: match node_data.node_type{
+                    NodeType::Drone=>asset_server.load("images/Rolling_Drone.png"),
+                    NodeType::Client=>asset_server.load("images/client.png"),
+                    NodeType::Server=>asset_server.load("images/server.png")
+                },
                 custom_size: Some(Vec2::new(45.,45.)),
                 ..default()
             },
@@ -146,12 +155,13 @@ pub fn set_up_bundle(
                     ..default()
                 },
                 TextColor(Color::srgb(1.,0.,0.)),
-                Transform::from_translation(Vec3::new(-20.,-20.,0.))
+                Transform::from_translation(Vec3::new(-30.,-30.,0.))
 
             ));
-        });
-
+        }).id();
+        entity_vector.0.push(entity);
     }
+
 
 
 
@@ -161,8 +171,8 @@ pub fn draw_connections(
     node_data: Res<NodesConfig>,
 ) {
     for node in &node_data.0 {
-        for &connected_id in &node.connected_node_ids {
-            if let Some(connected_node) = node_data.0.iter().find(|n| n.id == connected_id) {
+        for connected_id in &node.connected_node_ids {
+            if let Some(connected_node) = node_data.0.iter().find(|n| n.id == *connected_id) {
 
                 let start = node.position;
                 let end = connected_node.position;
@@ -174,10 +184,12 @@ pub fn draw_connections(
 }
 fn ui_settings(
     mut contexts: EguiContexts,
+    mut commands: Commands,
     mut occupied_screen_space: ResMut<OccupiedScreenSpace>,
     mut nodes : ResMut<NodesConfig>,
     mut topology : ResMut<UserConfig>,
     mut sim : ResMut<SimulationController>,
+    mut node_entities: ResMut<NodeEntities>,
     mut drone_crash: ResMut<DroneCrash>,
     mut next_state: ResMut<NextState<AppState>>
 ) {
@@ -203,6 +215,13 @@ fn ui_settings(
                         }else if ui.button("Butterfly").clicked(){
                             topology.0="butterfly".to_string();
                             next_state.set(AppState::InGame);
+                        }else if ui.button("Reset").clicked(){
+                            nodes.0=Vec::new();
+                            for entity in node_entities.0.clone(){
+                                commands.entity(entity).despawn_recursive();
+                            }
+                            node_entities.0.clear();
+                            next_state.set(AppState::Menu);
                         }
                     });
                 });
