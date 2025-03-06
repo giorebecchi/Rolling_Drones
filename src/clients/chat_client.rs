@@ -13,7 +13,7 @@ use wg_2024::config::{Client};
 use wg_2024::network::{NodeId, SourceRoutingHeader};
 use wg_2024::packet::{FloodRequest, FloodResponse, Fragment, NodeType, Packet, PacketType, FRAGMENT_DSIZE};
 use crate::clients::assembler::{Fragmentation, Serialization};
-use crate::common_things::common::{ChatRequest, MessageChat, CommandChat};
+use crate::common_things::common::{ChatRequest, MessageChat, CommandChat, ChatResponse};
 use crate::servers::ChatServer::Server;
 
 //missing flooding, handling incoming packets and handling errors
@@ -28,7 +28,7 @@ pub struct ChatClient {
     pub flood: Vec<FloodResponse> ,//to store all the flood responses found
     pub unique_flood_id: u64,
     pub session_id_packet: u64,
-    pub flooding_end: Arc<Mutex<bool>>,
+    pub incoming_fragments: Vec<Packet>
 
 }
 impl ChatClient {
@@ -44,7 +44,7 @@ impl ChatClient {
             flood: Vec::new(),
             unique_flood_id: 0,
             session_id_packet: 0,
-            flooding_end: Arc::new(Mutex::new(false)),
+           incoming_fragments: Vec::new()
         };
         client.initiate_flooding();
         client
@@ -111,17 +111,12 @@ impl ChatClient {
 
     pub fn ask_server_type(&mut self, id_server: NodeId) {
         //if the client has to send it to a specific server (?)
-        if self.servers.is_empty(){
-            self.initiate_flooding();
-        }
         if !self.servers.contains(&id_server){
             println!("server not found ");
             return;
         }
         let request_to_send = ChatRequest::ServerType;
         let fragmented_request = ChatRequest::fragment_message(&request_to_send);
-
-
 
         match self.find_route(&id_server) {
             Ok(route) => {
@@ -155,9 +150,6 @@ impl ChatClient {
     }
     pub fn register_client(&mut self, id_server: NodeId) {
         //to register client to the server specified in the command by simulation control.
-        if self.flood.is_empty(){
-            self.initiate_flooding();
-        }
         if !self.servers.contains(&id_server){
             println!("The server was not found during flooding");
             return;
@@ -181,9 +173,6 @@ impl ChatClient {
 
     }
     pub fn get_list_clients(&mut self, id_server: NodeId) {
-        if self.servers.is_empty(){
-            self.initiate_flooding();
-        }
         if !self.servers.contains(&id_server){
             println!("server not found after the flooding");
             return;
@@ -206,9 +195,6 @@ impl ChatClient {
         }
     }
     pub fn send_message(&mut self, message: MessageChat, id_server: NodeId) {
-        // if self.flood.is_empty() {
-        //     self.initiate_flooding();
-        // }
         println!("servers: {:?}", self.servers);
         println!("I've done the flooding");
 
@@ -236,11 +222,6 @@ impl ChatClient {
     }
 
     pub fn end_chat(&mut self, id_server: NodeId) {
-        if self.servers.is_empty(){
-            println!("here");
-            self.initiate_flooding();
-        }
-
         if !self.servers.contains(&id_server){
             println!("server not found after the flooding");
             return;
@@ -263,11 +244,34 @@ impl ChatClient {
         }
     }
 
-    //incoming messagges
-    pub fn handle_fragments(& mut self, packet: Packet){
+    //incoming messages
+    pub fn handle_fragments(& mut self, mut packet: Packet){
+        let src_id = packet.routing_header.hops.get(packet.routing_header.hops.len()-1).unwrap();
+        let check = (packet.session_id, src_id);
+        let mut hashmap = HashMap::new();
+        let mut vec_frag = Vec::new();
+        println!("src_id: {}",src_id);
         if let PacketType::MsgFragment(fragment) = packet.pack_type{
+            for p in &self.incoming_fragments{
+                let tup = (p.session_id, p.routing_header.hops.get(p.routing_header.hops.len() - 1).unwrap()); //check if it has already received a fragment with that session id or src id
+                if tup == check {
+                    vec_frag.push(fragment.data.clone()); //if it has it copies the data of the fragment inside the vector
+                    hashmap.insert(fragment.fragment_index.clone(), fragment.clone());
+                    if vec_frag.len() as u64 == fragment.total_n_fragments-1{
+                        println!("All fragments of message are received");
+                        self.incoming_message(&hashmap) //da rivedere, solo per provare
+                    }
 
+                }
+            }
         }
+    }
+
+    pub fn incoming_message(& self, fragments: &HashMap<u64, Fragment>){
+        //based on the reassembled message i receive something. if it has to act automatically i need to save it somewhere so that i can continue with others, if not just print them and send them back to sim control
+        let incoming_message = ChatResponse::reassemble_msg(&fragments).unwrap();
+        println!("incoming_message: {:?}", incoming_message);
+
     }
 
     pub fn initiate_flooding(&mut self) { //this sends a flood request to its immediate neighbours
