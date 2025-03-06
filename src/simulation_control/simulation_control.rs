@@ -219,11 +219,13 @@ impl SimulationController {
         }
     }
 }
+pub fn test_gui(mut simulation_controller: ResMut<SimulationController>, config: Res<UserConfig>){
 
+}
 
 
 pub fn test(mut simulation_controller: ResMut<SimulationController>, config: Res<UserConfig>) {
-    let mut file_path= match (((*config).0).as_str()){
+    let file_path= match (*config).0.as_str(){
         "star"=>"assets/configurations/star.toml",
         "double_chain"=>"assets/configurations/double_chain.toml",
         "butterfly"=>"assets/configurations/butterfly.toml",
@@ -280,7 +282,7 @@ pub fn test(mut simulation_controller: ResMut<SimulationController>, config: Res
         thread::spawn(move || {
             match i {
                 0 => {
-                    let mut drone = LockheedRustin::new(//BagelBomber
+                    let mut drone = BagelBomber::new(//BagelBomber
                         cfg_drone.id,
                         node_event_send,
                         controller_drone_recv,
