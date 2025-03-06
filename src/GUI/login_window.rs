@@ -1,3 +1,4 @@
+use bevy::log::LogPlugin;
 use bevy::prelude::*;
 use bevy::winit::WinitSettings;
 use bevy_dev_tools::states::*;
@@ -54,7 +55,11 @@ pub struct NodesConfig(pub Vec<NodeConfig>);
 pub fn main() {
     App::new()
         .insert_resource(WinitSettings::desktop_app())
-        .add_plugins(DefaultPlugins)
+        .add_plugins(DefaultPlugins.set(LogPlugin {
+            level: bevy::log::Level::ERROR,
+            filter: "".to_string(),
+            ..default()
+        }))
         .add_plugins(EguiPlugin)
         .init_resource::<OccupiedScreenSpace>()
         .init_resource::<UserConfig>()
