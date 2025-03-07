@@ -4,12 +4,11 @@ use std::collections::{HashMap, HashSet};
 use std::thread;
 use std::sync::{Arc,Mutex};
 use std::time::Duration;
-use lazy_static::lazy_static;
 use wg_2024::controller::{DroneCommand,DroneEvent};
 use wg_2024::drone::{Drone};
 use wg_2024::network::{NodeId, SourceRoutingHeader};
-use wg_2024::packet::{Fragment, NodeType, Packet, PacketType};
-use bevy::prelude::{Res, ResMut, Resource};
+use wg_2024::packet::{Fragment, Packet, PacketType};
+use bevy::prelude::{Res, ResMut};
 use bagel_bomber::BagelBomber;
 use fungi_drone::FungiDrone;
 use Krusty_Club::Krusty_C;
@@ -21,25 +20,13 @@ use rustbusters_drone::RustBustersDrone;
 use rusteze_drone::RustezeDrone;
 use rustafarian_drone::RustafarianDrone;
 use wg_2024::packet::PacketType::FloodRequest;
-use crate::GUI::login_window::UserConfig;
+use crate::GUI::login_window::{SharedSimState, SimulationController, UserConfig};
 use crate::network_initializer::network_initializer::parse_config;
 use crate::servers::ChatServer::Server;
 use crate::clients::chat_client::ChatClient;
 use crate::common_things::common::CommandChat;
 
-lazy_static! { static ref CONSOLE_MUTEX: Arc<Mutex<()>> = Arc::new(Mutex::new(())); }
-#[derive(Clone,Resource)]
-pub struct SimulationController {
-    pub drones: HashMap<NodeId, Sender<DroneCommand>>,
-    pub packet_channel: HashMap<NodeId, Sender<Packet>>,
-    pub node_event_send: Sender<DroneEvent>,
-    pub node_event_recv: Receiver<DroneEvent>,
-    pub neighbours: HashMap<NodeId, Vec<NodeId>>,
-    pub client : HashMap<NodeId, Sender<CommandChat>>,
-    pub log: String,
-    pub access: bool,
-    pub seen_floods: HashSet<(NodeId,u64,NodeId)>
-}
+
 
 impl Default for SimulationController{
     fn default() -> Self {
@@ -51,8 +38,7 @@ impl Default for SimulationController{
             packet_channel: HashMap::new(),
             neighbours: HashMap::new(),
             client:  HashMap::new(),
-            log : String::new(),
-            access: false,
+            log : Arc::new(Mutex::new(SharedSimState::default())),
             seen_floods: HashSet::new()
         }
     }
@@ -62,14 +48,24 @@ impl Default for SimulationController{
 
 impl SimulationController {
     fn run(&mut self) {
+        let mut flood_req_hash=HashSet::new();
         loop{
             select_biased! {
             recv(self.node_event_recv) -> command =>{
                 if let Ok(drone_event) = command {
-                    let _lock = CONSOLE_MUTEX.lock().unwrap();
                      match drone_event{
                         DroneEvent::PacketSent(ref packet) => {
-                            //println!("Packet {:?} sent", packet);
+                                let mut state=self.log.lock().unwrap();
+                                match packet.pack_type.clone(){
+                                    FloodRequest(flood_req)=>{
+                                        if flood_req_hash.insert((flood_req.initiator_id,flood_req.flood_id)){
+                                            state.log.push_str(&format!("{:?} with id {} has initiated a flood with id {}\n",flood_req.path_trace[0].1,flood_req.initiator_id,flood_req.flood_id));
+                                            thread::sleep(Duration::from_millis(100));
+
+                                        }
+                                    }
+                                    _=>{}
+                                }
                         }
                         DroneEvent::PacketDropped(ref packet) => {
                             println!("Simulation control: drone dropped packet");
@@ -238,6 +234,7 @@ pub fn test(mut simulation_controller: ResMut<SimulationController>, config: Res
     let mut packet_drones = simulation_controller.packet_channel.clone();
     let mut node_event_send = simulation_controller.node_event_send.clone();
     let mut node_event_recv=simulation_controller.node_event_recv.clone();
+    let mut log = simulation_controller.log.clone();
 
 
     let mut packet_channels = HashMap::new();
@@ -294,7 +291,7 @@ pub fn test(mut simulation_controller: ResMut<SimulationController>, config: Res
                 }
                 1 => {
 
-                    let mut drone = LockheedRustin::new(//Fungi--Problema nella flooding
+                    let mut drone = FungiDrone::new(//Fungi--Problema nella flooding
                         cfg_drone.id,
                         node_event_send,
                         controller_drone_recv,
@@ -328,7 +325,7 @@ pub fn test(mut simulation_controller: ResMut<SimulationController>, config: Res
                     drone.run();
                 }
                 4=>{
-                    let mut drone = LockheedRustin::new(//Le_Drone--Problema nella flooding
+                    let mut drone = Le_Drone::new(//Le_Drone--Problema nella flooding
                         cfg_drone.id,
                         node_event_send,
                         controller_drone_recv,
@@ -384,8 +381,8 @@ pub fn test(mut simulation_controller: ResMut<SimulationController>, config: Res
                     drone.run();
                 }
                 9=>{
-                    let mut drone = LockheedRustin::new(//RustafarianDrone--Problema con flooding e "Environment variable RUSTAFARIAN_LOG_LEVEL couldn't be read,logger will be disabled by default"
-                                                        cfg_drone.id,
+                    let mut drone = RustafarianDrone::new(//RustafarianDrone--Problema con flooding e "Environment variable RUSTAFARIAN_LOG_LEVEL couldn't be read,logger will be disabled by default"
+                                                          cfg_drone.id,
                         node_event_send,
                         controller_drone_recv,
                         packet_recv,
@@ -457,8 +454,7 @@ pub fn test(mut simulation_controller: ResMut<SimulationController>, config: Res
         neighbours: neighbours.clone(),
         packet_channel: packet_drones.clone(),
         client,
-        log: String::new(),
-        access: false,
+        log: log.clone(),
         seen_floods: HashSet::new()
     }));
     simulation_controller.node_event_send= node_event_send.clone();
@@ -481,20 +477,6 @@ pub fn test(mut simulation_controller: ResMut<SimulationController>, config: Res
         thread::sleep(Duration::from_millis(200));
         controller.client.get(&0).unwrap().send(CommandChat::SendMessage(11,12,"ciao".to_string())).unwrap();
 
-        // controller.initiate_flood(Packet{
-
-        //    routing_header: SourceRoutingHeader{
-        //        hop_index:0,
-        //        hops: vec![1],
-        //    },
-        //    pack_type: FloodRequest(wg_2024::packet::FloodRequest{
-        //        flood_id: 10,
-        //        initiator_id: 0,
-        //        path_trace: vec![(0,NodeType::Client)],
-        //    }),
-        //    session_id: 20,
-        // });
-        //controller.msg_fragment(fragment_double_chain);
 
     }
 
