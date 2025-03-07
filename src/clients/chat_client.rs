@@ -28,12 +28,12 @@ pub struct ChatClient {
     pub flood: Vec<FloodResponse> ,//to store all the flood responses found
     pub unique_flood_id: u64,
     pub session_id_packet: u64,
-    pub incoming_fragments: Vec<Packet>
+    pub incoming_fragments: HashMap<(u64, NodeId ), HashMap<u64, Fragment>>
 
 }
 impl ChatClient {
     pub fn new(id: NodeId, receiver_msg: Receiver<Packet>, send_packets: HashMap<NodeId, Sender<Packet>>, receiver_commands: Receiver<CommandChat>, simulation_control: HashMap<NodeId, Sender<Packet>>) -> Self {
-       let mut client = Self {
+        Self {
             config: Client { id, connected_drone_ids: Vec::new() },
             receiver_msg,
             receiver_commands,
@@ -44,10 +44,8 @@ impl ChatClient {
             flood: Vec::new(),
             unique_flood_id: 0,
             session_id_packet: 0,
-           incoming_fragments: Vec::new()
-        };
-        client.initiate_flooding();
-        client
+            incoming_fragments: HashMap::new()
+        }
     }
     pub fn run(&mut self) {
         let mut crash = false;
@@ -131,22 +129,6 @@ impl ChatClient {
             }
             Err(_) => {println!("No route found for the destination server")}
         }
-
-        //without the request of a specific server (no parameter), if the client wants to send the request to every server found after performing the flood
-        // if self.servers.is_empty(){
-        //     self.initiate_flooding(); //to start flooding if it wasn't done before
-        // }
-
-        // for server in &self.servers.clone() {
-        //     match self.find_route(&server){
-        //         Ok(route) => {
-        //             if let Some((next_hop, _)) = route.get(1){
-        //                 self.send_request(&next_hop, ChatRequest::ServerType)
-        //             }
-        //         }
-        //         Err(_) => {println!("no route was found for the server: {}", server)}
-        //     }
-        // }
     }
     pub fn register_client(&mut self, id_server: NodeId) {
         //to register client to the server specified in the command by simulation control.
@@ -245,33 +227,35 @@ impl ChatClient {
     }
 
     //incoming messages
-    pub fn handle_fragments(& mut self, mut packet: Packet){
-        let src_id = packet.routing_header.hops.get(packet.routing_header.hops.len()-1).unwrap();
-        let check = (packet.session_id, src_id);
-        let mut hashmap = HashMap::new();
-        let mut vec_frag = Vec::new();
-        println!("src_id: {}",src_id);
-        if let PacketType::MsgFragment(fragment) = packet.pack_type{
-            for p in &self.incoming_fragments{
-                let tup = (p.session_id, p.routing_header.hops.get(p.routing_header.hops.len() - 1).unwrap()); //check if it has already received a fragment with that session id or src id
-                if tup == check {
-                    vec_frag.push(fragment.data.clone()); //if it has it copies the data of the fragment inside the vector
-                    hashmap.insert(fragment.fragment_index.clone(), fragment.clone());
-                    if vec_frag.len() as u64 == fragment.total_n_fragments-1{
-                        println!("All fragments of message are received");
-                        self.incoming_message(&hashmap) //da rivedere, solo per provare
-                    }
+    pub fn handle_fragments(& mut self, mut packet: Packet){ //doesn't perfectly respect the protocol
+        let src_id = packet.routing_header.hops.last().unwrap();
+        let check = (packet.session_id, *src_id);
 
+        println!("src_id: {}",src_id);
+
+        let ack = self.ack(&packet);
+        println!("{}", ack);
+        self.send_packet(src_id, ack);
+
+        if let PacketType::MsgFragment(fragment) = packet.pack_type{
+            if !self.incoming_fragments.contains_key(&check){
+                self.incoming_fragments.insert(check, HashMap::new());
+            }
+            self.incoming_fragments
+                .get_mut(&check)
+                .unwrap()
+                .insert(fragment.fragment_index, fragment.clone());
+
+            if let Some(fragments) = self.incoming_fragments.get_mut(&check){
+                if fragments.len() as u64 == fragment.total_n_fragments {
+                    println!("all fragments received");
+                    let incoming_message = ChatResponse::reassemble_msg(&fragments).unwrap();
+                    println!("incoming_message: {:?}", incoming_message);
+
+                    self.incoming_fragments.remove(&check); //removes fragments from tracking
                 }
             }
         }
-    }
-
-    pub fn incoming_message(& self, fragments: &HashMap<u64, Fragment>){
-        //based on the reassembled message i receive something. if it has to act automatically i need to save it somewhere so that i can continue with others, if not just print them and send them back to sim control
-        let incoming_message = ChatResponse::reassemble_msg(&fragments).unwrap();
-        println!("incoming_message: {:?}", incoming_message);
-
     }
 
     pub fn initiate_flooding(&mut self) { //this sends a flood request to its immediate neighbours

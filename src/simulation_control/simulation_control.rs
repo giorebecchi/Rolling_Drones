@@ -21,11 +21,13 @@ use rustbusters_drone::RustBustersDrone;
 use rusteze_drone::RustezeDrone;
 use rustafarian_drone::RustafarianDrone;
 use wg_2024::packet::PacketType::FloodRequest;
+use crate::clients::assembler::Fragmentation;
 use crate::GUI::login_window::UserConfig;
 use crate::network_initializer::network_initializer::parse_config;
 use crate::servers::ChatServer::Server;
 use crate::clients::chat_client::ChatClient;
-use crate::common_things::common::CommandChat;
+use crate::common_things::common::{ChatRequest, ChatResponse, CommandChat, ServerType};
+use crate::common_things::common::ServerType::ComunicationServer;
 
 lazy_static! { static ref CONSOLE_MUTEX: Arc<Mutex<()>> = Arc::new(Mutex::new(())); }
 #[derive(Clone,Resource)]
@@ -443,8 +445,15 @@ pub fn test(mut simulation_controller: ResMut<SimulationController>, config: Res
             client.run();
         });
         {
-            //let mut client_try=client.lock().unwrap();
+             let mut client_try=client.lock().unwrap();
             // client_try.initiate_flooding()
+            // let message = ChatResponse::ServerType(ServerType::ComunicationServer); //do it for both clients(?)
+            // let fragmented_message = message.fragment_message();
+            // let vec_packet = ChatResponse::create_packet(&fragmented_message, vec![0, 1, 12], & mut 0 );
+            // println!("{:?}", vec_packet);
+            // for pack in vec_packet{
+            //     client_try.handle_fragments(pack);
+            // }
         }
         // handles.push(handle);
     }
@@ -480,7 +489,7 @@ pub fn test(mut simulation_controller: ResMut<SimulationController>, config: Res
         let mut controller = controller.lock().unwrap();
         thread::sleep(Duration::from_millis(200));
         // controller.client.get(&0).unwrap().send(CommandChat::SendMessage(11,12,"ciao".to_string())).unwrap();
-         controller.client.get(&0).unwrap().send(CommandChat::ServerType(12)).unwrap();
+        controller.client.get(&0).unwrap().send(CommandChat::ServerType(11)).unwrap(); //star topology
 
         // controller.initiate_flood(Packet{
 
