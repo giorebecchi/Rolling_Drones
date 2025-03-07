@@ -1,9 +1,11 @@
+use std::collections::{HashMap, HashSet};
+use std::sync::{Arc, Mutex};
 use bevy::log::LogPlugin;
 use bevy::prelude::*;
 use bevy::winit::WinitSettings;
-use bevy_dev_tools::states::*;
 use bevy_egui::{egui, EguiContexts, EguiPlugin};
 use bevy_egui::egui::menu;
+use crossbeam_channel::{Receiver, Sender};
 use wg_2024::network::{NodeId, SourceRoutingHeader};
 use crate::GUI::star_decagram::spawn_star_decagram;
 use crate::GUI::double_chain::spawn_double_chain;
@@ -11,15 +13,24 @@ use crate::GUI::butterfly::spawn_butterfly;
 use crate::GUI::tree::spawn_tree;
 use crate::simulation_control::simulation_control::*;
 use egui::widgets::TextEdit;
+use wg_2024::controller::{DroneCommand, DroneEvent};
 use wg_2024::packet::Packet;
 use wg_2024::packet::PacketType::FloodRequest;
+use crate::common_things::common::CommandChat;
 
 #[derive(Component)]
 struct InputText;
-
 #[derive(Resource, Default)]
 struct DroneCrash{
     content: String
+}
+#[derive(Default)]
+pub struct SharedSimState{
+    pub log: String
+}
+#[derive(Resource,Default)]
+pub struct SimState{
+    pub state: Arc<Mutex<SharedSimState>>
 }
 #[derive(Resource, Default)]
 struct NodeEntities(pub Vec<Entity>);
@@ -30,6 +41,17 @@ pub enum NodeType{
     Drone,
     Server,
     Client,
+}
+#[derive(Clone,Resource)]
+pub struct SimulationController {
+    pub drones: HashMap<NodeId, Sender<DroneCommand>>,
+    pub packet_channel: HashMap<NodeId, Sender<Packet>>,
+    pub node_event_send: Sender<DroneEvent>,
+    pub node_event_recv: Receiver<DroneEvent>,
+    pub neighbours: HashMap<NodeId, Vec<NodeId>>,
+    pub client : HashMap<NodeId, Sender<CommandChat>>,
+    pub log: Arc<Mutex<SharedSimState>>,
+    pub seen_floods: HashSet<(NodeId,u64,NodeId)>
 }
 #[derive(Default,Debug,Clone)]
 pub struct NodeConfig{
@@ -53,6 +75,7 @@ pub struct NodesConfig(pub Vec<NodeConfig>);
 
 
 pub fn main() {
+    let shared_state=Arc::new(Mutex::new(SharedSimState::default()));
     App::new()
         .insert_resource(WinitSettings::desktop_app())
         .add_plugins(DefaultPlugins.set(LogPlugin {
@@ -65,16 +88,20 @@ pub fn main() {
         .init_resource::<UserConfig>()
         .init_resource::<NodesConfig>()
         .init_resource::<DroneCrash>()
-        .init_resource::<SimulationController>()
+        .insert_resource(SimulationController{
+            log: shared_state.clone(),
+            ..default()
+        })
         .init_resource::<NodeEntities>()
+        .insert_resource(SimState{
+            state: shared_state.clone(),
+        })
         .init_state::<AppState>()
         .add_systems(Update, ui_settings)
         .add_systems(Startup, setup_camera)
         .add_systems(OnEnter(AppState::InGame), (setup_network,test))
         .add_systems(Update , (draw_connections,set_up_bundle).run_if(in_state(AppState::InGame)))
 
-
-        .add_systems(Update, log_transitions::<AppState>)
         .run();
 }
 
@@ -194,6 +221,7 @@ fn ui_settings(
     mut nodes : ResMut<NodesConfig>,
     mut topology : ResMut<UserConfig>,
     mut sim : ResMut<SimulationController>,
+    mut sim_state: ResMut<SimState>,
     mut node_entities: ResMut<NodeEntities>,
     mut drone_crash: ResMut<DroneCrash>,
     mut next_state: ResMut<NextState<AppState>>
@@ -202,7 +230,7 @@ fn ui_settings(
     if let Some(context)=contexts.try_ctx_mut() {
         let ctx = context;
 
-
+        let state = sim_state.state.lock().unwrap();
         occupied_screen_space.left = egui::SidePanel::left("left_panel")
             .resizable(true)
             .show(ctx, |ui| {
@@ -277,9 +305,8 @@ fn ui_settings(
         occupied_screen_space.right = egui::SidePanel::right("right_panel")
             .resizable(true)
             .show(ctx, |ui| {
-                if sim.access {
-                    ui.label(format!("{}", sim.log));
-                }
+                ui.label("Simulation log");
+                ui.label(&state.log);
                 ui.allocate_rect(ui.available_rect_before_wrap(), egui::Sense::hover());
             })
             .response
