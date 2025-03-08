@@ -6,7 +6,7 @@ use bevy::winit::WinitSettings;
 use bevy_egui::{egui, EguiContexts, EguiPlugin};
 use bevy_egui::egui::menu;
 use crossbeam_channel::{Receiver, Sender};
-use wg_2024::network::{NodeId, SourceRoutingHeader};
+use wg_2024::network::{NodeId};
 use crate::GUI::star_decagram::spawn_star_decagram;
 use crate::GUI::double_chain::spawn_double_chain;
 use crate::GUI::butterfly::spawn_butterfly;
@@ -15,14 +15,17 @@ use crate::simulation_control::simulation_control::*;
 use egui::widgets::TextEdit;
 use wg_2024::controller::{DroneCommand, DroneEvent};
 use wg_2024::packet::Packet;
-use wg_2024::packet::PacketType::FloodRequest;
 use crate::common_things::common::CommandChat;
 
 #[derive(Component)]
 struct InputText;
 #[derive(Resource, Default)]
-struct DroneCrash{
-    content: String
+struct UiCommands{
+    show_crash_window: bool,
+    show_add_sender_window: bool,
+    crash_drone: String,
+    target_sender: String,
+    sender_neighbours: String
 }
 #[derive(Default)]
 pub struct SharedSimState{
@@ -87,7 +90,7 @@ pub fn main() {
         .init_resource::<OccupiedScreenSpace>()
         .init_resource::<UserConfig>()
         .init_resource::<NodesConfig>()
-        .init_resource::<DroneCrash>()
+        .init_resource::<UiCommands>()
         .insert_resource(SimulationController{
             log: shared_state.clone(),
             ..default()
@@ -99,7 +102,7 @@ pub fn main() {
         .init_state::<AppState>()
         .add_systems(Update, ui_settings)
         .add_systems(Startup, setup_camera)
-        .add_systems(OnEnter(AppState::InGame), (setup_network,test))
+        .add_systems(OnEnter(AppState::InGame), (setup_network,start_simulation))
         .add_systems(Update , (draw_connections,set_up_bundle).run_if(in_state(AppState::InGame)))
 
         .run();
@@ -223,8 +226,8 @@ fn ui_settings(
     mut sim : ResMut<SimulationController>,
     mut sim_state: ResMut<SimState>,
     mut node_entities: ResMut<NodeEntities>,
-    mut drone_crash: ResMut<DroneCrash>,
-    mut next_state: ResMut<NextState<AppState>>
+    mut simulation_commands: ResMut<UiCommands>,
+    mut next_state: ResMut<NextState<AppState>>,
 ) {
 
     if let Some(context)=contexts.try_ctx_mut() {
@@ -257,45 +260,88 @@ fn ui_settings(
                             next_state.set(AppState::Menu);
                         }
                     });
-                });
-                ui.label("Simulation Commands");
-                if ui
-                    .add(egui::widgets::Button::new("Crash drone"))
-                    .clicked()
-                {
-                    let id=match drone_crash.content.clone().parse::<u8>(){
-                        Ok(x)=>x,
-                        Err(_)=>panic!("Unexpected input in the Crash field"),
-                    };
-                    sim.crash(id);
-
-
-                    let mut crashed=nodes.0.iter_mut().position(|node| node.id==id).map(|index| nodes.0.remove(index));
-                    if let Some(mut crash)=crashed{
-                        crash.connected_node_ids.clear();
-                    }
-
-                }
-
-                ui.add(TextEdit::singleline(&mut (*drone_crash).content));
-                if ui
-                    .add(egui::widgets::Button::new("Flood"))
-                    .clicked()
-                {
-                    sim.initiate_flood(Packet{
-                        routing_header: SourceRoutingHeader{
-                            hop_index:0,
-                            hops: vec![1],
-                        },
-                        pack_type: FloodRequest(wg_2024::packet::FloodRequest{
-                            flood_id: 10,
-                            initiator_id: 0,
-                            path_trace: vec![(0, wg_2024::packet::NodeType::Client)],
-                        }),
-                        session_id: 20,
+                    ui.menu_button("Simulation Commands", |ui| {
+                        if ui.button("Crash Drone").clicked() {
+                            simulation_commands.show_crash_window = true;
+                        }
+                        if ui.button("Add Sender").clicked {
+                            simulation_commands.show_add_sender_window=true;
+                        }
                     });
+                });
+                if simulation_commands.show_crash_window {
+                    egui::Window::new("Crash")
+                        .open(&mut simulation_commands.show_crash_window.clone())
+                        .show(ctx, |ui| {
+                            ui.label("Choose which drone to crash");
+                            ui.add(TextEdit::singleline(&mut (*simulation_commands).crash_drone));
+                            ui.horizontal(|ui|{
 
+                                if ui.button("Confirm").clicked() {
+
+                                    match simulation_commands.crash_drone.parse::<u8>() {
+                                        Ok(id) => {
+                                            sim.crash(id);
+                                            let mut crashed=nodes.0.iter_mut().position(|node| node.id==id).map(|index| nodes.0.remove(index));
+                                            if let Some(mut crash)=crashed{
+                                                crash.connected_node_ids.clear();
+                                            }
+                                        }
+                                        Err(_) => {eprintln!("not a valid id")},
+                                    }
+
+                                }
+                                if ui.button("Exit").clicked(){
+                                    simulation_commands.show_crash_window=false;
+                                }
+                            });
+                        });
                 }
+                if simulation_commands.show_add_sender_window{
+                    egui::Window::new("Add Sender")
+                        .open(&mut simulation_commands.show_add_sender_window.clone())
+                        .show(ctx, |ui|{
+                            ui.label("Choose the drone to be added");
+                            ui.add(TextEdit::singleline(&mut (*simulation_commands).target_sender));
+                            ui.label("Insert all IDs with a '-' between them");
+                            ui.add(TextEdit::singleline(&mut (*simulation_commands).sender_neighbours));
+                            ui.horizontal(|ui|{
+
+                                if ui.button("Confirm").clicked(){
+                                    let mut target_id=0;
+                                    match simulation_commands.target_sender.parse::<u8>(){
+                                        Ok(id)=>{
+                                            target_id=id;
+                                        },
+                                        Err(_)=>println!("please insert a valid id for the target drone")
+                                    }
+                                    let possible_ids:Vec<String>=simulation_commands.sender_neighbours.split('-').map(String::from).collect();
+                                    for possible_id in possible_ids{
+                                        match possible_id.parse::<u8>(){
+                                            Ok(id)=>{
+                                                sim.add_sender(target_id,id);
+                                                for mut node in &mut nodes.0{
+                                                    if node.id==id{
+                                                        node.connected_node_ids.push(target_id);
+                                                    }
+                                                }
+                                            }
+                                            Err(_)=>println!("please insert a valid id for the neighbour drones")
+                                        }
+                                    }
+
+                                }
+                                if ui.button("Exit").clicked{
+                                    simulation_commands.show_add_sender_window=false;
+                                }
+                            });
+
+
+                        });
+                }
+                if ui
+                    .add(egui::widgets::Button::new("Add"))
+                    .clicked(){}
 
                 ui.allocate_rect(ui.available_rect_before_wrap(), egui::Sense::hover());
             })

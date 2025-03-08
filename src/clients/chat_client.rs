@@ -27,13 +27,12 @@ pub struct ChatClient {
     pub visited_nodes: HashSet<(u64, NodeId)>,
     pub flood: Vec<FloodResponse> ,//to store all the flood responses found
     pub unique_flood_id: u64,
-    pub session_id_packet: u64,
-    pub flooding_end: Arc<Mutex<bool>>,
+    pub session_id_packet: u64
 
 }
 impl ChatClient {
     pub fn new(id: NodeId, receiver_msg: Receiver<Packet>, send_packets: HashMap<NodeId, Sender<Packet>>, receiver_commands: Receiver<CommandChat>, simulation_control: HashMap<NodeId, Sender<Packet>>) -> Self {
-       let mut client = Self {
+       Self {
             config: Client { id, connected_drone_ids: Vec::new() },
             receiver_msg,
             receiver_commands,
@@ -44,29 +43,19 @@ impl ChatClient {
             flood: Vec::new(),
             unique_flood_id: 0,
             session_id_packet: 0,
-            flooding_end: Arc::new(Mutex::new(false)),
-        };
-        client.initiate_flooding();
-        client
+        }
     }
     pub fn run(&mut self) {
-        let mut crash = false;
         self.initiate_flooding();
-        while !crash{
-                select_biased! {
+        loop{
+            select_biased! {
                 recv(self.receiver_commands) -> command =>{
                     if let Ok(command) = command {
-                            match command.clone(){
-                                CommandChat::Crash => {
-                                    crash = true;
-                                },
-                                _ => {}
-                            }
                         self.handle_sim_command(command);
                     }
                 }
                 recv(self.receiver_msg) -> message =>{
-                        if let Ok(message) = message {
+                    if let Ok(message) = message {
                         self.handle_incoming(message)
                     }
                 }
@@ -209,9 +198,6 @@ impl ChatClient {
         // if self.flood.is_empty() {
         //     self.initiate_flooding();
         // }
-        println!("servers: {:?}", self.servers);
-        println!("I've done the flooding");
-
 
         let request = ChatRequest::SendMessage(message, id_server);
         let fragments = ChatRequest::fragment_message(&request);
@@ -294,7 +280,6 @@ impl ChatClient {
     }
 
     pub fn handle_flood_req(& mut self, packet: Packet){
-        println!("sus packet: {}",packet);
         if let PacketType::FloodRequest(mut flood_request) = packet.clone().pack_type {
             if self.visited_nodes.contains(&(flood_request.flood_id, flood_request.initiator_id)) { //case if client has already received the request
                 if let Some(first_hop) = Some(flood_request.path_trace[1].0) {
@@ -312,12 +297,11 @@ impl ChatClient {
 
             if self.send_packets.len() == 1{ //check if the client has only one node connected to it
                 if let Some(first_hop) = Some(flood_request.path_trace[1].0 ) {
-                    println!("first_hop: {}",first_hop);
                     if let Some(sender) = self.send_packets.get(&first_hop){
                         if let Err(e) = sender.send(flood_request.generate_response(packet.session_id)){
                             println!("Error sending the flood request: {}", e)
                         }
-                    }else { println!("No sender found in the case of the client having only 1 connection") }
+                    }else { println!("This is not an error message: \n'No sender found in the case of the client having only 1 connection'") }
                 }else { println!("No next hop found") }
                 return;
             }
@@ -372,12 +356,9 @@ impl ChatClient {
 
     pub fn send_packet(& mut self, destination_id: &NodeId, mut packet: Packet){
         packet.routing_header.hop_index+=1;
-        println!("send_packets: {:?}",self.send_packets);
         if let Some(sender) = self.send_packets.get(&destination_id){
             if let Err(err) = sender.send(packet.clone()){
                 println!("Error sending command: {}", err); //have to send back nack
-            }else{
-                println!("success: {}",packet.routing_header);
             }
         }else { println!("no sender") } //have to send back nack
     }
