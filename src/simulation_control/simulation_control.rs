@@ -1,4 +1,3 @@
-use rand::Rng;
 use crossbeam_channel::{select_biased, unbounded, Receiver, Sender};
 use std::collections::{HashMap, HashSet};
 use std::thread;
@@ -139,15 +138,11 @@ impl SimulationController {
 
     }
 
-    fn pdr(&mut self, id : NodeId) {
+    pub fn pdr(&mut self, id : NodeId, pdr: f32) {
         for (idd, sender) in self.drones.iter() {
             if idd == &id {
-                let mut rng = rand::rng();
-                // Use `gen_range` to generate a number in the range [0.0, 1.0]
-                let mut rand : f32 = rng.random_range(0.0..=1.0);
-                // Round to two decimal places
-                rand = (rand * 100.0).round() / 100.0;
-                sender.send(DroneCommand::SetPacketDropRate(rand)).unwrap()
+                println!("pdr of drone {idd} changed to {pdr}");
+                sender.send(DroneCommand::SetPacketDropRate(pdr)).unwrap()
             }
         }
     }
@@ -165,9 +160,8 @@ impl SimulationController {
         }
     }
 
-    fn remove_sender(&mut self, drone_id: NodeId, nghb_id: NodeId) {///to be reviewed
+    pub fn remove_sender(&mut self, drone_id: NodeId, nghb_id: NodeId) {
         if let Some(drone_sender) = self.drones.get(&drone_id) {
-            // Send the RemoveSender command to the target drone
             if let Err(err) = drone_sender.send(DroneCommand::RemoveSender(nghb_id)) {
                 println!(
                     "Failed to send RemoveSender command to drone {} for neighbor {}: {:?}",
@@ -179,6 +173,9 @@ impl SimulationController {
         } else {
             println!("No drone found with ID {}", drone_id);
         }
+    }
+    pub fn spawn_new_drone(&mut self, drone_id: NodeId, nghb_ids: Vec<NodeId>, drone_type: &str){
+
     }
     fn ack(&mut self, mut packet: Packet) {
         let next_hop=packet.routing_header.hops[packet.routing_header.hop_index +1];

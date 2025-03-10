@@ -23,9 +23,15 @@ struct InputText;
 struct UiCommands{
     show_crash_window: bool,
     show_add_sender_window: bool,
+    show_remove_sender_window: bool,
+    show_set_pdr_window: bool,
     crash_drone: String,
     target_sender: String,
-    sender_neighbours: String
+    sender_neighbours: String,
+    target_remove: String,
+    remove_neighbours: String,
+    pdr: String,
+    pdr_drone: String,
 }
 #[derive(Default)]
 pub struct SharedSimState{
@@ -264,8 +270,14 @@ fn ui_settings(
                         if ui.button("Crash Drone").clicked() {
                             simulation_commands.show_crash_window = true;
                         }
-                        if ui.button("Add Sender").clicked {
+                        if ui.button("Add Sender").clicked() {
                             simulation_commands.show_add_sender_window=true;
+                        }
+                        if ui.button("Remove Sender").clicked(){
+                            simulation_commands.show_remove_sender_window=true;
+                        }
+                        if ui.button("Set Pdr").clicked(){
+                            simulation_commands.show_set_pdr_window=true;
                         }
                     });
                 });
@@ -278,19 +290,17 @@ fn ui_settings(
                             ui.horizontal(|ui|{
 
                                 if ui.button("Confirm").clicked() {
+                                    let id=parse_id(simulation_commands.crash_drone.clone());
 
-                                    match simulation_commands.crash_drone.parse::<u8>() {
-                                        Ok(id) => {
-                                            sim.crash(id);
-                                            let mut crashed=nodes.0.iter_mut().position(|node| node.id==id).map(|index| nodes.0.remove(index));
-                                            if let Some(mut crash)=crashed{
-                                                crash.connected_node_ids.clear();
-                                            }
-                                        }
-                                        Err(_) => {eprintln!("not a valid id")},
+                                    sim.crash(id);
+                                    let mut crashed=nodes.0.iter_mut().position(|node| node.id==id).map(|index| nodes.0.remove(index));
+                                    if let Some(mut crash)=crashed{
+                                        crash.connected_node_ids.clear();
                                     }
 
                                 }
+
+
                                 if ui.button("Exit").clicked(){
                                     simulation_commands.show_crash_window=false;
                                 }
@@ -308,26 +318,19 @@ fn ui_settings(
                             ui.horizontal(|ui|{
 
                                 if ui.button("Confirm").clicked(){
-                                    let mut target_id=0;
-                                    match simulation_commands.target_sender.parse::<u8>(){
-                                        Ok(id)=>{
-                                            target_id=id;
-                                        },
-                                        Err(_)=>println!("please insert a valid id for the target drone")
-                                    }
+                                    let target_id=parse_id(simulation_commands.target_sender.clone());
                                     let possible_ids:Vec<String>=simulation_commands.sender_neighbours.split('-').map(String::from).collect();
                                     for possible_id in possible_ids{
-                                        match possible_id.parse::<u8>(){
-                                            Ok(id)=>{
-                                                sim.add_sender(target_id,id);
-                                                for mut node in &mut nodes.0{
-                                                    if node.id==id{
-                                                        node.connected_node_ids.push(target_id);
-                                                    }
-                                                }
+
+                                        let id=parse_id(possible_id.clone());
+
+                                        sim.add_sender(target_id,id);
+                                        for mut node in &mut nodes.0{
+                                            if node.id==id{
+                                                node.connected_node_ids.push(target_id);
                                             }
-                                            Err(_)=>println!("please insert a valid id for the neighbour drones")
                                         }
+
                                     }
 
                                 }
@@ -337,6 +340,63 @@ fn ui_settings(
                             });
 
 
+                        });
+                }
+                if simulation_commands.show_remove_sender_window{
+                    egui::Window::new("Remove Sender")
+                        .open(&mut simulation_commands.show_remove_sender_window.clone())
+                        .show(ctx, |ui|{
+                            ui.label("Insert the ID of the drone");
+                            ui.add(TextEdit::singleline(&mut simulation_commands.target_remove));
+                            ui.label("Insert the ID(s) of the neighbours you want to be removed\nwith a '-' between them");
+                            ui.add(TextEdit::singleline(&mut simulation_commands.remove_neighbours));
+                            ui.horizontal(|ui|{
+                                if ui.button("Confirm")
+                                    .clicked(){
+                                    let target_id=parse_id(simulation_commands.target_remove.clone());
+                                    let possible_ids:Vec<String>=simulation_commands.remove_neighbours.split('-').map(String::from).collect();
+                                    for possible_id in possible_ids{
+                                        let id=parse_id(possible_id);
+                                        sim.remove_sender(target_id,id);
+                                        for mut node in &mut nodes.0{
+                                            if node.id==target_id{
+                                                for i in 0..node.connected_node_ids.len(){
+                                                    if node.connected_node_ids[i]==id{
+                                                        node.connected_node_ids.remove(i);
+                                                        break;
+                                                    }
+                                                }
+                                            }
+                                        }
+                                    }
+                                }
+                                if ui.button("Exit")
+                                    .clicked(){
+                                    simulation_commands.show_remove_sender_window=false;
+                                }
+                            })
+                    });
+                }
+                if simulation_commands.show_set_pdr_window{
+                    egui::Window::new("Change PDR")
+                        .open(&mut simulation_commands.show_set_pdr_window.clone())
+                        .show(ctx, |ui|{
+                            ui.label("Insert the ID of the drone");
+                            ui.add(TextEdit::singleline(&mut simulation_commands.pdr_drone));
+                            ui.label("Insert the pdr as a float");
+                            ui.add(TextEdit::singleline(&mut simulation_commands.pdr));
+                            ui.horizontal(|ui| {
+                                if ui.button("Confirm")
+                                    .clicked {
+                                    let id = parse_id(simulation_commands.pdr_drone.clone());
+                                    let pdr = simulation_commands.pdr.parse::<f32>().unwrap_or_else(|_| 0.);
+                                    sim.pdr(id, pdr);
+                                }
+                                if ui.button("Exit")
+                                    .clicked() {
+                                    simulation_commands.show_set_pdr_window=false;
+                                }
+                            });
                         });
                 }
                 if ui
@@ -358,6 +418,15 @@ fn ui_settings(
             .response
             .rect
             .width();
+    }
+}
+fn parse_id(id: String)->NodeId{
+    match id.parse::<u8>(){
+        Ok(node_id)=>node_id,
+        Err(_)=>{
+            eprintln!("Error occured while parsing");
+            0
+        }
     }
 }
 
