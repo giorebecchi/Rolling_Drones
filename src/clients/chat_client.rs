@@ -11,7 +11,7 @@ use wg_2024::config;
 use serde::{Serialize, Deserialize};
 use wg_2024::config::{Client};
 use wg_2024::network::{NodeId, SourceRoutingHeader};
-use wg_2024::packet::{FloodRequest, FloodResponse, Fragment, NodeType, Packet, PacketType, FRAGMENT_DSIZE};
+use wg_2024::packet::{FloodRequest, FloodResponse, Fragment, NackType, NodeType, Packet, PacketType, FRAGMENT_DSIZE};
 use crate::clients::assembler::{Fragmentation, Serialization};
 use crate::common_things::common::{ChatRequest, MessageChat, CommandChat, ChatResponse};
 use crate::servers::ChatServer::Server;
@@ -28,7 +28,9 @@ pub struct ChatClient {
     pub flood: Vec<FloodResponse> ,//to store all the flood responses found
     pub unique_flood_id: u64,
     pub session_id_packet: u64,
-    pub incoming_fragments: HashMap<(u64, NodeId ), HashMap<u64, Fragment>>
+    pub incoming_fragments: HashMap<(u64, NodeId ), HashMap<u64, Fragment>>,
+    pub fragments_sent: HashMap<u64, Fragment>, //used for sending the correct fragment if was lost in the process
+    pub problematic_nodes: Vec<NodeId>
 
 }
 impl ChatClient {
@@ -44,7 +46,9 @@ impl ChatClient {
             flood: Vec::new(),
             unique_flood_id: 0,
             session_id_packet: 0,
-            incoming_fragments: HashMap::new()
+            incoming_fragments: HashMap::new(),
+            fragments_sent: HashMap::new(),
+            problematic_nodes: Vec::new(),
         }
     }
     pub fn run(&mut self) {
@@ -100,8 +104,8 @@ impl ChatClient {
             PacketType::MsgFragment(_) => {
                 self.handle_fragments(message);
             },
-            PacketType::Ack(ack) => {},
-            PacketType::Nack(nack) => {},
+            PacketType::Ack(_) => {self.handle_ack(message);},
+            PacketType::Nack(_) => {self.handle_nacks(message);},
             PacketType::FloodRequest(_) => { self.handle_flood_req(message); },
             PacketType::FloodResponse(_) => { self.handle_flood_response(message); },
         }
@@ -114,11 +118,11 @@ impl ChatClient {
             return;
         }
         let request_to_send = ChatRequest::ServerType;
-        let fragmented_request = ChatRequest::fragment_message(&request_to_send);
+        self.fragments_sent = ChatRequest::fragment_message(&request_to_send);
 
         match self.find_route(&id_server) {
             Ok(route) => {
-                let packets_to_send = ChatRequest::create_packet(&fragmented_request, route.clone(), &mut self.session_id_packet);
+                let packets_to_send = ChatRequest::create_packet(&self.fragments_sent, route.clone(), &mut self.session_id_packet);
                 for packet in packets_to_send {
                     if let Some(next_hop) = route.get(1){
                         self.send_packet(next_hop, packet);
@@ -137,11 +141,11 @@ impl ChatClient {
             return;
         }
         let request = ChatRequest::RegisterClient(self.config.id.clone());
-        let fragments = ChatRequest::fragment_message(&request);
+        self.fragments_sent = ChatRequest::fragment_message(&request);
 
         match self.find_route(&id_server) {
             Ok(route) => {
-                let packets_to_send = ChatRequest::create_packet(&fragments, route.clone(),  & mut self.session_id_packet);
+                let packets_to_send = ChatRequest::create_packet(&self.fragments_sent, route.clone(),  & mut self.session_id_packet);
                 for packet in packets_to_send {
                     if let Some(next_hop) = route.get(1){
                         self.send_packet(next_hop, packet);
@@ -160,11 +164,11 @@ impl ChatClient {
             return;
         }
         let request = ChatRequest::GetListClients;
-        let fragments = ChatRequest::fragment_message(&request);
+        self.fragments_sent = ChatRequest::fragment_message(&request);
 
         match self.find_route(&id_server) {
             Ok(route) => {
-                let packets_to_send = ChatRequest::create_packet(&fragments, route.clone(), & mut self.session_id_packet);
+                let packets_to_send = ChatRequest::create_packet(&self.fragments_sent, route.clone(), & mut self.session_id_packet);
                 for packet in packets_to_send {
                     if let Some(next_hop) = route.get(1){
                         self.send_packet(next_hop, packet);
@@ -182,12 +186,13 @@ impl ChatClient {
 
 
         let request = ChatRequest::SendMessage(message, id_server);
-        let fragments = ChatRequest::fragment_message(&request);
+        self.fragments_sent = ChatRequest::fragment_message(&request);
+
 
         match self.find_route(&id_server){
             Ok(route) => {
                 println!("route: {:?}",route);
-                let packets_to_send = ChatRequest::create_packet(&fragments, route.clone(), & mut self.session_id_packet);
+                let packets_to_send = ChatRequest::create_packet(&self.fragments_sent, route.clone(), & mut self.session_id_packet);
                 for packet in packets_to_send {
 
                     println!("route: {}",packet.routing_header);
@@ -210,11 +215,11 @@ impl ChatClient {
         }
 
         let request = ChatRequest::EndChat(self.config.id.clone());
-        let fragments = ChatRequest::fragment_message(&request);
+        self.fragments_sent = ChatRequest::fragment_message(&request);
 
         match self.find_route(&id_server) {
             Ok(route) => {
-                let packets_to_send = ChatRequest::create_packet(&fragments, route.clone(),  & mut self.session_id_packet);
+                let packets_to_send = ChatRequest::create_packet(&self.fragments_sent, route.clone(),  & mut self.session_id_packet);
                 for packet in packets_to_send {
                     if let Some(next_hop) = route.get(1){
                         self.send_packet(next_hop, packet);
@@ -235,7 +240,7 @@ impl ChatClient {
 
         let ack = self.ack(&packet);
         println!("{}", ack);
-        self.send_packet(src_id, ack);
+        self.send_packet(src_id, ack); //ack after receiving a fragment
 
         if let PacketType::MsgFragment(fragment) = packet.pack_type{
             if !self.incoming_fragments.contains_key(&check){
@@ -255,6 +260,33 @@ impl ChatClient {
                     self.incoming_fragments.remove(&check); //removes fragments from tracking
                 }
             }
+        }
+    }
+
+    pub fn handle_nacks(& mut self, mut packet: Packet){
+        if let PacketType::Nack(nack) = packet.pack_type{
+            match nack.nack_type{
+                NackType::ErrorInRouting(id) => {
+                    //need to resend packet changing the route, not including the node specified
+                    println!("resend the request changing route");
+                    self.problematic_nodes.push(id);
+                    //re-compute the route
+
+                }
+                NackType::Dropped => {
+                    //resend packets dropped, which should be the one dropped by the drone and the packet remaining inside of the hashmap
+
+
+                }
+                _ => {}
+
+            }
+        }
+    }
+
+    pub fn handle_ack(& mut self, packet: Packet){
+        if let PacketType::Ack(ack) = packet.pack_type{
+            self.fragments_sent.retain(|index, _| *index != ack.fragment_index); //this filters the hashmap, removing the ones with that index
         }
     }
 
@@ -282,7 +314,6 @@ impl ChatClient {
     }
 
     pub fn handle_flood_req(& mut self, packet: Packet){
-        println!("sus packet: {}",packet);
         if let PacketType::FloodRequest(mut flood_request) = packet.clone().pack_type {
             if self.visited_nodes.contains(&(flood_request.flood_id, flood_request.initiator_id)) { //case if client has already received the request
                 if let Some(first_hop) = Some(flood_request.path_trace[1].0) {
@@ -300,7 +331,6 @@ impl ChatClient {
 
             if self.send_packets.len() == 1{ //check if the client has only one node connected to it
                 if let Some(first_hop) = Some(flood_request.path_trace[1].0 ) {
-                    println!("first_hop: {}",first_hop);
                     if let Some(sender) = self.send_packets.get(&first_hop){
                         if let Err(e) = sender.send(flood_request.generate_response(packet.session_id)){
                             println!("Error sending the flood request: {}", e)
@@ -346,7 +376,7 @@ impl ChatClient {
     pub fn find_route(& mut self, destination_id : &NodeId)-> Result<Vec<NodeId>, String>{
         let mut shortest_route: Option<Vec<NodeId>> = None;
         for flood_resp in &self.flood{
-            if flood_resp.path_trace.contains(&(*destination_id, NodeType::Server)){
+            if flood_resp.path_trace.contains(&(*destination_id, NodeType::Server))&& !flood_resp.path_trace.iter().any(|(id, _)| self.problematic_nodes.contains(id)){
                 let length = flood_resp.path_trace.len();
                 if shortest_route.is_none() || length < shortest_route.as_ref().unwrap().len(){
                     shortest_route = Some(flood_resp.path_trace.iter().map(|(id,_ )| *id).collect());
