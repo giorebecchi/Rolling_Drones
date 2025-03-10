@@ -443,7 +443,7 @@ pub fn test(mut simulation_controller: ResMut<SimulationController>, config: Res
         });
         {
              let mut client_try=client.lock().unwrap();
-            // client_try.initiate_flooding()
+             // client_try.initiate_flooding()
             // let message = ChatResponse::ServerType(ServerType::ComunicationServer); //do it for both clients(?)
             // let fragmented_message = message.fragment_message();
             // let vec_packet = ChatResponse::create_packet(&fragmented_message, vec![0, 1, 12], & mut 0 );
@@ -484,8 +484,8 @@ pub fn test(mut simulation_controller: ResMut<SimulationController>, config: Res
 
         let mut controller = controller.lock().unwrap();
         thread::sleep(Duration::from_millis(200));
-        // controller.client.get(&0).unwrap().send(CommandChat::SendMessage(11,12,"ciao".to_string())).unwrap();
-        controller.client.get(&0).unwrap().send(CommandChat::ServerType(11)).unwrap(); //star topology
+          // controller.client.get(&0).unwrap().send(CommandChat::SendMessage(11,12,"ciao".to_string())).unwrap();
+           controller.client.get(&0).unwrap().send(CommandChat::ServerType(11)).unwrap(); //star topology
 
 
     }
