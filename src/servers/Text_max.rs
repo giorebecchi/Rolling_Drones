@@ -36,7 +36,7 @@ pub struct Server{
 
 
 impl Server {
-    fn new(server_id: NodeId, recv: Receiver<Packet>, send: HashMap<NodeId,Sender<Packet>>, links: Vec<NodeId> ) -> Self {
+    pub fn new(server_id: NodeId, recv: Receiver<Packet>, send: HashMap<NodeId,Sender<Packet>>, links: Vec<NodeId> ) -> Self {
         let mut n = Vec::new();
         n.push((server_id, links));
         Server {
@@ -51,7 +51,7 @@ impl Server {
             file_list: Vec::new(),
         }
     }
-    fn run(&mut self) {
+    pub fn run(&mut self) {
         self.floading();
         loop {
             select_biased! {

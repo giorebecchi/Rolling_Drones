@@ -1,5 +1,6 @@
 use std::collections::{HashMap, HashSet};
 use std::sync::{Arc, Mutex};
+use std::thread::JoinHandle;
 use bevy::log::LogPlugin;
 use bevy::prelude::*;
 use bevy::winit::WinitSettings;
@@ -69,6 +70,7 @@ pub struct NodeConfig{
     pub position: Vec2,
     pub connected_node_ids: Vec<NodeId>,
 }
+
 impl NodeConfig {
     pub fn new(node_type: NodeType, id: NodeId, position: Vec2, connected_node_ids: Vec<NodeId>)->Self{
         Self{
@@ -233,7 +235,7 @@ fn ui_settings(
     mut sim_state: ResMut<SimState>,
     mut node_entities: ResMut<NodeEntities>,
     mut simulation_commands: ResMut<UiCommands>,
-    mut next_state: ResMut<NextState<AppState>>,
+    mut next_state: ResMut<NextState<AppState>>
 ) {
 
     if let Some(context)=contexts.try_ctx_mut() {
@@ -262,6 +264,7 @@ fn ui_settings(
                             for entity in node_entities.0.clone(){
                                 commands.entity(entity).despawn_recursive();
                             }
+                            sim.crash_all();
                             node_entities.0.clear();
                             next_state.set(AppState::Menu);
                         }
