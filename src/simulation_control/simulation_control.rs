@@ -315,7 +315,7 @@ pub fn start_simulation(mut simulation_controller: ResMut<SimulationController>,
         });
 
         {
-             let mut client_try=client.lock().unwrap();
+             //let mut client_try=client.lock().unwrap();
              // client_try.initiate_flooding()
             // let message = ChatResponse::ServerType(ServerType::CommunicationServer); //do it for both clients(?)
             // let fragmented_message = message.fragment_message();
