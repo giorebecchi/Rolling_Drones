@@ -31,7 +31,6 @@ pub struct ChatClient {
     pub incoming_fragments: HashMap<(u64, NodeId ), HashMap<u64, Fragment>>,
     pub fragments_sent: HashMap<u64, Fragment>, //used for sending the correct fragment if was lost in the process
     pub problematic_nodes: Vec<NodeId>
-
 }
 impl ChatClient {
     pub fn new(id: NodeId, receiver_msg: Receiver<Packet>, send_packets: HashMap<NodeId, Sender<Packet>>, receiver_commands: Receiver<CommandChat>, simulation_control: HashMap<NodeId, Sender<Packet>>) -> Self {
@@ -52,23 +51,16 @@ impl ChatClient {
         }
     }
     pub fn run(&mut self) {
-        let mut crash = false;
         self.initiate_flooding();
-        while !crash{
-                select_biased! {
+        loop{
+            select_biased! {
                 recv(self.receiver_commands) -> command =>{
                     if let Ok(command) = command {
-                            match command.clone(){
-                                CommandChat::Crash => {
-                                    crash = true;
-                                },
-                                _ => {}
-                            }
                         self.handle_sim_command(command);
                     }
                 }
                 recv(self.receiver_msg) -> message =>{
-                        if let Ok(message) = message {
+                    if let Ok(message) = message {
                         self.handle_incoming(message)
                     }
                 }
@@ -183,7 +175,6 @@ impl ChatClient {
     pub fn send_message(&mut self, message: MessageChat, id_server: NodeId) {
         println!("servers: {:?}", self.servers);
         println!("I've done the flooding");
-
 
         let request = ChatRequest::SendMessage(message, id_server);
         self.fragments_sent = ChatRequest::fragment_message(&request);
@@ -347,7 +338,7 @@ impl ChatClient {
                         if let Err(e) = sender.send(flood_request.generate_response(packet.session_id)){
                             println!("Error sending the flood request: {}", e)
                         }
-                    }else { println!("No sender found in the case of the client having only 1 connection") }
+                    }else { println!("This is not an error message: \n'No sender found in the case of the client having only 1 connection'") }
                 }else { println!("No next hop found") }
                 return;
             }
@@ -415,12 +406,9 @@ impl ChatClient {
 
     pub fn send_packet(& mut self, destination_id: &NodeId, mut packet: Packet){
         packet.routing_header.hop_index+=1;
-        println!("send_packets: {:?}",self.send_packets);
         if let Some(sender) = self.send_packets.get(&destination_id){
             if let Err(err) = sender.send(packet.clone()){
                 println!("Error sending command: {}", err); //have to send back nack
-            }else{
-                println!("success: {}",packet.routing_header);
             }
         }else { println!("no sender") } //have to send back nack
     }
