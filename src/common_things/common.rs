@@ -50,8 +50,8 @@ pub struct MessageWeb{
 
 #[derive(Clone, Serialize, Deserialize, Debug)]
 pub enum ServerType{
-    ComunicationServer,
-    TesxtServer,
+    CommunicationServer,
+    TextServer,
     MediaServer
 }
 

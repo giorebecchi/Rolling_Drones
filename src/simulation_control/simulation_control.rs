@@ -19,11 +19,13 @@ use rustbusters_drone::RustBustersDrone;
 use rusteze_drone::RustezeDrone;
 use rustafarian_drone::RustafarianDrone;
 use wg_2024::packet::PacketType::FloodRequest;
+use crate::clients::assembler::Fragmentation;
 use crate::GUI::login_window::{SharedSimState, SimulationController, UserConfig};
 use crate::network_initializer::network_initializer::parse_config;
 use crate::servers::ChatServer::Server;
 use crate::clients::chat_client::ChatClient;
-use crate::common_things::common::CommandChat;
+use crate::common_things::common::{ChatRequest, ChatResponse, CommandChat, ServerType};
+use crate::common_things::common::ServerType::CommunicationServer;
 
 
 
@@ -311,6 +313,19 @@ pub fn start_simulation(mut simulation_controller: ResMut<SimulationController>,
         thread::spawn(move || {
             client_instance.lock().unwrap().run();
         });
+
+        {
+             let mut client_try=client.lock().unwrap();
+             // client_try.initiate_flooding()
+            // let message = ChatResponse::ServerType(ServerType::CommunicationServer); //do it for both clients(?)
+            // let fragmented_message = message.fragment_message();
+            // let vec_packet = ChatResponse::create_packet(&fragmented_message, vec![0, 1, 12], & mut 0 );
+            // println!("{:?}", vec_packet);
+            // for pack in vec_packet{
+            //     client_try.handle_fragments(pack);
+            // }
+        }
+        // handles.push(handle);
     }
 
     simulation_controller.node_event_send = node_event_send.clone();
@@ -335,6 +350,7 @@ pub fn start_simulation(mut simulation_controller: ResMut<SimulationController>,
     thread::spawn(move || {
         controller.lock().unwrap().run();
     });
+
 
     thread::sleep(Duration::from_millis(200));
     simulation_controller.client.get(&0).unwrap()
