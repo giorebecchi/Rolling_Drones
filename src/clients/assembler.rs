@@ -140,7 +140,7 @@ pub fn main(){
     }
     println!();
 
-    let server_type = ServerType::ComunicationServer;
+    let server_type = ServerType::CommunicationServer;
 
     let serialized_server = server_type.stringify();
     println!("serialized server: {}", serialized_server);

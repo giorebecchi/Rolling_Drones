@@ -275,6 +275,18 @@ impl ChatClient {
                 }
                 NackType::Dropped => {
                     //resend packets dropped, which should be the one dropped by the drone and the packet remaining inside of the hashmap
+                    // let route = packet.routing_header.hops.into_iter().rev().collect::<Vec<NodeId>>();
+                    // println!("{:?}", route);
+                    //  let send_packet = ChatRequest::create_packet(&self.fragments_sent, route.clone(), & mut self.session_id_packet);
+                     self.problematic_nodes.push(*packet.routing_header.hops.get(0).unwrap());
+                    let destination_id = 11;
+                    match self.find_route(&destination_id){
+                        Ok(route) => {
+                            println!("route: {:?}",route);
+                        }
+                        Err(_) => {println!("No route found for the destination client")}
+                    }
+
 
 
                 }
@@ -375,11 +387,24 @@ impl ChatClient {
 
     pub fn find_route(& mut self, destination_id : &NodeId)-> Result<Vec<NodeId>, String>{
         let mut shortest_route: Option<Vec<NodeId>> = None;
-        for flood_resp in &self.flood{
-            if flood_resp.path_trace.contains(&(*destination_id, NodeType::Server))&& !flood_resp.path_trace.iter().any(|(id, _)| self.problematic_nodes.contains(id)){
-                let length = flood_resp.path_trace.len();
-                if shortest_route.is_none() || length < shortest_route.as_ref().unwrap().len(){
-                    shortest_route = Some(flood_resp.path_trace.iter().map(|(id,_ )| *id).collect());
+        // for flood_resp in &self.flood{
+        //     if flood_resp.path_trace.contains(&(*destination_id, NodeType::Server))&& !flood_resp.path_trace.iter().any(|(id, _)| self.problematic_nodes.contains(id)){
+        //         let length = flood_resp.path_trace.len();
+        //         if shortest_route.is_none() || length < shortest_route.as_ref().unwrap().len(){
+        //             shortest_route = Some(flood_resp.path_trace.iter().map(|(id,_ )| *id).collect());
+        //         }
+        //     }
+        // }
+        for flood_resp in &self.flood {
+            if flood_resp.path_trace.contains(&(*destination_id, NodeType::Server)) {
+                let route: Vec<NodeId> = flood_resp.path_trace.iter().map(|(id, _)| *id).collect();
+
+                // Ensure the route does not contain any problematic nodes
+                if !route.iter().any(|id| self.problematic_nodes.contains(id)) {
+                    let length = route.len();
+                    if shortest_route.is_none() || length < shortest_route.as_ref().unwrap().len() {
+                        shortest_route = Some(route);
+                    }
                 }
             }
         }
