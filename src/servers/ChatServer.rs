@@ -37,6 +37,7 @@ impl Server{
         }
     }
     pub(crate) fn run(&mut self) {
+        self.flooding();
         loop {
             select_biased!{
                 recv(self.packet_recv) -> packet => {
@@ -191,7 +192,7 @@ impl Server{
             flood_id = i.flood_id+1;
         }
         let flood = packet::Packet{
-            routing_header: SourceRoutingHeader{hop_index:1, hops:Vec::new()},
+            routing_header: SourceRoutingHeader::empty_route(),
             session_id: flood_id,
             pack_type: PacketType::FloodRequest(FloodRequest{
                 flood_id,
@@ -200,11 +201,12 @@ impl Server{
             }),
         };
         for (id,neighbour) in self.packet_send.clone(){
-            neighbour.send(flood.clone()).unwrap();
+            if let Err(_)=neighbour.send(flood.clone()){
+                println!("error flood request");
+            };
         }
     }
     fn get_route(&mut self, id:NodeId, nt:NodeType)->SourceRoutingHeader{
-        self.flooding();
         let mut possible_route=Vec::new();
         for i in self.flooding.iter(){
             if i.path_trace.contains(&(id,nt)){
