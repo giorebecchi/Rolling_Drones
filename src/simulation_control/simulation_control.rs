@@ -215,16 +215,9 @@ impl SimulationController {
     }
 }
 pub fn start_simulation(
-    mut simulation_controller: ResMut<SimulationController>,
-    config: Res<UserConfig>
+    mut simulation_controller: ResMut<SimulationController>
 ) {
-    let file_path = match (*config).0.as_str() {
-        "star" => "assets/configurations/star.toml",
-        "double_chain" => "assets/configurations/double_chain.toml",
-        "butterfly" => "assets/configurations/butterfly.toml",
-        "tree" => "assets/configurations/tree.toml",
-        _ => "assets/configurations/star.toml",
-    };
+    let file_path = "assets/configurations/double_chain.toml";
 
     let config = parse_config(file_path);
 
@@ -292,7 +285,6 @@ pub fn start_simulation(
         //let links=cfg_server.connected_drone_ids.iter()
         //    .map(|nid| *nid)
         //    .collect::<Vec<NodeId>>();
-//
         //let server_max = Arc::new(Mutex::new(ServerMax::new(cfg_server.id, rcv, packet_send,links)));
         let server_baia = Arc::new(Mutex::new(Server::new(cfg_server.id,rcv,packet_send)));
 
@@ -388,7 +380,7 @@ fn create_drone(
         7 => Some(Box::new(RustBustersDrone::new(id, node_event_send, controller_drone_recv, packet_recv, packet_send, pdr))),
         8 => Some(Box::new(RustezeDrone::new(id, node_event_send, controller_drone_recv, packet_recv, packet_send, pdr))),
         9 => Some(Box::new(RustafarianDrone::new(id, node_event_send, controller_drone_recv, packet_recv, packet_send, pdr))),
-        _ => None,
+        _ => Some(Box::new(LockheedRustin::new(id, node_event_send, controller_drone_recv, packet_recv, packet_send, pdr))),
     }
 }
 
