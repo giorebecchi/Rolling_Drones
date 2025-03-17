@@ -25,7 +25,7 @@ impl Server{
     pub fn new(id:NodeId, packet_recv: Receiver<Packet>, packet_send: HashMap<NodeId,Sender<Packet>>)->Self{
         Self{
             server_id:id,
-            server_type: ServerType::ComunicationServer,
+            server_type: ServerType::CommunicationServer,
             session_id:0,
             registered_clients: Vec::new(),
             flooding: Vec::new(),

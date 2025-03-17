@@ -50,9 +50,29 @@ pub struct MessageWeb{
 
 #[derive(Clone, Serialize, Deserialize, Debug)]
 pub enum ServerType{
-    ComunicationServer,
-    TesxtServer,
+    CommunicationServer,
+    TextServer,
     MediaServer
 }
 
+// client to server
+#[derive(Serialize, Deserialize, Debug)]
+pub enum TextRequest{
+    ServerType(NodeId),     // id del client
+    GetFiles(NodeId),       // id del client
+    File(NodeId, String),   // id del client, Nome del file
+}
+// ho pensato di far inserire l'id del client direttamente li perchè così è più facile per me da raggiungere
+// anzicchè dovermelo ricavare dal pacchetto, comunque si può sempre cambiare come cosa
+
+
+
+
+// server to client
+#[derive(Serialize, Deserialize, Debug)]
+pub enum TextResponse{
+    ServerType(ServerType),
+    FileList(Vec<String>),
+    File(String),           // la stringa con tutto il file di testo
+}
 //poi bisogna fare la stessa cosa anche per il text e media

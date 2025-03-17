@@ -2,47 +2,64 @@ use bevy::prelude::*;
 use crate::GUI::login_window::{NodeConfig, NodeType};
 use crate::network_initializer::network_initializer::parse_config;
 
-pub fn spawn_butterfly()->Vec<NodeConfig> {
-    let config= parse_config("assets/configurations/butterfly.toml");
-    let horizontal_spacing=100.;
-    let vertical_offset=50.;
+pub fn spawn_butterfly() -> Vec<NodeConfig> {
+    let config = parse_config("assets/configurations/butterfly.toml");
+    let horizontal_spacing = 100.0;
+    let vertical_spacing = 60.0;
 
-    let mut top_position= Vec::with_capacity(4);
-    let mut middle_position = Vec::with_capacity(4);
-    let mut bottom_position= Vec::with_capacity(2);
-
-    let mut drones= Vec::new();
-
-    for (i,drone) in config.drone.into_iter().enumerate(){
-        if i<4 {
-            let x = (i as f32 - (4 - 1) as f32 / 2.0) * horizontal_spacing;
-            let y = vertical_offset;
-
-
-            top_position.push(Vec2::new(x, y));
-            let node = NodeConfig::new(NodeType::Drone, drone.id, Vec2::new(x, y), drone.connected_node_ids.clone());
-            drones.push(node);
-        }
-        else if i>=4 && i<8{
-            let x = ((i-4) as f32 - (4 - 1) as f32 / 2.0) * horizontal_spacing;
-            let y = -vertical_offset;
-
-
-
-            middle_position.push(Vec2::new(x, y));
-            let node = NodeConfig::new(NodeType::Drone, drone.id, Vec2::new(x, y), drone.connected_node_ids.clone());
-            drones.push(node);
-        }else if i>=8{
-            let x = ((i-8) as f32 - (2 - 1) as f32 / 2.0) * horizontal_spacing;
-            let y = -(vertical_offset*3.0);
-
-
-
-            bottom_position.push(Vec2::new(x, y));
-            let node = NodeConfig::new(NodeType::Drone, drone.id, Vec2::new(x, y), drone.connected_node_ids.clone());
-            drones.push(node);
-        }
+    let mut all_nodes = Vec::new();
+    for drone in config.drone {
+        all_nodes.push((NodeType::Drone, drone.id, drone.connected_node_ids));
     }
-    drones
+    for client in config.client {
+        all_nodes.push((NodeType::Client, client.id, client.connected_drone_ids));
+    }
+    for server in config.server {
+        all_nodes.push((NodeType::Server, server.id, server.connected_drone_ids));
+    }
 
+    let node_count = all_nodes.len();
+    let mut nodes = Vec::with_capacity(node_count);
+    let mut node_index = 0;
+
+    // Always fixed structure for the first three layers
+    let base_structure = [2, 4, 4];
+    let mut current_y = -vertical_spacing * 3.0;
+
+    for &count in &base_structure {
+        let x_offset = (count as f32 - 1.0) * horizontal_spacing / 2.0;
+        for i in 0..count {
+            if node_index >= node_count { break; }
+            let x = (i as f32 * horizontal_spacing) - x_offset;
+            let (node_type, id, connected_ids) = &all_nodes[node_index];
+            nodes.push(NodeConfig::new(
+                node_type.clone(),
+                *id,
+                Vec2::new(x, current_y),
+                connected_ids.clone()
+            ));
+            node_index += 1;
+        }
+        current_y += vertical_spacing;
+    }
+
+    // If more than 10 nodes, add additional layers of 4 nodes each
+    while node_index < node_count {
+        let nodes_in_row = (node_count - node_index).min(4);
+        let x_offset = (nodes_in_row as f32 - 1.0) * horizontal_spacing / 2.0;
+        for i in 0..nodes_in_row {
+            let x = (i as f32 * horizontal_spacing) - x_offset;
+            let (node_type, id, connected_ids) = &all_nodes[node_index];
+            nodes.push(NodeConfig::new(
+                node_type.clone(),
+                *id,
+                Vec2::new(x, current_y),
+                connected_ids.clone()
+            ));
+            node_index += 1;
+        }
+        current_y += vertical_spacing;
+    }
+
+    nodes
 }
