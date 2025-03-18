@@ -311,13 +311,14 @@ pub fn start_simulation(
             rcv_command,
             packet_send,
         )));
+        let ch_client=Arc::clone(&client_instance);
 
         thread::spawn(move || {
             client_instance.lock().unwrap().run();
         });
 
         {
-             //let mut client_try=client.lock().unwrap();
+             let mut client_try=ch_client.lock().unwrap();
              // client_try.initiate_flooding()
             // let message = ChatResponse::ServerType(ServerType::CommunicationServer); //do it for both clients(?)
             // let fragmented_message = message.fragment_message();
@@ -354,9 +355,13 @@ pub fn start_simulation(
 
 
     thread::sleep(Duration::from_millis(200));
+    // simulation_controller.client.get(&0).unwrap()
+    //     .send(CommandChat::SendMessage(11, 12, "ciao".to_string()))
+    //     .unwrap();
+
     simulation_controller.client.get(&0).unwrap()
-        .send(CommandChat::SendMessage(11, 12, "ciao".to_string()))
-        .unwrap();
+        .send(CommandChat::ServerType(11)).unwrap();
+
 }
 
 
