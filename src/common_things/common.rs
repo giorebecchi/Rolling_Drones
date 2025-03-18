@@ -70,9 +70,11 @@ pub enum TextRequest{
 
 // server to client
 #[derive(Serialize, Deserialize, Debug)]
+
 pub enum TextResponse{
     ServerType(ServerType),
     FileList(Vec<String>),
-    File(String),           // la stringa con tutto il file di testo
+    File(String), // la stringa con tutto il file di testo
+    Error(String),
 }
 //poi bisogna fare la stessa cosa anche per il text e media
