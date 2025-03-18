@@ -9,6 +9,10 @@ use bevy::render::render_resource::encase::private::RuntimeSizedArray;
 use wg_2024::network::{NodeId, SourceRoutingHeader};
 use wg_2024::packet::{Ack, FloodRequest, FloodResponse, Fragment, Nack, NackType, NodeType, Packet, PacketType};
 use std::cmp::Ordering;
+use bevy::utils::HashSet;
+
+
+
 
 #[derive(Eq, PartialEq)]
 struct State {
@@ -26,19 +30,21 @@ impl PartialOrd for State {
     }
 }
 
-#[derive(Clone)]
+
+#[derive(Clone, Debug)]
 struct Data{
     counter: u64,
-    dati: Box<[[u8; 128]]>,
+    dati: Box<[([u8; 128], u8)]>,
     who_ask: NodeId,
 }
 impl Data {
-    fn new(data: [u8; 128], position: u64, total: u64, count: u64, asker: NodeId) -> Data {
-        let mut v = vec![[0;128]; total as usize].into_boxed_slice();
-        v[position as usize-1] = data;
+    fn new(data: ([u8; 128], u8) , position: u64, total: u64, count: u64, asker: NodeId) -> Data {
+        let mut v = vec![([0;128], 0); total as usize].into_boxed_slice();
+        v[position as usize] = data;
         Data{counter: count, dati: v, who_ask: asker }
     }
 }
+
 
 pub struct Server{
     server_id: NodeId,
@@ -48,7 +54,8 @@ pub struct Server{
     fragment_send: HashMap<u64, Data>,
     packet_recv: Receiver<Packet>,
     pub packet_send: HashMap<NodeId, Sender<Packet>>,
-    file_list: Vec<String>
+    file_list: Vec<String>,
+    already_visited: HashSet<(NodeId, u64)>,
 }
 impl Server {
     fn new(server_id: NodeId, recv: Receiver<Packet>, send: HashMap<NodeId,Sender<Packet>> ) -> Self {
@@ -56,6 +63,8 @@ impl Server {
         for i in send.clone(){
             links.push(i.0.clone());
         }
+
+
         Server {
             server_id,
             server_type: ServerType::TextServer,
@@ -65,24 +74,26 @@ impl Server {
             packet_recv: recv,
             packet_send: send,
             file_list: Vec::new(),
+            already_visited: HashSet::new(),
         }
     }
     fn run(&mut self) {
         self.floading();
         loop {
             select_biased! {
-                       recv(self.packet_recv) -> packet => {
-                           if let Ok(packet) = packet {
-                               self.handle_packet(packet);
-                           }
-                           else{
-                               break
-                           }
-                       },
-                   }
+                      recv(self.packet_recv) -> packet => {
+                          if let Ok(packet) = packet {
+                              self.handle_packet(packet);
+                          }
+                          else{
+                              break
+                          }
+                      },
+                  }
         }
     }
     fn handle_packet(&mut self, packet: Packet) {
+        println!("Handling packet {:?}", packet);
         let p = packet.clone();
         match packet.pack_type {
             PacketType::MsgFragment(fragment) => {
@@ -107,23 +118,29 @@ impl Server {
         }
     }
     fn handle_message(&mut self, fragment: Fragment, session: &u64, packet: Packet) {
+        println!("Handling fragment {:?}", fragment);
+
+
         let ack = create_ack(packet.clone());
         self.send_packet(ack);
         if let Some(boxed) = self.fragment_recv.get_mut(&session) {
             let d = fragment.data;
-            boxed.dati[fragment.fragment_index as usize] = d;
+            let number = fragment.length;
+            boxed.dati[fragment.fragment_index as usize] = (d, number);
             boxed.counter += 1;
             if boxed.counter == fragment.total_n_fragments-1 {
                 self.handle_command(session);
             }
         }else{
             let asker = packet.routing_header.hops[0];
-            let d = fragment.data;
-            let data = Data::new(d, fragment.fragment_index, fragment.total_n_fragments, 0, asker);
+            let number = fragment.length;
+            let d = (fragment.data, number);
+            let data = Data::new(d, fragment.fragment_index, fragment.total_n_fragments, 1, asker);
             self.fragment_recv.insert(*session, data);
         }
     }
     fn handle_ack(&mut self, fragment: Ack, session: &u64) {
+        println!("Handling ack fragment {:?}", fragment);
         if let Some(boxed) = self.fragment_send.get_mut(&session) {
             boxed.counter -= 1;
             if boxed.counter == 0 {
@@ -132,6 +149,7 @@ impl Server {
         }
     }
     fn handle_nack(&mut self, fragment: Nack, position: &u64, session: &u64, packet: Packet) {
+        println!("Handling nack fragment {:?}", fragment);
         if let Some(boxed) = self.fragment_send.get_mut(&session) {
             match fragment.nack_type{
                 NackType::ErrorInRouting(id) => {
@@ -145,11 +163,12 @@ impl Server {
                         Some(root) => {
                             let total = self.fragment_send.get(&session).unwrap().dati.len() -1;
                             let source = SourceRoutingHeader::new(root, 1);
-                            let fr= Fragment::new(*position, total as u64, self.fragment_send.get(&session).unwrap().dati[destination as usize]);
+                            let fr= Fragment::new(*position, total as u64, self.fragment_send.get(&session).unwrap().dati[destination as usize].0);
                             let pack = Packet::new_fragment(source, *session, fr );
                             self.send_packet(pack)
                         }
                     }
+
 
                 }
                 NackType::Dropped => {
@@ -162,7 +181,7 @@ impl Server {
                         Some(root) => {
                             let total = self.fragment_send.get(&session).unwrap().dati.len() -1;
                             let source = SourceRoutingHeader::new(root, 1);
-                            let fr= Fragment::new(*position, total as u64, self.fragment_send.get(&session).unwrap().dati[destination as usize]);
+                            let fr= Fragment::new(*position, total as u64, self.fragment_send.get(&session).unwrap().dati[destination as usize].0);
                             let pack = Packet::new_fragment(source, *session, fr );
                             self.send_packet(pack)
                         }
@@ -172,26 +191,77 @@ impl Server {
             }
         }
     }
-    fn handle_flood_request(&mut self, packet: Packet) {
-        if let PacketType::FloodRequest(mut flood) = packet.pack_type {
-            flood.path_trace.push((self.server_id, NodeType::Server));
-            let response_packet = flood.generate_response(packet.session_id);
-            self.send_packet(response_packet);
-        }
-    }
-    fn handle_flood_response(&mut self, packet: Packet) {
-        if let PacketType::FloodResponse(flood_response) = packet.pack_type {
-            let len = flood_response.path_trace.len();
-            let n = flood_response.path_trace.last().unwrap().0;
-            if self.nodes_map.iter().find(|&x| x.0 == n).is_some(){
-                let previous = flood_response.path_trace[len - 2].0;
-                for mut i in self.nodes_map.iter_mut().rev(){
-                    if i.0 == n{
-                        i.1.push(previous)
+    fn handle_flood_request(&mut self, packet : Packet){
+        println!("Handling flood request {:?}", packet);
+        if let PacketType::FloodRequest(mut flood) = packet.pack_type{
+            if self.already_visited.contains(&(flood.initiator_id, flood.flood_id)){
+                let response = FloodRequest::generate_response(&flood, packet.session_id);
+                self.send_packet(response);
+                return;
+            }else {
+                self.already_visited.insert((flood.initiator_id, flood.flood_id));
+                if self.packet_send.len()==1{
+                    let response = FloodRequest::generate_response(&flood, packet.session_id);
+                    self.send_packet(response);
+                }else {
+                    flood.path_trace.push((self.server_id, NodeType::Server));
+                    let new_packet = Packet{
+                        pack_type : PacketType::FloodRequest(flood.clone()),
+                        routing_header: packet.routing_header,
+                        session_id: packet.session_id,
+                    };
+                    let (previous, _) = flood.path_trace[flood.path_trace.len() - 2];
+                    for (idd, neighbour) in self.packet_send.clone() {
+                        if idd == previous {
+                        } else {
+                            neighbour.send(new_packet.clone()).unwrap();
+                        }
                     }
                 }
             }
+        }
+    }
+    fn handle_flood_response(&mut self, packet: Packet) {
+        println!("Handling flood response {:?}", packet);
+        if let PacketType::FloodResponse(flood_response) = packet.pack_type {
 
+
+            let len = flood_response.path_trace.len();
+            if len < 2 {
+                return; // Se la traccia è troppo corta, non ci sono connessioni da aggiungere
+            }
+            for i in 0..len - 1 {
+                let current_node = flood_response.path_trace[i].0;
+                let next_node = flood_response.path_trace[i + 1].0;
+
+
+                // Trova o aggiungi il nodo corrente
+                let node_entry = self.nodes_map.iter_mut().find(|k| k.0 == current_node);
+                match node_entry {
+                    Some(k) => {
+                        if !k.1.contains(&next_node) {
+                            k.1.push(next_node);
+                        }
+                    }
+                    None => {
+                        self.nodes_map.push((current_node, vec![next_node]));
+                    }
+                }
+
+
+                // Trova o aggiungi il nodo successivo
+                let next_entry = self.nodes_map.iter_mut().find(|k| k.0 == next_node);
+                match next_entry {
+                    Some(k) => {
+                        if !k.1.contains(&current_node) {
+                            k.1.push(current_node);
+                        }
+                    }
+                    None => {
+                        self.nodes_map.push((next_node, vec![current_node]));
+                    }
+                }
+            }
         }
     }
     fn remove_drone(&mut self, node_id: NodeId) {
@@ -216,14 +286,17 @@ impl Server {
         let mut table: HashMap<NodeId, (i64, Option<NodeId>)> = HashMap::new();
         let mut queue: BinaryHeap<State> = BinaryHeap::new();
 
+
         // Inizializza la tabella delle distanze
         for (node_id, _) in &self.nodes_map {
             table.insert(*node_id, (i64::MAX, None));
         }
         table.insert(self.server_id, (0, None));
 
+
         // Inseriamo il nodo sorgente nella coda
         queue.push(State { node: self.server_id, cost: 0 });
+
 
         while let Some(State { node, cost }) = queue.pop() {
             // Se abbiamo trovato la destinazione, possiamo ricostruire il percorso
@@ -239,10 +312,12 @@ impl Server {
                 return Some(path);
             }
 
+
             // Se il costo attuale è maggiore di quello già registrato, saltiamo
             if cost > table.get(&node).unwrap().0 {
                 continue;
             }
+
 
             // Iteriamo sui vicini
             if let Some((_, neighbors)) = self.nodes_map.iter().find(|(id, _)| *id == node) {
@@ -255,6 +330,7 @@ impl Server {
                 }
             }
         }
+
 
         // Se il ciclo termina senza trovare la destinazione, non esiste un percorso valido
         None
@@ -310,6 +386,7 @@ impl Server {
     }
     fn send_response(&mut self, id: NodeId, response: TextResponse, session: &u64) {
 
+
         let dati = serialize_text_response(&response);
         let total = dati.len();
         let data = self.fragment_recv.get(session).cloned().unwrap();
@@ -324,22 +401,27 @@ impl Server {
                 }
                 Some(root) => {
                     let routing = SourceRoutingHeader{hop_index:1, hops: root};
-                    let data_to_send = data.dati[i];
-                    let fragment =  Fragment{fragment_index: i as u64, total_n_fragments: total as u64, length: 128, data: data_to_send };
+                    let data_to_send = data.dati[i].0;
+                    let len = data.dati[i].1;
+                    let fragment =  Fragment{fragment_index: i as u64, total_n_fragments: total as u64, length: len, data: data_to_send };
                     let p = Packet{routing_header: routing, session_id: *session, pack_type: PacketType::MsgFragment(fragment)};
                     self.send_packet(p)
                 }
             }
 
+
         }
     }
 
+
 }
+
 
 fn get_file(file_name: String) -> Option<String> {
     let file_path = Path::new("Files").join(file_name);
     fs::read_to_string(file_path).ok()
 }
+
 
 fn create_ack(packet: Packet) ->Packet {
     let mut vec = Vec::new();
@@ -364,24 +446,30 @@ fn create_ack(packet: Packet) ->Packet {
     pack
 }
 
-pub(crate) fn main() {
+
+pub(crate) fn main() -> () {
     // ID del server
     let server_id: NodeId = 0;
 
+
     // Simuliamo una rete connessa: ad esempio, il server è collegato direttamente ai nodi 2 e 3
-    let direct_neighbors = vec![1, 4];
+    let direct_neighbors = vec![1, 4, 6];
+
 
     // Canali per ricezione pacchetti del server
     let (packet_send_server, packet_recv_server) = unbounded();
+
 
     // Mappa dei canali di comunicazione (solo i vicini diretti)
     let mut packet_send_map: HashMap<NodeId, _> = HashMap::new();
     packet_send_map.insert(server_id, packet_send_server.clone());
 
+
     // Creiamo i canali per i nodi vicini e simuliamo i loro thread di ricezione
     for &neighbor in &direct_neighbors {
         let (tx, rx) = unbounded();
         packet_send_map.insert(neighbor, tx);
+
 
         // Simuliamo un nodo vicino che stampa i pacchetti ricevuti
         thread::spawn(move || {
@@ -391,8 +479,14 @@ pub(crate) fn main() {
         });
     }
 
+
     // Creiamo il server con la topologia di rete (mappa completa)
     let mut server = Server::new(server_id, packet_recv_server, packet_send_map);
+
+
+    // -------------------test flooding già fatto
+    // -------------------test handle_flood_response, routing, remove_drone... funzia
+    /*
     let v1:Vec<(NodeId, NodeType)> = vec![(1, NodeType::Drone)];
     let v2:Vec<(NodeId, NodeType)> = vec![(1, NodeType::Drone), (2, NodeType::Drone)];
     let v3:Vec<(NodeId, NodeType)> = vec![(1, NodeType::Drone), (2, NodeType::Drone), (6, NodeType::Server)];
@@ -404,6 +498,7 @@ pub(crate) fn main() {
     let v9:Vec<(NodeId, NodeType)> = vec![(4, NodeType::Drone), (3, NodeType::Drone)];
     let v10:Vec<(NodeId, NodeType)> = vec![(4, NodeType::Drone), (3, NodeType::Drone), (5, NodeType::Drone)];
     let v11:Vec<(NodeId, NodeType)> = vec![(4, NodeType::Drone), (3, NodeType::Drone), (5, NodeType::Drone), (6, NodeType::Server)];
+
 
     let flood1 = FloodResponse{ flood_id: 1, path_trace: v1 };
     let flood2 = FloodResponse{ flood_id: 1, path_trace: v2 };
@@ -417,6 +512,7 @@ pub(crate) fn main() {
     let flood10 = FloodResponse{ flood_id: 1, path_trace: v10 };
     let flood11 = FloodResponse{ flood_id: 1, path_trace: v11 };
 
+
     let p1 = Packet{ routing_header: Default::default(), session_id: 0, pack_type: PacketType::FloodResponse(flood1)};
     let p2 = Packet{ routing_header: Default::default(), session_id: 0, pack_type: PacketType::FloodResponse(flood2)};
     let p3 = Packet{ routing_header: Default::default(), session_id: 0, pack_type: PacketType::FloodResponse(flood3)};
@@ -428,6 +524,7 @@ pub(crate) fn main() {
     let p9 = Packet{ routing_header: Default::default(), session_id: 0, pack_type: PacketType::FloodResponse(flood9)};
     let p10 = Packet{ routing_header: Default::default(), session_id: 0, pack_type: PacketType::FloodResponse(flood10)};
     let p11 = Packet{ routing_header: Default::default(), session_id: 0, pack_type: PacketType::FloodResponse(flood11)};
+
 
     server.handle_flood_response(p1);
     server.handle_flood_response(p2);
@@ -441,7 +538,13 @@ pub(crate) fn main() {
     server.handle_flood_response(p10);
     server.handle_flood_response(p11);
 
+
     println!("{:?}", server.nodes_map);
+
+
+    server.remove_drone(2);
+    println!("{:?}", server.nodes_map);
+
 
     let route = server.routing(6);
     if let Some(route) = route {
@@ -449,4 +552,88 @@ pub(crate) fn main() {
     }else{
         println!("no route");
     }
+
+
+     */
+    // -------------------test serialize e deserialize
+    /*
+    let e = TextResponse::File("unga bunga".to_string());
+    let serialized = serialize_text_response(&e);
+    println!("{:?}", serialized);
+    let i = deserialize_text_r(serialized);
+    println!("{:?}", i);
+
+
+     */
+    //--------------------test handle_paket
+    /*
+    let e = TextResponse::File("unga bunga".to_string());
+    let serialized = serialize_text_response(&e);
+    let data = serialized[0].0;
+    let len = serialized[0].1;
+
+
+    let fragment = Fragment{
+        fragment_index: 0,
+        total_n_fragments: 1,
+        length: len,
+        data: data,
+    };
+
+
+    let p = Packet{
+        routing_header: SourceRoutingHeader{ hop_index: 0, hops: vec![1, 2, 3, 0] },
+        session_id: 0,
+        pack_type: PacketType::MsgFragment(fragment),
+    };
+    server.handle_packet(p);
+    println!("{:?}", server.fragment_recv);
+
+
+    let ack = Ack{fragment_index: 0};
+    let pa = Packet {
+        routing_header: SourceRoutingHeader {
+            hop_index: 0,
+            hops: vec![1, 2, 3, 0],
+        },
+        session_id: 0,
+        pack_type: PacketType::Ack(ack),
+    };
+    server.handle_packet(pa);
+
+
+    let nack = Nack{ fragment_index: 0, nack_type: NackType::Dropped };
+    let pac = Packet{
+        routing_header: Default::default(),
+        session_id: 0,
+        pack_type: PacketType::Nack(nack),
+    };
+    server.handle_packet(pac);
+
+
+    let req = FloodRequest{
+        flood_id: 0,
+        initiator_id: 0,
+        path_trace: vec![(1, NodeType::Drone)],
+    };
+    let pack = Packet{
+        routing_header: Default::default(),
+        session_id: 0,
+        pack_type: PacketType::FloodRequest(req.clone()),
+    };
+    server.handle_packet(pack);
+
+
+    let resp = FloodResponse{ flood_id: 0, path_trace: vec![] };
+    let packe = Packet{
+        routing_header: Default::default(),
+        session_id: 0,
+        pack_type: PacketType::FloodResponse(resp),
+    };
+    server.handle_packet(packe);
+
+
+     */
+
+
 }
