@@ -41,6 +41,7 @@ dependencies = [
  "fungi_drone",
  "lazy_static",
  "lockheedrustin-drone",
+ "petgraph 0.7.1",
  "rand 0.9.0",
  "rolling_drone",
  "rustafarian-drone",
@@ -482,7 +483,7 @@ dependencies = [
  "derive_more",
  "downcast-rs",
  "either",
- "petgraph",
+ "petgraph 0.6.5",
  "ron",
  "serde",
  "smallvec",
@@ -706,7 +707,7 @@ dependencies = [
  "disqualified",
  "fixedbitset 0.5.7",
  "nonmax",
- "petgraph",
+ "petgraph 0.6.5",
  "serde",
  "smallvec",
 ]
@@ -1098,7 +1099,7 @@ dependencies = [
  "downcast-rs",
  "erased-serde",
  "glam",
- "petgraph",
+ "petgraph 0.6.5",
  "serde",
  "smallvec",
  "smol_str",
@@ -4008,6 +4009,16 @@ dependencies = [
  "indexmap",
  "serde",
  "serde_derive",
+]
+
+[[package]]
+name = "petgraph"
+version = "0.7.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "3672b37090dbd86368a4145bc067582552b29c27377cad4e0a306c97f9bd7772"
+dependencies = [
+ "fixedbitset 0.5.7",
+ "indexmap",
 ]
 
 [[package]]

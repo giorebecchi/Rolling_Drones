@@ -9,6 +9,7 @@ bevy = "0.15.1"
 toml = "0.8.19"
 crossbeam-channel = "0.5.13"
 rand = "0.9.0-beta.0"
+petgraph = "0.7.1"
 lazy_static = "1.5.0"
 bagel_bomber = { git = "https://github.com/daw-dev/bagel-bomber.git", default-features = false }
 skylink = { git = "https://github.com/Suge42/Skylink_drone.git" }

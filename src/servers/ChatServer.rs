@@ -1,4 +1,6 @@
 use std::collections::{HashMap, HashSet};
+use petgraph::graph::{Graph, NodeIndex};
+use petgraph::algo::dijkstra;
 use crossbeam_channel::{select_biased, Receiver, Sender};
 use serde::Serialize;
 use wg_2024::network::{NodeId, SourceRoutingHeader};
@@ -14,6 +16,7 @@ pub struct Server{
     session_id: u64,
     registered_clients: Vec<NodeId>,
     flooding: Vec<FloodResponse>,
+    neigh_map: Graph<(NodeId,NodeType), u32, petgraph::Undirected>,
     packet_recv: Receiver<Packet>,
     already_visited: HashSet<(NodeId,u64)>,
     pub packet_send: HashMap<NodeId, Sender<Packet>>,
@@ -29,6 +32,7 @@ impl Server{
             session_id:0,
             registered_clients: Vec::new(),
             flooding: Vec::new(),
+            neigh_map: Graph::new_undirected(),
             packet_recv:packet_recv,
             already_visited:HashSet::new(),
             packet_send:packet_send,
@@ -206,6 +210,31 @@ impl Server{
             };
         }
     }
+    fn neigh_mapping(&mut self){
+        for i in self.flooding.iter(){
+            let mut prev = self.neigh_map.add_node((self.server_id, NodeType::Server));
+            for (j,k) in i.path_trace.iter(){
+                if Self::node_exists(self.clone().neigh_map, j.clone(), k.clone()){
+                    let nodeid = self.find_node(j.clone(),k.clone()).unwrap();
+                    self.neigh_map.add_edge(nodeid, prev, 1);
+                    prev = nodeid;
+                } else{
+                    let newnodeid = self.neigh_map.add_node((j.clone(),k.clone()));
+                    self.neigh_map.add_edge(newnodeid, prev, 1);
+                    prev = newnodeid;
+                }
+            }
+        }
+    }
+
+    fn node_exists(graph: Graph<(NodeId, NodeType), u32, petgraph::Undirected>, id:NodeId, nt:NodeType) -> bool {
+        graph.node_indices().any(|i| graph[i] == (id,nt))
+    }
+
+    fn find_node(&self, id: NodeId, nt: NodeType) -> Option<NodeIndex> {
+        self.neigh_map.node_indices().find(|&i| self.neigh_map[i] == (id, nt))
+    }
+
     fn get_route(&mut self, id:NodeId, nt:NodeType)->SourceRoutingHeader{
         let mut possible_route=Vec::new();
         for i in self.flooding.iter(){
