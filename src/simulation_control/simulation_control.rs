@@ -359,8 +359,8 @@ pub fn start_simulation(
     //     .send(CommandChat::SendMessage(11, 12, "ciao".to_string()))
     //     .unwrap();
 
-    simulation_controller.client.get(&0).unwrap()
-        .send(CommandChat::ServerType(11)).unwrap();
+    simulation_controller.client.get(&11).unwrap()
+        .send(CommandChat::ServerType(12)).unwrap();
 
 }
 
