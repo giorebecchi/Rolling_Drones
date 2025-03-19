@@ -43,16 +43,18 @@ pub struct MessageChat{ //which needs to be fragmented
 }
 
 #[derive(Clone, Serialize, Deserialize, Debug)]
-pub struct MessageWeb{
-    pub file_name: String,
-    pub media: bool
-}
-
-#[derive(Clone, Serialize, Deserialize, Debug)]
 pub enum ServerType{
     CommunicationServer,
     TextServer,
     MediaServer
+}
+
+// text/media server and client
+
+#[derive(Clone, Serialize, Deserialize, Debug)]
+pub struct MessageWeb{
+    pub file_name: String,
+    pub media: bool
 }
 
 // client to server
@@ -65,16 +67,31 @@ pub enum TextRequest{
 // ho pensato di far inserire l'id del client direttamente li perchè così è più facile per me da raggiungere
 // anzicchè dovermelo ricavare dal pacchetto, comunque si può sempre cambiare come cosa
 
+//più che id del client mi sa che dobbiamo inserire l'id del server e solo nel caso dei comandi dalla simulation control
 
+//io pensavo così
+// #[derive(Serialize, Deserialize, Debug)]
+// pub enum RequestWeb {
+//     ServerType,
+//     TextList, //to retrieve text file list
+//     TextFile (MessageWeb)
+// }
 
 
 // server to client
 #[derive(Serialize, Deserialize, Debug)]
-
 pub enum TextResponse{
     ServerType(ServerType),
     FileList(Vec<String>),
     File(String), // la stringa con tutto il file di testo
     Error(String),
 }
-//poi bisogna fare la stessa cosa anche per il text e media
+
+#[derive(Serialize, Deserialize, Debug)]
+pub enum CommandText{ //questi vengono mandati al client dal simulation control
+    ServerType(NodeId), //node id del server
+    GetFiles(NodeId), //node id del server a cui chiedere
+    File(NodeId, String, bool), //node id del server, titolo del file da richiedere, se vogliamo il media o no [possiamo anche separare i comandi]
+    // Media(NodeId) //se vogliamo separare le richieste
+    Crash //?
+}

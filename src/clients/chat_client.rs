@@ -13,10 +13,9 @@ use wg_2024::config::{Client};
 use wg_2024::network::{NodeId, SourceRoutingHeader};
 use wg_2024::packet::{FloodRequest, FloodResponse, Fragment, NackType, NodeType, Packet, PacketType, FRAGMENT_DSIZE};
 use crate::clients::assembler::{Fragmentation, Serialization};
-use crate::common_things::common::{ChatRequest, MessageChat, CommandChat, ChatResponse};
+use crate::common_things::common::{ChatRequest, MessageChat, CommandChat, ChatResponse, ServerType};
 use crate::servers::ChatServer::Server;
 
-//missing flooding, handling incoming packets and handling errors
 pub struct ChatClient {
     pub config: Client,
     pub receiver_msg: Receiver<Packet>,
@@ -30,7 +29,8 @@ pub struct ChatClient {
     pub session_id_packet: u64,
     pub incoming_fragments: HashMap<(u64, NodeId ), HashMap<u64, Fragment>>,
     pub fragments_sent: HashMap<u64, Fragment>, //used for sending the correct fragment if was lost in the process
-    pub problematic_nodes: Vec<NodeId>
+    pub problematic_nodes: Vec<NodeId>,
+    pub server_types: HashMap<NodeId, ServerType>,
 }
 impl ChatClient {
     pub fn new(id: NodeId, receiver_msg: Receiver<Packet>, send_packets: HashMap<NodeId, Sender<Packet>>, receiver_commands: Receiver<CommandChat>, simulation_control: HashMap<NodeId, Sender<Packet>>) -> Self {
@@ -48,6 +48,7 @@ impl ChatClient {
             incoming_fragments: HashMap::new(),
             fragments_sent: HashMap::new(),
             problematic_nodes: Vec::new(),
+            server_types: HashMap::new(),
         }
     }
     pub fn run(&mut self) {
@@ -114,6 +115,7 @@ impl ChatClient {
 
         match self.find_route(&id_server) {
             Ok(route) => {
+                println!("route: {:?}", route);
                 let packets_to_send = ChatRequest::create_packet(&self.fragments_sent, route.clone(), &mut self.session_id_packet);
                 for packet in packets_to_send {
                     if let Some(next_hop) = route.get(1){
@@ -137,6 +139,7 @@ impl ChatClient {
 
         match self.find_route(&id_server) {
             Ok(route) => {
+                println!("route: {:?}", route);
                 let packets_to_send = ChatRequest::create_packet(&self.fragments_sent, route.clone(),  & mut self.session_id_packet);
                 for packet in packets_to_send {
                     if let Some(next_hop) = route.get(1){
@@ -175,6 +178,13 @@ impl ChatClient {
     pub fn send_message(&mut self, message: MessageChat, id_server: NodeId) {
         println!("servers: {:?}", self.servers);
         println!("I've done the flooding");
+
+        // let servers = self.servers.clone();
+        // for server in &servers{
+        //     self.ask_server_type(server.clone());
+        // }
+
+        //i would need to wait for all of the responses from the other server. based on that go on with sending the message
 
         let request = ChatRequest::SendMessage(message, id_server);
         self.fragments_sent = ChatRequest::fragment_message(&request);
@@ -247,6 +257,10 @@ impl ChatClient {
                     println!("all fragments received");
                     let incoming_message = ChatResponse::reassemble_msg(&fragments).unwrap();
                     println!("incoming_message: {:?}", incoming_message);
+                    match incoming_message {
+                        ChatResponse::ServerType(server_type) => {self.server_types.insert(*src_id, server_type);}
+                        _ => {}
+                    }
 
                     self.incoming_fragments.remove(&check); //removes fragments from tracking
                 }
@@ -269,7 +283,8 @@ impl ChatClient {
                     // let route = packet.routing_header.hops.into_iter().rev().collect::<Vec<NodeId>>();
                     // println!("{:?}", route);
                     //  let send_packet = ChatRequest::create_packet(&self.fragments_sent, route.clone(), & mut self.session_id_packet);
-                     self.problematic_nodes.push(*packet.routing_header.hops.get(0).unwrap());
+                    println!("Drone {} dropped the packet", packet.routing_header.hops.get(0).unwrap());
+                    self.problematic_nodes.push(*packet.routing_header.hops.get(0).unwrap());
                     let destination_id = 11;
                     match self.find_route(&destination_id){
                         Ok(route) => {
@@ -373,34 +388,34 @@ impl ChatClient {
             }
 
         }
-
     }
 
     pub fn find_route(& mut self, destination_id : &NodeId)-> Result<Vec<NodeId>, String>{
         let mut shortest_route: Option<Vec<NodeId>> = None;
-        // for flood_resp in &self.flood{
-        //     if flood_resp.path_trace.contains(&(*destination_id, NodeType::Server))&& !flood_resp.path_trace.iter().any(|(id, _)| self.problematic_nodes.contains(id)){
-        //         let length = flood_resp.path_trace.len();
-        //         if shortest_route.is_none() || length < shortest_route.as_ref().unwrap().len(){
-        //             shortest_route = Some(flood_resp.path_trace.iter().map(|(id,_ )| *id).collect());
-        //         }
-        //     }
-        // }
-        for flood_resp in &self.flood {
-            if flood_resp.path_trace.contains(&(*destination_id, NodeType::Server)) {
-                let route: Vec<NodeId> = flood_resp.path_trace.iter().map(|(id, _)| *id).collect();
-
-                // Ensure the route does not contain any problematic nodes
-                if !route.iter().any(|id| self.problematic_nodes.contains(id)) {
-                    let length = route.len();
-                    if shortest_route.is_none() || length < shortest_route.as_ref().unwrap().len() {
-                        shortest_route = Some(route);
-                    }
+        for flood_resp in &self.flood{
+            if flood_resp.path_trace.contains(&(*destination_id, NodeType::Server))&& !flood_resp.path_trace.iter().any(|(id, _)| self.problematic_nodes.contains(id)){
+                let length = flood_resp.path_trace.len();
+                if shortest_route.is_none() || length < shortest_route.as_ref().unwrap().len(){
+                    shortest_route = Some(flood_resp.path_trace.iter().map(|(id,_ )| *id).collect());
                 }
             }
         }
-        if let Some(route) = shortest_route{
-            Ok(route)
+        // for flood_resp in &self.flood {
+        //     if flood_resp.path_trace.contains(&(*destination_id, NodeType::Server)) {
+        //         let route: Vec<NodeId> = flood_resp.path_trace.iter().map(|(id, _)| *id).collect();
+        //
+        //         if route.iter().any(|id| self.problematic_nodes.contains(id)) {
+        //             continue; // Skip this route and look for another one
+        //         }
+        //
+        //         let length = route.len();
+        //         if shortest_route.as_ref().map_or(true, |r| length < r.len()) {
+        //             shortest_route = Some(route);
+        //         }
+        //     }
+        // }
+        if let Some(best_route) = shortest_route{
+            Ok(best_route)
         }else { Err(String::from("route not found")) }
     }
 

@@ -99,11 +99,11 @@ impl Server{
                     if fragment.total_n_fragments == vec.len() as u64{
                         if let Ok(totalmsg) = ChatRequest::deserialize_data(vec){
                             match totalmsg{
-                                ChatRequest::ServerType => {let route = self.get_route(p.routing_header.hops[0], NodeType::Client);self.send_packet(self.clone().server_type, route);}
-                                ChatRequest::RegisterClient(_) => {}
-                                ChatRequest::GetListClients => {}
+                                ChatRequest::ServerType => {let route = self.get_route(p.routing_header.hops[0], NodeType::Client);self.send_packet(ChatResponse::ServerType(self.clone().server_type), route);}
+                                ChatRequest::RegisterClient(n) => {let route = self.get_route(p.routing_header.hops[0], NodeType::Client); self.registered_clients.push(n); self.send_packet(ChatResponse::RegisterClient(true),route);}
+                                ChatRequest::GetListClients => {let route = self.get_route(p.routing_header.hops[0], NodeType::Client);self.send_packet(ChatResponse::RegisteredClients(self.clone().registered_clients),route)}
                                 ChatRequest::SendMessage(_, _) => {}
-                                ChatRequest::EndChat(_) => {}
+                                ChatRequest::EndChat(n) => {self.registered_clients.retain(|x| *x != n);}
                             }
                         }
                     }

@@ -20,12 +20,13 @@ use rusteze_drone::RustezeDrone;
 use rustafarian_drone::RustafarianDrone;
 use wg_2024::packet::PacketType::FloodRequest;
 use crate::clients::assembler::Fragmentation;
-use crate::GUI::login_window::{SharedSimState, SimulationController, UserConfig};
+use crate::GUI::login_window::{ SharedSimState, SimulationController, UserConfig};
 use crate::network_initializer::network_initializer::parse_config;
 use crate::servers::ChatServer::Server;
 use crate::clients::chat_client::ChatClient;
 use crate::common_things::common::{ChatRequest, ChatResponse, CommandChat, ServerType};
 use crate::common_things::common::ServerType::CommunicationServer;
+use crate::servers::Text_max::Server as ServerMax;
 
 
 
@@ -113,9 +114,10 @@ impl SimulationController {
 
 
 
-    fn crash_all(&mut self) {
+    pub fn crash_all(&mut self) {
         for (_, sender) in self.drones.iter() {
             sender.send(DroneCommand::Crash).unwrap();
+            println!("Sent Crash");
         }
     }
     pub fn crash(&mut self, id: NodeId) {
@@ -149,7 +151,7 @@ impl SimulationController {
         }
     }
     pub fn add_sender(&mut self, dst_id: NodeId, nghb_id: NodeId) {
-        let (sender,_)=unbounded();//Not sure about this
+       let sender=self.packet_channel.get(&dst_id).unwrap().clone();
         if let Some(drone_sender) = self.drones.get(&nghb_id) {
             if let Err(err) = drone_sender.send(DroneCommand::AddSender(dst_id, sender)) {
                 println!(
@@ -212,14 +214,10 @@ impl SimulationController {
         }
     }
 }
-pub fn start_simulation(mut simulation_controller: ResMut<SimulationController>, config: Res<UserConfig>) {
-    let file_path = match (*config).0.as_str() {
-        "star" => "assets/configurations/star.toml",
-        "double_chain" => "assets/configurations/double_chain.toml",
-        "butterfly" => "assets/configurations/butterfly.toml",
-        "tree" => "assets/configurations/tree.toml",
-        _ => "assets/configurations/star.toml",
-    };
+pub fn start_simulation(
+    mut simulation_controller: ResMut<SimulationController>
+) {
+    let file_path = "assets/configurations/double_chain.toml";
 
     let config = parse_config(file_path);
 
@@ -284,11 +282,15 @@ pub fn start_simulation(mut simulation_controller: ResMut<SimulationController>,
         let packet_send = cfg_server.connected_drone_ids.iter()
             .map(|nid| (*nid, packet_channels[nid].0.clone()))
             .collect();
-
-        let server = Arc::new(Mutex::new(Server::new(cfg_server.id, rcv, packet_send)));
+        //let links=cfg_server.connected_drone_ids.iter()
+        //    .map(|nid| *nid)
+        //    .collect::<Vec<NodeId>>();
+        //let server_max = Arc::new(Mutex::new(ServerMax::new(cfg_server.id, rcv, packet_send,links)));
+        let server_baia = Arc::new(Mutex::new(Server::new(cfg_server.id,rcv,packet_send)));
 
         thread::spawn(move || {
-            server.lock().unwrap().run();
+            server_baia.lock().unwrap().run();
+            //server_max.lock().unwrap().run();
         });
     }
 
@@ -309,13 +311,14 @@ pub fn start_simulation(mut simulation_controller: ResMut<SimulationController>,
             rcv_command,
             packet_send,
         )));
+        let ch_client=Arc::clone(&client_instance);
 
         thread::spawn(move || {
             client_instance.lock().unwrap().run();
         });
 
         {
-             //let mut client_try=client.lock().unwrap();
+             let mut client_try=ch_client.lock().unwrap();
              // client_try.initiate_flooding()
             // let message = ChatResponse::ServerType(ServerType::CommunicationServer); //do it for both clients(?)
             // let fragmented_message = message.fragment_message();
@@ -325,7 +328,6 @@ pub fn start_simulation(mut simulation_controller: ResMut<SimulationController>,
             //     client_try.handle_fragments(pack);
             // }
         }
-        // handles.push(handle);
     }
 
     simulation_controller.node_event_send = node_event_send.clone();
@@ -353,9 +355,13 @@ pub fn start_simulation(mut simulation_controller: ResMut<SimulationController>,
 
 
     thread::sleep(Duration::from_millis(200));
-    simulation_controller.client.get(&0).unwrap()
-        .send(CommandChat::SendMessage(11, 12, "ciao".to_string()))
-        .unwrap();
+    // simulation_controller.client.get(&0).unwrap()
+    //     .send(CommandChat::SendMessage(11, 12, "ciao".to_string()))
+    //     .unwrap();
+
+    simulation_controller.client.get(&11).unwrap()
+        .send(CommandChat::ServerType(12)).unwrap();
+
 }
 
 
@@ -369,9 +375,9 @@ fn create_drone(
     pdr: f32,
 ) -> Option<Box<dyn Drone>> {
     match drone_index {
-        0 => Some(Box::new(BagelBomber::new(id, node_event_send, controller_drone_recv, packet_recv, packet_send, pdr))),
-        1 => Some(Box::new(FungiDrone::new(id, node_event_send, controller_drone_recv, packet_recv, packet_send, pdr))),
-        2 => Some(Box::new(Krusty_C::new(id, node_event_send, controller_drone_recv, packet_recv, packet_send, pdr))),
+        0 => Some(Box::new(BagelBomber::new(id, node_event_send, controller_drone_recv, packet_recv, packet_send, pdr))), //BagelBomber
+        1 => Some(Box::new(FungiDrone::new(id, node_event_send, controller_drone_recv, packet_recv, packet_send, pdr))),  //Fungi
+        2 => Some(Box::new(LockheedRustin::new(id, node_event_send, controller_drone_recv, packet_recv, packet_send, pdr))),    //Krusty_C
         3 => Some(Box::new(SkyLinkDrone::new(id, node_event_send, controller_drone_recv, packet_recv, packet_send, pdr))),
         4 => Some(Box::new(Le_Drone::new(id, node_event_send, controller_drone_recv, packet_recv, packet_send, pdr))),
         5 => Some(Box::new(LockheedRustin::new(id, node_event_send, controller_drone_recv, packet_recv, packet_send, pdr))),
@@ -379,7 +385,7 @@ fn create_drone(
         7 => Some(Box::new(RustBustersDrone::new(id, node_event_send, controller_drone_recv, packet_recv, packet_send, pdr))),
         8 => Some(Box::new(RustezeDrone::new(id, node_event_send, controller_drone_recv, packet_recv, packet_send, pdr))),
         9 => Some(Box::new(RustafarianDrone::new(id, node_event_send, controller_drone_recv, packet_recv, packet_send, pdr))),
-        _ => None,
+        _ => Some(Box::new(LockheedRustin::new(id, node_event_send, controller_drone_recv, packet_recv, packet_send, pdr))),
     }
 }
 
