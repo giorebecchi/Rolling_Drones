@@ -1,6 +1,6 @@
 use std::collections::{HashMap, HashSet};
 use petgraph::graph::{Graph, NodeIndex};
-use petgraph::algo::dijkstra;
+use petgraph::algo::{astar, dijkstra};
 use crossbeam_channel::{select_biased, Receiver, Sender};
 use serde::Serialize;
 use wg_2024::network::{NodeId, SourceRoutingHeader};
@@ -104,11 +104,47 @@ impl Server{
                     if fragment.total_n_fragments == vec.len() as u64{
                         if let Ok(totalmsg) = ChatRequest::deserialize_data(vec){
                             match totalmsg{
-                                ChatRequest::ServerType => {let route = self.get_route(p.routing_header.hops[0], NodeType::Client);self.send_packet(ChatResponse::ServerType(self.clone().server_type), route);}
-                                ChatRequest::RegisterClient(n) => {let route = self.get_route(p.routing_header.hops[0], NodeType::Client); self.registered_clients.push(n); self.send_packet(ChatResponse::RegisterClient(true),route);}
-                                ChatRequest::GetListClients => {let route = self.get_route(p.routing_header.hops[0], NodeType::Client);self.send_packet(ChatResponse::RegisteredClients(self.clone().registered_clients),route)}
-                                ChatRequest::SendMessage(_, _) => {}
-                                ChatRequest::EndChat(n) => {self.registered_clients.retain(|x| *x != n);}
+                                ChatRequest::ServerType => {
+                                    let route = self.get_route(p.routing_header.hops[0], NodeType::Client);
+                                    let mut srh= SourceRoutingHeader::new(Vec::new(), 0);
+                                    match route {
+                                        Some(final_route)=>{srh=final_route},
+                                        None => {println!("no route found!");}
+                                    }
+                                    self.send_packet(ChatResponse::ServerType(self.clone().server_type), srh);
+                                }
+                                ChatRequest::RegisterClient(n) => {
+                                    let route = self.get_route(p.routing_header.hops[0], NodeType::Client);
+                                    let mut srh= SourceRoutingHeader::new(Vec::new(), 0);
+                                    match route {
+                                        Some(final_route)=>{srh=final_route},
+                                        None => {println!("no route found!");}
+                                    }
+                                    self.registered_clients.push(n);
+                                    self.send_packet(ChatResponse::RegisterClient(true), srh);
+                                }
+                                ChatRequest::GetListClients => {
+                                    let route = self.get_route(p.routing_header.hops[0], NodeType::Client);
+                                    let mut srh= SourceRoutingHeader::new(Vec::new(), 0);
+                                    match route {
+                                        Some(final_route)=>{srh=final_route},
+                                        None => {println!("no route found!");}
+                                    }
+                                    self.send_packet(ChatResponse::RegisteredClients(self.clone().registered_clients), srh)
+                                }
+                                ChatRequest::SendMessage(_, _) => {
+
+                                }
+                                ChatRequest::EndChat(n) => {
+                                    let route = self.get_route(p.routing_header.hops[0], NodeType::Client);
+                                    let mut srh= SourceRoutingHeader::new(Vec::new(), 0);
+                                    match route {
+                                        Some(final_route)=>{srh=final_route},
+                                        None => {println!("no route found!");}
+                                    }
+                                    self.registered_clients.retain(|x| *x != n);
+                                    self.send_packet(ChatResponse::EndChat(true), srh);
+                                }
                             }
                         }
                     }
@@ -235,31 +271,59 @@ impl Server{
         self.neigh_map.node_indices().find(|&i| self.neigh_map[i] == (id, nt))
     }
 
-    fn get_route(&mut self, id:NodeId, nt:NodeType)->SourceRoutingHeader{
-        let mut possible_route=Vec::new();
-        for i in self.flooding.iter(){
-            if i.path_trace.contains(&(id,nt)){
-                let mut vec = Vec::new();
-                for z in 0..i.path_trace.len(){
-                    vec=i.path_trace.iter().map(|x| x.0).collect::<Vec<NodeId>>();
-                    if i.path_trace[z] == (id,nt) {
-                        possible_route.push(vec);
-                        break;
+    fn get_route(&mut self, id:NodeId, nt:NodeType)->Option<SourceRoutingHeader>{
+        let start = self.find_node(self.server_id, NodeType::Server).unwrap();
+        let end = self.find_node(id,nt).unwrap();
+
+        let paths: HashMap<NodeIndex, u32> = dijkstra(&self.neigh_map, start, Some(end), |e| *e.weight());
+
+        if !paths.contains_key(&end) {
+            return None;
+        }
+
+        // Manual backtracking to reconstruct the shortest path
+        let mut path = vec![id];
+        let mut current = end;
+
+        while current != start {
+            let mut found = false;
+            for neighbor in self.neigh_map.neighbors(current) {
+                if let Some(weight) = self.neigh_map.find_edge(neighbor, current).map(|e| self.neigh_map[e]) {
+                    if let Some(&neighbor_dist) = paths.get(&neighbor) {
+                                    if neighbor_dist + weight == paths[&current] {
+                            path.push(self.neigh_map[neighbor].0);
+                            current = neighbor;
+                            found = true;
+                            break;
+                        }
                     }
                 }
             }
-        }
-        let mut final_route = possible_route[0].clone();
-        for alternative_route in possible_route.iter(){
-            if alternative_route.len()<final_route.len(){
-                final_route = alternative_route.clone();
+            if !found {
+                return None; // Shouldn't happen unless the graph is modified during traversal
             }
         }
-        SourceRoutingHeader{
-            hop_index: 0,
-            hops: final_route,
-        }
+
+        path.reverse();
+        Some(SourceRoutingHeader{hops: path, hop_index:0})
     }
+
+
+    //altro metodo che permette di trovare la route più veloce basandosi sul costo dei collegamenti, ma senza bisogno di fare hashmap e robe varie come tocca fare per dijkstra
+
+    // fn find_shortest_path(&self, id:NodeId, nt:NodeType) -> Option<(u32, Vec<NodeId>)> {
+    //     // Return Vec<NodeId> instead of Vec<NodeIndex>
+    //     let start = self.find_node(self.server_id, NodeType::Server)?;
+    //     let end = self.find_node(id,nt)?;
+    //     astar(
+    //         &self.neigh_map,
+    //         start,
+    //         |finish| finish == end, // Stop when reaching the end node
+    //         |e| *e.weight(),        // Edge cost
+    //         |_| 0                   // No heuristic (Dijkstra behavior)
+    //     ).map(|(cost, path)| (cost, path.into_iter().map(|idx| self.neigh_map[idx].0).collect())) // Convert NodeIndex -> NodeId
+    // }
+
 }
 
 
