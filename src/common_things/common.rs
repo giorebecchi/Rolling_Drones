@@ -30,7 +30,7 @@ pub enum ChatResponse{
     RegisteredClients(Vec<NodeId>),
     SendMessage(Result<String, String>),
     EndChat(bool),
-
+    ForwardMessage(MessageChat)
 }
 
 
@@ -56,26 +56,14 @@ pub struct MessageWeb{
     pub file_name: String,
     pub media: bool
 }
-
-// client to server
 #[derive(Serialize, Deserialize, Debug)]
-pub enum TextRequest{
-    ServerType(NodeId),     // id del client
-    GetFiles(NodeId),       // id del client
-    File(NodeId, String),   // id del client, Nome del file
+pub enum RequestWeb {
+    ServerType,
+    TextList, //to retrieve text file list
+    TextFile (String), //title file
+    MediaList,
+    Media (String)
 }
-// ho pensato di far inserire l'id del client direttamente li perchè così è più facile per me da raggiungere
-// anzicchè dovermelo ricavare dal pacchetto, comunque si può sempre cambiare come cosa
-
-//più che id del client mi sa che dobbiamo inserire l'id del server e solo nel caso dei comandi dalla simulation control
-
-//io pensavo così
-// #[derive(Serialize, Deserialize, Debug)]
-// pub enum RequestWeb {
-//     ServerType,
-//     TextList, //to retrieve text file list
-//     TextFile (MessageWeb)
-// }
 
 
 // server to client
@@ -84,6 +72,8 @@ pub enum TextResponse{
     ServerType(ServerType),
     FileList(Vec<String>),
     File(String), // la stringa con tutto il file di testo
+    MediaList(Vec<String>),
+    Media (String),
     Error(String),
 }
 
@@ -91,7 +81,8 @@ pub enum TextResponse{
 pub enum CommandText{ //questi vengono mandati al client dal simulation control
     ServerType(NodeId), //node id del server
     GetFiles(NodeId), //node id del server a cui chiedere
-    File(NodeId, String, bool), //node id del server, titolo del file da richiedere, se vogliamo il media o no [possiamo anche separare i comandi]
-    // Media(NodeId) //se vogliamo separare le richieste
-    Crash //?
+    File(NodeId, String), //node id del server, titolo del file da richiedere, se vogliamo il media o no [possiamo anche separare i comandi]
+    Media(NodeId), //se vogliamo separare le richieste
+    MediaList(NodeId),
+    Crash
 }
