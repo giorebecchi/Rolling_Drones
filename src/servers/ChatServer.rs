@@ -55,8 +55,8 @@ impl Server{
     pub fn handle_packet(&mut self, p:Packet){
         match p.clone().pack_type {
             PacketType::MsgFragment(_) => {println!("received packet {p}");self.handle_msg_fragment(p)}
-            PacketType::Ack(_) => {}
-            PacketType::Nack(_) => {}
+            PacketType::Ack(_) => {self.handle_ack(p)}
+            PacketType::Nack(_) => {self.handle_nack(p)}
             PacketType::FloodRequest(_) => {self.handle_flood_request(p)}
             PacketType::FloodResponse(_) => {self.handle_flood_response(p)}
         }
@@ -132,7 +132,7 @@ impl Server{
                                     }
                                     self.send_packet(ChatResponse::RegisteredClients(self.clone().registered_clients), srh)
                                 }
-                                ChatRequest::SendMessage(_, _) => {
+                                ChatRequest::SendMessage(mc, id) => {
 
                                 }
                                 ChatRequest::EndChat(n) => {
@@ -153,6 +153,30 @@ impl Server{
                 let mut vec = Vec::new();
                 vec.push(fragment.clone());
                 self.fragments_recv.insert((p.routing_header.hops.clone()[0], p.session_id), vec);
+            }
+        }
+    }
+
+    fn handle_ack(&mut self, packet : Packet){
+        let s_id=packet.session_id;
+        if let PacketType::Ack(ack) = packet.pack_type{
+            self.fragments_send.get_mut(&s_id).unwrap().retain(|x| x.fragment_index!=ack.fragment_index);
+        }
+    }
+
+    fn handle_nack(&mut self, packet : Packet){
+        let s_id=packet.session_id;
+        if let PacketType::Nack(nack) = packet.pack_type{
+            match nack.clone().nack_type{
+                NackType::ErrorInRouting(crashed_id) => {
+                    self.neigh_map.remove_node(self.find_node(crashed_id,NodeType::Drone).unwrap());
+
+                }
+                NackType::DestinationIsDrone => {}
+                NackType::Dropped => {
+
+                }
+                NackType::UnexpectedRecipient(_) => {}
             }
         }
     }
