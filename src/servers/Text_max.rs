@@ -1,6 +1,5 @@
 use crate::servers::assembler_max::{serialize_text_response, deserialize_text_request, deserialize_text_r, serialize_text_r};
 use crate::common_things::common::*;
-use crate::common_things::common::ServerType;
 use crossbeam_channel::{select_biased, unbounded, Receiver, Sender};
 use std::collections::{BinaryHeap, HashMap};
 use std::{fs, thread};
@@ -353,7 +352,7 @@ impl Server {
     fn handle_command(&mut self, session: &u64) {
         let data = self.fragment_recv.get(session).unwrap();
         let d = data.dati.clone();
-        let command: TextRequest = deserialize_text_request(d);
+        let command = deserialize_text_request(d);
         match command {
             TextRequest::ServerType(id) => {
                 let response = TextResponse::ServerType(self.server_type.clone());

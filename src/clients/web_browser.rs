@@ -62,9 +62,8 @@ impl WebBrowser {
         match command {
             CommandText::ServerType(id_server) => {self.ask_type(id_server)},
             CommandText::GetFiles(id_server) => {self.get_list(id_server)},
-            CommandText::File(id_server, title, media) => {
-                let message_web = MessageWeb{file_name: title, media };
-                self.get_file(id_server, message_web);
+            CommandText::File(id_server, title) => {
+                self.get_file(id_server, title);
             }
             _ => {}
         }
@@ -90,7 +89,7 @@ impl WebBrowser {
 
     pub fn get_list(& mut self, id_server: NodeId) {}
 
-    pub fn get_file(& mut self, id_server: NodeId, message_web: MessageWeb) {}
+    pub fn get_file(& mut self, id_server: NodeId, title: String) {}
 
     pub fn flooding(& mut self){
         let mut flood_id = self.unique_flood_id;

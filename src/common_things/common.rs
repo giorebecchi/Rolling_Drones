@@ -56,6 +56,7 @@ pub struct MessageWeb{
     pub file_name: String,
     pub media: bool
 }
+
 #[derive(Serialize, Deserialize, Debug)]
 pub enum RequestWeb {
     ServerType,
@@ -63,6 +64,14 @@ pub enum RequestWeb {
     TextFile (String), //title file
     MediaList,
     Media (String)
+}
+
+//solo per max per sistemare il suo server, da cancellare appena è a posto
+#[derive(Serialize, Deserialize, Debug)]
+pub enum TextRequest{
+    ServerType(NodeId),
+    GetFiles(NodeId),
+    File(NodeId, String)
 }
 
 
