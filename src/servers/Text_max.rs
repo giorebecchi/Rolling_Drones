@@ -51,7 +51,7 @@ pub struct Server{
     file_list: Vec<String>
 }
 impl Server {
-    fn new(server_id: NodeId, recv: Receiver<Packet>, send: HashMap<NodeId,Sender<Packet>> ) -> Self {
+    pub fn new(server_id: NodeId, recv: Receiver<Packet>, send: HashMap<NodeId,Sender<Packet>> ) -> Self {
         let mut links :Vec<NodeId> = Vec::new();
         for i in send.clone(){
             links.push(i.0.clone());
@@ -67,25 +67,26 @@ impl Server {
             file_list: Vec::new(),
         }
     }
-    fn run(&mut self) {
+    pub fn run(&mut self) {
         self.floading();
         loop {
             select_biased! {
-                       recv(self.packet_recv) -> packet => {
-                           if let Ok(packet) = packet {
-                               self.handle_packet(packet);
-                           }
-                           else{
-                               break
-                           }
-                       },
-                   }
+                recv(self.packet_recv) -> packet => {
+                    if let Ok(packet) = packet {
+                        self.handle_packet(packet);
+                    }
+                    else{
+                        break
+                    }
+                },
+            }
         }
     }
     fn handle_packet(&mut self, packet: Packet) {
         let p = packet.clone();
         match packet.pack_type {
             PacketType::MsgFragment(fragment) => {
+                println!("Packet: {} arrived to server {}",p.clone(), self.server_id);
                 let session = packet.session_id;
                 self.handle_message(fragment, &session, p);
             }
@@ -172,7 +173,7 @@ impl Server {
             }
         }
     }
-    fn handle_flood_request(&mut self, packet: Packet) {
+    fn handle_flood_request(&mut self, packet: Packet) { ///to be reviewed
         if let PacketType::FloodRequest(mut flood) = packet.pack_type {
             flood.path_trace.push((self.server_id, NodeType::Server));
             let response_packet = flood.generate_response(packet.session_id);
@@ -181,6 +182,7 @@ impl Server {
     }
     fn handle_flood_response(&mut self, packet: Packet) {
         if let PacketType::FloodResponse(flood_response) = packet.pack_type {
+            println!("server {} has received flood response {}", self.server_id, flood_response);
             let len = flood_response.path_trace.len();
             let n = flood_response.path_trace.last().unwrap().0;
             if self.nodes_map.iter().find(|&x| x.0 == n).is_some(){
@@ -263,7 +265,7 @@ impl Server {
         println!("server {} is starting a flooding", self.server_id);
         let flood_id = 0;
         let flood = Packet {
-            routing_header: SourceRoutingHeader { hop_index: 1, hops: Vec::new() },
+            routing_header: SourceRoutingHeader::empty_route(),
             session_id: flood_id,
             pack_type: PacketType::FloodRequest(FloodRequest {
                 flood_id,
@@ -363,7 +365,7 @@ fn create_ack(packet: Packet) ->Packet {
     };
     pack
 }
-
+#[test]
 pub(crate) fn main() {
     // ID del server
     let server_id: NodeId = 0;

@@ -34,7 +34,8 @@ struct UiCommands{
     pdr: String,
     pdr_drone: String,
     new_drone_id: String,
-    new_drone_links: String
+    new_drone_links: String,
+    show_client_windows: HashMap<NodeId, bool>
 }
 #[derive(Default)]
 enum DroneBrand{
@@ -61,7 +62,7 @@ pub struct SimState{
 #[derive(Resource, Default)]
 struct NodeEntities(pub Vec<Entity>);
 
-#[derive(Default,Debug,Clone)]
+#[derive(Default,Debug,Clone,PartialEq)]
 pub enum NodeType{
     #[default]
     Drone,
@@ -193,6 +194,9 @@ pub fn set_up_bundle(
 ) {
 
     for node_data in node_data.0.iter() {
+        //if node_data.node_type==NodeType::Client{
+        //    let entity = commands.spawn()
+        //}
 
         let entity=commands.spawn((
             Sprite {
@@ -356,7 +360,7 @@ fn ui_settings(
                                     }
 
                                 }
-                                if ui.button("Exit").clicked{
+                                if ui.button("Exit").clicked(){
                                     simulation_commands.show_add_sender_window=false;
                                 }
                             });
@@ -409,7 +413,7 @@ fn ui_settings(
                             ui.add(TextEdit::singleline(&mut simulation_commands.pdr));
                             ui.horizontal(|ui| {
                                 if ui.button("Confirm")
-                                    .clicked {
+                                    .clicked() {
                                     let id = parse_id(simulation_commands.pdr_drone.clone());
                                     let pdr = simulation_commands.pdr.parse::<f32>().unwrap_or_else(|_| 0.);
                                     sim.pdr(id, pdr);
@@ -497,7 +501,12 @@ fn ui_settings(
                                         links.push(link);
                                     }
                                     let new_id=parse_id(simulation_commands.new_drone_id.clone());
-                                    spawn_new_drone(links,new_id);
+                                    //spawn_new_drone(links,new_id);
+                                    sim.spawn_new_drone(links, new_id);
+                                    for entity in node_entities.0.clone(){
+                                        commands.entity(entity).despawn_recursive();
+                                    }
+
                                 }
                                 if ui.button("Exit")
                                     .clicked(){
@@ -508,11 +517,7 @@ fn ui_settings(
 
                 }
 
-                if ui
-                    .add(egui::widgets::Button::new("Add"))
-                    .clicked(){}
 
-                ui.allocate_rect(ui.available_rect_before_wrap(), egui::Sense::hover());
             })
             .response
             .rect
@@ -529,16 +534,16 @@ fn ui_settings(
             .width();
     }
 }
-use std::fs::OpenOptions;
-use std::io::Write;
-fn spawn_new_drone(
-    neighbours: Vec<NodeId>,
-    new_drone_id: NodeId
-){
-    let string_to_append=format!("\n[[drone]]\nid = {}\nconnected_node_ids = {:?}\npdr = 0.00\n",new_drone_id, neighbours);
-    let mut file = OpenOptions::new().append(true).create(true).open("assets/configurations/double_chain.toml").unwrap();
-    file.write_all(string_to_append.as_bytes()).unwrap();
-}
+//use std::fs::OpenOptions;
+//use std::io::Write;
+//fn spawn_new_drone(
+//    neighbours: Vec<NodeId>,
+//    new_drone_id: NodeId
+//){
+//    let string_to_append=format!("\n[[drone]]\nid = {}\nconnected_node_ids = {:?}\npdr = 0.00\n",new_drone_id, neighbours);
+//    let mut file = OpenOptions::new().append(true).create(true).open("assets/configurations/double_chain.toml").unwrap();
+//    file.write_all(string_to_append.as_bytes()).unwrap();
+//}
 fn parse_id(id: String)->NodeId{
     match id.parse::<u8>(){
         Ok(node_id)=>node_id,

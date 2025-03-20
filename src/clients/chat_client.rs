@@ -30,7 +30,8 @@ pub struct ChatClient {
     pub session_id_packet: u64,
     pub incoming_fragments: HashMap<(u64, NodeId ), HashMap<u64, Fragment>>,
     pub fragments_sent: HashMap<u64, Fragment>, //used for sending the correct fragment if was lost in the process
-    pub problematic_nodes: Vec<NodeId>
+    pub problematic_nodes: Vec<NodeId>,
+    crash : bool
 }
 impl ChatClient {
     pub fn new(id: NodeId, receiver_msg: Receiver<Packet>, send_packets: HashMap<NodeId, Sender<Packet>>, receiver_commands: Receiver<CommandChat>, simulation_control: HashMap<NodeId, Sender<Packet>>) -> Self {
@@ -48,11 +49,12 @@ impl ChatClient {
             incoming_fragments: HashMap::new(),
             fragments_sent: HashMap::new(),
             problematic_nodes: Vec::new(),
+            crash : false
         }
     }
     pub fn run(&mut self) {
         self.initiate_flooding();
-        loop{
+        while !self.crash{
             select_biased! {
                 recv(self.receiver_commands) -> command =>{
                     if let Ok(command) = command {
@@ -88,7 +90,10 @@ impl ChatClient {
             CommandChat::EndChat(server_id) => {
                 self.end_chat(server_id);
             }
-            _ => {}
+            CommandChat::Crash=>{
+                self.crash=true;
+            }
+            _ => {unreachable!()}
         }
     }
     pub fn handle_incoming(&mut self, message: Packet) {
