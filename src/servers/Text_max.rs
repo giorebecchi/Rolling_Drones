@@ -56,7 +56,7 @@ pub struct Server{
     already_visited: HashSet<(NodeId, u64)>,
 }
 impl Server {
-    fn new(server_id: NodeId, recv: Receiver<Packet>, send: HashMap<NodeId, Sender<Packet>>) -> Self {
+    pub fn new(server_id: NodeId, recv: Receiver<Packet>, send: HashMap<NodeId, Sender<Packet>>) -> Self {
         let mut links: Vec<NodeId> = Vec::new();
         for i in send.clone() {
             links.push(i.0.clone());
@@ -75,7 +75,7 @@ impl Server {
             already_visited: HashSet::new(),
         }
     }
-    fn run(&mut self) {
+    pub fn run(&mut self) {
         self.floading();
         loop {
             select_biased! {

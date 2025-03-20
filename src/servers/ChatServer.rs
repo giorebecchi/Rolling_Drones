@@ -49,7 +49,7 @@ impl Server{
     }
     pub fn handle_packet(&mut self, p:Packet){
         match p.clone().pack_type {
-            PacketType::MsgFragment(_) => {println!("received packet {p}");self.handle_msg_fragment(p)}
+            PacketType::MsgFragment(_) => {println!("Server: {} packet {p}",self.server_id);self.handle_msg_fragment(p)}
             PacketType::Ack(_) => {}
             PacketType::Nack(_) => {}
             PacketType::FloodRequest(_) => {self.handle_flood_request(p)}
@@ -191,7 +191,7 @@ impl Server{
             flood_id = i.flood_id+1;
         }
         let flood = packet::Packet{
-            routing_header: SourceRoutingHeader{hop_index:1, hops:Vec::new()},
+            routing_header: SourceRoutingHeader{hop_index:1, hops:Vec::new()}, ///Check the hop_index
             session_id: flood_id,
             pack_type: PacketType::FloodRequest(FloodRequest{
                 flood_id,
