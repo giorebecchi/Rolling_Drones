@@ -30,7 +30,7 @@ pub enum ChatResponse{
     RegisteredClients(Vec<NodeId>),
     SendMessage(Result<String, String>),
     EndChat(bool),
-
+    ForwardMessage(MessageChat)
 }
 
 
