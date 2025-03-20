@@ -11,7 +11,7 @@ use crate::network_initializer::network_initializer::parse_config;
 /// - The tree accommodates Drone, Client, and Server node types
 pub fn spawn_tree() -> Vec<NodeConfig> {
 
-    let config = parse_config("assets/configurations/tree.toml");
+    let config = parse_config("assets/configurations/double_chain.toml");
     let base_horizontal_spacing = 100.0;
     let vertical_spacing = 80.0;
 

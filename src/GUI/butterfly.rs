@@ -3,7 +3,7 @@ use crate::GUI::login_window::{NodeConfig, NodeType};
 use crate::network_initializer::network_initializer::parse_config;
 
 pub fn spawn_butterfly() -> Vec<NodeConfig> {
-    let config = parse_config("assets/configurations/butterfly.toml");
+    let config = parse_config("assets/configurations/double_chain.toml");
     let horizontal_spacing = 100.0;
     let vertical_spacing = 60.0;
 
