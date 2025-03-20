@@ -30,7 +30,7 @@ pub enum ChatResponse{
     RegisteredClients(Vec<NodeId>),
     SendMessage(Result<String, String>),
     EndChat(bool),
-
+    ForwardMessage(MessageChat)
 }
 
 
@@ -43,29 +43,36 @@ pub struct MessageChat{ //which needs to be fragmented
 }
 
 #[derive(Clone, Serialize, Deserialize, Debug)]
-pub struct MessageWeb{
-    pub file_name: String,
-    pub media: bool
-}
-
-#[derive(Clone, Serialize, Deserialize, Debug)]
 pub enum ServerType{
     CommunicationServer,
     TextServer,
     MediaServer
 }
 
-// client to server
+// text/media server and client
+
+#[derive(Clone, Serialize, Deserialize, Debug)]
+pub struct MessageWeb{
+    pub file_name: String,
+    pub media: bool
+}
+
+#[derive(Serialize, Deserialize, Debug)]
+pub enum RequestWeb {
+    ServerType,
+    TextList, //to retrieve text file list
+    TextFile (String), //title file
+    MediaList,
+    Media (String)
+}
+
+//solo per max per sistemare il suo server, da cancellare appena è a posto
 #[derive(Serialize, Deserialize, Debug)]
 pub enum TextRequest{
-    ServerType(NodeId),     // id del client
-    GetFiles(NodeId),       // id del client
-    File(NodeId, String),   // id del client, Nome del file
+    ServerType(NodeId),
+    GetFiles(NodeId),
+    File(NodeId, String)
 }
-// ho pensato di far inserire l'id del client direttamente li perchè così è più facile per me da raggiungere
-// anzicchè dovermelo ricavare dal pacchetto, comunque si può sempre cambiare come cosa
-
-
 
 
 // server to client
@@ -74,6 +81,17 @@ pub enum TextResponse{
     ServerType(ServerType),
     FileList(Vec<String>),
     File(String), // la stringa con tutto il file di testo
+    MediaList(Vec<String>),
+    Media (String),
     Error(String),
 }
-//poi bisogna fare la stessa cosa anche per il text e media
+
+#[derive(Serialize, Deserialize, Debug)]
+pub enum CommandText{ //questi vengono mandati al client dal simulation control
+    ServerType(NodeId), //node id del server
+    GetFiles(NodeId), //node id del server a cui chiedere
+    File(NodeId, String), //node id del server, titolo del file da richiedere, se vogliamo il media o no [possiamo anche separare i comandi]
+    Media(NodeId), //se vogliamo separare le richieste
+    MediaList(NodeId),
+    Crash
+}

@@ -11,6 +11,6 @@ pub fn main(){
     //GUI::login_window::main();
     // simulation_control::simulation_control::test();
     //clients::assembler::main();
-    servers::Text_max::main();
+    servers::Text_max::main()
 
 }

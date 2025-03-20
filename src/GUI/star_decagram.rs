@@ -4,7 +4,7 @@ use crate::GUI::login_window::{NodeConfig,NodeType};
 
 
 pub fn spawn_star_decagram() -> Vec<NodeConfig> {
-    let config = parse_config("assets/configurations/star.toml");
+    let config = parse_config("assets/configurations/double_chain.toml");
     let radius = 200.0;
     let mut nodes = Vec::new();
 

@@ -25,6 +25,7 @@ struct UiCommands{
     show_add_sender_window: bool,
     show_remove_sender_window: bool,
     show_set_pdr_window: bool,
+    show_spawn_new_drone: bool,
     crash_drone: String,
     target_sender: String,
     sender_neighbours: String,
@@ -32,6 +33,23 @@ struct UiCommands{
     remove_neighbours: String,
     pdr: String,
     pdr_drone: String,
+    new_drone_id: String,
+    new_drone_links: String,
+    show_client_windows: HashMap<NodeId, bool>
+}
+#[derive(Default)]
+enum DroneBrand{
+    #[default]
+    LockHeedRustin,
+    BagelBomber,
+    FungiDrone,
+    KrustyC,
+    SkyLinkDrone,
+    LeDroneJames,
+    RustezeDrone,
+    Rustafarian,
+    RustDrone,
+    RustBusterDrone
 }
 #[derive(Default)]
 pub struct SharedSimState{
@@ -44,7 +62,7 @@ pub struct SimState{
 #[derive(Resource, Default)]
 struct NodeEntities(pub Vec<Entity>);
 
-#[derive(Default,Debug,Clone)]
+#[derive(Default,Debug,Clone,PartialEq)]
 pub enum NodeType{
     #[default]
     Drone,
@@ -69,6 +87,7 @@ pub struct NodeConfig{
     pub position: Vec2,
     pub connected_node_ids: Vec<NodeId>,
 }
+
 impl NodeConfig {
     pub fn new(node_type: NodeType, id: NodeId, position: Vec2, connected_node_ids: Vec<NodeId>)->Self{
         Self{
@@ -108,7 +127,7 @@ pub fn main() {
         .init_state::<AppState>()
         .add_systems(Update, ui_settings)
         .add_systems(Startup, setup_camera)
-        .add_systems(OnEnter(AppState::InGame), (setup_network,start_simulation))
+        .add_systems(OnEnter(AppState::InGame), (start_simulation,setup_network))
         .add_systems(Update , (draw_connections,set_up_bundle).run_if(in_state(AppState::InGame)))
 
         .run();
@@ -175,6 +194,9 @@ pub fn set_up_bundle(
 ) {
 
     for node_data in node_data.0.iter() {
+        //if node_data.node_type==NodeType::Client{
+        //    let entity = commands.spawn()
+        //}
 
         let entity=commands.spawn((
             Sprite {
@@ -233,7 +255,7 @@ fn ui_settings(
     mut sim_state: ResMut<SimState>,
     mut node_entities: ResMut<NodeEntities>,
     mut simulation_commands: ResMut<UiCommands>,
-    mut next_state: ResMut<NextState<AppState>>,
+    mut next_state: ResMut<NextState<AppState>>
 ) {
 
     if let Some(context)=contexts.try_ctx_mut() {
@@ -262,6 +284,7 @@ fn ui_settings(
                             for entity in node_entities.0.clone(){
                                 commands.entity(entity).despawn_recursive();
                             }
+                            sim.crash_all();
                             node_entities.0.clear();
                             next_state.set(AppState::Menu);
                         }
@@ -278,6 +301,9 @@ fn ui_settings(
                         }
                         if ui.button("Set Pdr").clicked(){
                             simulation_commands.show_set_pdr_window=true;
+                        }
+                        if ui.button("Spawn New Drone").clicked(){
+                            simulation_commands.show_spawn_new_drone=true;
                         }
                     });
                 });
@@ -334,7 +360,7 @@ fn ui_settings(
                                     }
 
                                 }
-                                if ui.button("Exit").clicked{
+                                if ui.button("Exit").clicked(){
                                     simulation_commands.show_add_sender_window=false;
                                 }
                             });
@@ -387,7 +413,7 @@ fn ui_settings(
                             ui.add(TextEdit::singleline(&mut simulation_commands.pdr));
                             ui.horizontal(|ui| {
                                 if ui.button("Confirm")
-                                    .clicked {
+                                    .clicked() {
                                     let id = parse_id(simulation_commands.pdr_drone.clone());
                                     let pdr = simulation_commands.pdr.parse::<f32>().unwrap_or_else(|_| 0.);
                                     sim.pdr(id, pdr);
@@ -399,11 +425,99 @@ fn ui_settings(
                             });
                         });
                 }
-                if ui
-                    .add(egui::widgets::Button::new("Add"))
-                    .clicked(){}
+                if simulation_commands.show_spawn_new_drone{
+                    egui::Window::new("Spawn New Drone")
+                        .open(&mut simulation_commands.show_spawn_new_drone.clone())
+                        .show(ctx, |ui|{
+                            ui.horizontal(|ui|{
+                                //ui.label("Please choose which drone to spawn");
+                                //menu::bar(ui, |ui|{
+                                //    ui.menu_button("New Drone",|ui|{
+                                //        if ui.button("LockHeedRustin")
+                                //            .clicked(){
+                                //            simulation_commands.type_new_drone=DroneBrand::LockHeedRustin;
+//
+//
+                                //        }
+                                //        else if ui.button("BagelBomber")
+                                //            .clicked(){
+                                //            simulation_commands.type_new_drone=DroneBrand::BagelBomber;
+//
+                                //        }
+                                //        else if ui.button("FungiDrone")
+                                //            .clicked(){
+                                //            simulation_commands.type_new_drone=DroneBrand::FungiDrone;
+//
+                                //        }
+                                //        else if ui.button("SkyLinkDrone")
+                                //            .clicked(){
+                                //            simulation_commands.type_new_drone=DroneBrand::SkyLinkDrone;
+//
+                                //        }
+                                //        else if ui.button("Krusty_C")
+                                //            .clicked(){
+                                //            simulation_commands.type_new_drone=DroneBrand::KrustyC;
+//
+                                //        }
+                                //        else if ui.button("RustDrone")
+                                //            .clicked(){
+                                //            simulation_commands.type_new_drone=DroneBrand::RustDrone;
+//
+                                //        }
+                                //        else if ui.button("Rustafarian")
+                                //            .clicked(){
+                                //            simulation_commands.type_new_drone=DroneBrand::Rustafarian;
+//
+                                //        }
+                                //        else if ui.button("RustBusters")
+                                //            .clicked(){
+                                //            simulation_commands.type_new_drone=DroneBrand::RustBusterDrone;
+//
+                                //        }
+                                //        else if ui.button("LeDroneJames")
+                                //            .clicked(){
+                                //            simulation_commands.type_new_drone=DroneBrand::LeDroneJames;
+//
+                                //        }
+                                //        else if ui.button("Rusteze")
+                                //            .clicked(){
+                                //            simulation_commands.type_new_drone=DroneBrand::RustezeDrone;
+//
+                                //        }
+                                //    });
+                                //})
+                            });
+                            ui.label("Insert the ID of the new drone");
+                            ui.add(TextEdit::singleline(&mut simulation_commands.new_drone_id));
+                            ui.label("Insert the connections of the new drone\nseparated by a '-'");
+                            ui.add(TextEdit::singleline(&mut simulation_commands.new_drone_links));
+                            ui.horizontal(|ui|{
+                                if ui.button("Confirm")
+                                    .clicked(){
+                                    let mut links=Vec::new();
+                                    let possible_ids:Vec<String>=simulation_commands.new_drone_links.split('-').map(String::from).collect();
+                                    for id in possible_ids{
+                                        let link=parse_id(id);
+                                        links.push(link);
+                                    }
+                                    let new_id=parse_id(simulation_commands.new_drone_id.clone());
+                                    //spawn_new_drone(links,new_id);
+                                    sim.spawn_new_drone(links, new_id);
+                                    for entity in node_entities.0.clone(){
+                                        commands.entity(entity).despawn_recursive();
+                                    }
 
-                ui.allocate_rect(ui.available_rect_before_wrap(), egui::Sense::hover());
+                                }
+                                if ui.button("Exit")
+                                    .clicked(){
+                                    simulation_commands.show_spawn_new_drone=false;
+                                }
+                            });
+                        });
+
+                }
+
+
             })
             .response
             .rect
@@ -420,6 +534,16 @@ fn ui_settings(
             .width();
     }
 }
+//use std::fs::OpenOptions;
+//use std::io::Write;
+//fn spawn_new_drone(
+//    neighbours: Vec<NodeId>,
+//    new_drone_id: NodeId
+//){
+//    let string_to_append=format!("\n[[drone]]\nid = {}\nconnected_node_ids = {:?}\npdr = 0.00\n",new_drone_id, neighbours);
+//    let mut file = OpenOptions::new().append(true).create(true).open("assets/configurations/double_chain.toml").unwrap();
+//    file.write_all(string_to_append.as_bytes()).unwrap();
+//}
 fn parse_id(id: String)->NodeId{
     match id.parse::<u8>(){
         Ok(node_id)=>node_id,
