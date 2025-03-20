@@ -29,7 +29,6 @@ pub enum ChatResponse{
     RegisterClient(bool),
     RegisteredClients(Vec<NodeId>),
     SendMessage(Result<String, String>),
-    ForwardMessage(MessageChat, NodeId),
     EndChat(bool),
 
 }
