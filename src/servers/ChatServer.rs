@@ -78,8 +78,15 @@ impl Server{
     }
 
 
-    fn send_packet<T>(&mut self, p:T, header: SourceRoutingHeader)where T : Fragmentation+Serialize{
-        if let Ok(vec) = p.serialize_data(header,self.session_id){
+    fn send_packet<T>(&mut self, p:T, id:NodeId, nt:NodeType)where T : Fragmentation+Serialize{
+        let route = self.get_route(id, nt);
+        let mut srh= SourceRoutingHeader::new(Vec::new(), 0);
+        match route {
+            Some(final_route)=>{srh=final_route},
+            None => {println!("no route found!");}
+        }
+
+        if let Ok(vec) = p.serialize_data(srh,self.session_id){
             let mut fragments_send = Vec::new();
             for i in vec.iter(){
                 if let PacketType::MsgFragment(fragment) = i.clone().pack_type{
@@ -99,60 +106,42 @@ impl Server{
         self.forward_packet(create_ack(p.clone()));
         if let PacketType::MsgFragment(fragment) = p.pack_type{
             if self.fragments_recv.contains_key(&(p.routing_header.hops.clone()[0],p.session_id)){
-                if let Some((mut vec)) = self.fragments_recv.get_mut(&(p.routing_header.hops[0],p.session_id)){
-                    vec.push(fragment.clone());
-                    if fragment.total_n_fragments == vec.len() as u64{
-                        if let Ok(totalmsg) = ChatRequest::deserialize_data(vec){
-                            match totalmsg{
-                                ChatRequest::ServerType => {
-                                    let route = self.get_route(p.routing_header.hops[0], NodeType::Client);
-                                    let mut srh= SourceRoutingHeader::new(Vec::new(), 0);
-                                    match route {
-                                        Some(final_route)=>{srh=final_route},
-                                        None => {println!("no route found!");}
-                                    }
-                                    self.send_packet(ChatResponse::ServerType(self.clone().server_type), srh);
-                                }
-                                ChatRequest::RegisterClient(n) => {
-                                    let route = self.get_route(p.routing_header.hops[0], NodeType::Client);
-                                    let mut srh= SourceRoutingHeader::new(Vec::new(), 0);
-                                    match route {
-                                        Some(final_route)=>{srh=final_route},
-                                        None => {println!("no route found!");}
-                                    }
-                                    self.registered_clients.push(n);
-                                    self.send_packet(ChatResponse::RegisterClient(true), srh);
-                                }
-                                ChatRequest::GetListClients => {
-                                    let route = self.get_route(p.routing_header.hops[0], NodeType::Client);
-                                    let mut srh= SourceRoutingHeader::new(Vec::new(), 0);
-                                    match route {
-                                        Some(final_route)=>{srh=final_route},
-                                        None => {println!("no route found!");}
-                                    }
-                                    self.send_packet(ChatResponse::RegisteredClients(self.clone().registered_clients), srh)
-                                }
-                                ChatRequest::SendMessage(mc, id) => {
-
-                                }
-                                ChatRequest::EndChat(n) => {
-                                    let route = self.get_route(p.routing_header.hops[0], NodeType::Client);
-                                    let mut srh= SourceRoutingHeader::new(Vec::new(), 0);
-                                    match route {
-                                        Some(final_route)=>{srh=final_route},
-                                        None => {println!("no route found!");}
-                                    }
-                                    self.registered_clients.retain(|x| *x != n);
-                                    self.send_packet(ChatResponse::EndChat(true), srh);
-                                }
-                            }
-                        }
-                    }
-                }
+                let Some(mut vec) = self.fragments_recv.get_mut(&(p.routing_header.hops[0],p.session_id));
+                vec.push(fragment.clone());
             }else {
                 let mut vec = Vec::new();
                 vec.push(fragment.clone());
                 self.fragments_recv.insert((p.routing_header.hops.clone()[0], p.session_id), vec);
+            }
+            if let Some((mut vec)) = self.fragments_recv.get_mut(&(p.routing_header.hops[0],p.session_id)){
+                if fragment.total_n_fragments == vec.len() as u64{
+                    if let Ok(totalmsg) = ChatRequest::deserialize_data(vec){
+                        match totalmsg{
+                            ChatRequest::ServerType => {
+                                self.send_packet(ChatResponse::ServerType(self.clone().server_type), p.routing_header.hops[0], NodeType::Client);
+                            }
+                            ChatRequest::RegisterClient(n) => {
+                                self.registered_clients.push(n);
+                                self.send_packet(ChatResponse::RegisterClient(true), p.routing_header.hops[0], NodeType::Client);
+                            }
+                            ChatRequest::GetListClients => {
+                                self.send_packet(ChatResponse::RegisteredClients(self.clone().registered_clients), p.routing_header.hops[0], NodeType::Client);
+                            }
+                            ChatRequest::SendMessage(mc, _) => {
+                                if self.registered_clients.contains(&mc.from_id) && self.registered_clients.contains(&mc.to_id){
+                                    self.send_packet(ChatResponse::SendMessage(Ok("The server will forward the message to the final client".to_string())), p.routing_header.hops[0], NodeType::Client);
+                                    self.send_packet(ChatResponse::ForwardMessage(mc.clone()), mc.to_id, NodeType::Client);
+                                }else {
+                                    self.send_packet(ChatResponse::SendMessage(Err("Error with the registration of the two involved clients".to_string())), p.routing_header.hops[0], NodeType::Client);
+                                }
+                            }
+                            ChatRequest::EndChat(n) => {
+                                self.registered_clients.retain(|x| *x != n);
+                                self.send_packet(ChatResponse::EndChat(true), p.routing_header.hops[0], NodeType::Client);
+                            }
+                        }
+                    }
+                }
             }
         }
     }
@@ -271,8 +260,8 @@ impl Server{
         }
     }
     fn neigh_mapping(&mut self){
+        let mut prev = self.neigh_map.add_node((self.server_id, NodeType::Server));
         for i in self.flooding.iter(){
-            let mut prev = self.neigh_map.add_node((self.server_id, NodeType::Server));
             for (j,k) in i.path_trace.iter(){
                 if Self::node_exists(self.clone().neigh_map, j.clone(), k.clone()){
                     let nodeid = self.find_node(j.clone(),k.clone()).unwrap();
@@ -314,12 +303,12 @@ impl Server{
             for neighbor in self.neigh_map.neighbors(current) {
                 if let Some(weight) = self.neigh_map.find_edge(neighbor, current).map(|e| self.neigh_map[e]) {
                     if let Some(&neighbor_dist) = paths.get(&neighbor) {
-                                    if neighbor_dist + weight == paths[&current] {
-                            path.push(self.neigh_map[neighbor].0);
-                            current = neighbor;
-                            found = true;
-                            break;
-                        }
+                            if neighbor_dist + weight == paths[&current] {
+                                path.push(self.neigh_map[neighbor].0);
+                                current = neighbor;
+                                found = true;
+                                break;
+                            }
                     }
                 }
             }
@@ -327,7 +316,6 @@ impl Server{
                 return None; // Shouldn't happen unless the graph is modified during traversal
             }
         }
-
         path.reverse();
         Some(SourceRoutingHeader{hops: path, hop_index:0})
     }
