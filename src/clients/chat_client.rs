@@ -255,8 +255,8 @@ impl ChatClient {
                     let incoming_message = ChatResponse::reassemble_msg(&fragments).unwrap();
                     println!("incoming_message: {:?}", incoming_message);
                     match incoming_message {
-                        ChatResponse::ServerType(server_type) => {self.server_types.insert(*src_id, server_type);
-                        println!("YEAAAAAAAAAAAA");}
+                        ChatResponse::ServerType(server_type) => {self.server_types.insert(*src_id, server_type.clone());
+                        println!("YEAAAAAAAAAAAA {:?}", server_type);}
                         _ => {}
                     }
 

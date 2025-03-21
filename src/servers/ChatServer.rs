@@ -106,8 +106,10 @@ impl Server{
         self.forward_packet(create_ack(p.clone()));
         if let PacketType::MsgFragment(fragment) = p.pack_type{
             if self.fragments_recv.contains_key(&(p.routing_header.hops.clone()[0],p.session_id)){
-                let Some(mut vec) = self.fragments_recv.get_mut(&(p.routing_header.hops[0],p.session_id));
-                vec.push(fragment.clone());
+                if let Some(mut vec) = self.fragments_recv.get_mut(&(p.routing_header.hops[0],p.session_id)){
+                    vec.push(fragment.clone());
+                }else { println!("no fragment found!"); }
+
             }else {
                 let mut vec = Vec::new();
                 vec.push(fragment.clone());
@@ -118,6 +120,7 @@ impl Server{
                     if let Ok(totalmsg) = ChatRequest::deserialize_data(vec){
                         match totalmsg{
                             ChatRequest::ServerType => {
+                                println!("qui arriva");
                                 self.send_packet(ChatResponse::ServerType(self.clone().server_type), p.routing_header.hops[0], NodeType::Client);
                             }
                             ChatRequest::RegisterClient(n) => {
