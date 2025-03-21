@@ -3,7 +3,7 @@ use std::process::id;
 use std::sync::{Arc, Mutex};
 use std::thread;
 use std::time::{Duration, Instant};
-use bevy::pbr::add_clusters;
+use bevy_egui::egui::debug_text::print;
 use crossbeam_channel::{select_biased, unbounded, Receiver, RecvError, Sender};
 use wg_2024::packet;
 use wg_2024::controller;
@@ -192,14 +192,11 @@ impl ChatClient {
 
         match self.find_route(&id_server){
             Ok(route) => {
-                println!("route: {:?}",route);
                 let packets_to_send = ChatRequest::create_packet(&self.fragments_sent, route.clone(), & mut self.session_id_packet);
                 for packet in packets_to_send {
 
                     println!("route: {}",packet.routing_header);
                     if let Some(next_hop) = packet.clone().routing_header.hops.get(1){
-                        println!("next hop: {}",next_hop);
-
                         self.send_packet(next_hop, packet);
                     }
                 }
@@ -258,7 +255,8 @@ impl ChatClient {
                     let incoming_message = ChatResponse::reassemble_msg(&fragments).unwrap();
                     println!("incoming_message: {:?}", incoming_message);
                     match incoming_message {
-                        ChatResponse::ServerType(server_type) => {self.server_types.insert(*src_id, server_type);}
+                        ChatResponse::ServerType(server_type) => {self.server_types.insert(*src_id, server_type);
+                        println!("YEAAAAAAAAAAAA");}
                         _ => {}
                     }
 
@@ -332,51 +330,51 @@ impl ChatClient {
     }
 
     pub fn handle_flood_req(& mut self, packet: Packet){
-        if let PacketType::FloodRequest(mut flood_request) = packet.clone().pack_type {
-            if self.visited_nodes.contains(&(flood_request.flood_id, flood_request.initiator_id)) { //case if client has already received the request
-                if let Some(first_hop) = Some(flood_request.path_trace[1].0) {
-                    if let Some(sender) = self.send_packets.get(&first_hop) {
+       if let PacketType::FloodRequest(mut flood_request) = packet.clone().pack_type{
+            //check if the pair (flood_id, initiator id) has already been received -> self.visited_nodes
+           if self.visited_nodes.contains(&(flood_request.flood_id, flood_request.initiator_id)){
+               flood_request.path_trace.push((self.config.id, NodeType::Client)); //client pushes itself in the path trace
+               println!("path_trace here: {:?}", flood_request.path_trace);
+               if let Some(client_added) = flood_request.path_trace.last_mut() {
+
+                   if let Some(sender) = self.send_packets.get(&client_added.0) {
+                       println!("flood response sent: {}", flood_request.generate_response(packet.session_id));
                        if let Err(e) = sender.send(flood_request.generate_response(packet.session_id)){
-                           println!("Error sending the flood flood request: {}", e)
+                           println!("Error sending the flood response: {}", e)
                        }
-                    }else { println!("No sender found for first hop {}", first_hop) }
-                }else { println!("No next hop found") }
-                return;
-            }
+                   }else { println!("No sender found for client added {}", client_added.0) }
 
-            self.visited_nodes.insert((flood_request.flood_id, flood_request.initiator_id)); //mark as visited
-
-
-            if self.send_packets.len() == 1{ //check if the client has only one node connected to it
-                if let Some(first_hop) = Some(flood_request.path_trace[1].0 ) {
-                    if let Some(sender) = self.send_packets.get(&first_hop){
-                        if let Err(e) = sender.send(flood_request.generate_response(packet.session_id)){
-                            println!("Error sending the flood request: {}", e)
-                        }
-                    }else { println!("This is not an error message: \n'No sender found in the case of the client having only 1 connection'") }
-                }else { println!("No next hop found") }
-                return;
-            }
-
-            if let Some(_) = flood_request.path_trace.get(1){ //normal case when the client forwards it to the every neighbor
-                println!("forwarding to all direct neighbours");
-                for (neighbor, sender) in &self.send_packets{
-                    if *neighbor != flood_request.path_trace[1].0 { //forward to everyone that's not the one sending the request
-                        let mut forward_packet = packet.clone();
-                        forward_packet.pack_type = PacketType::FloodRequest(flood_request.clone());
-                        if let Err(e) = sender.send(forward_packet){
-                            println!("error forwarding the flood request to every neighbor: {}", e)
-                        }
+               }else { println!("can't find the client last added") }
+           }else { //if we have not already received the request
+               flood_request.path_trace.push((self.config.id, NodeType::Client)); //added to the path trace the client
+               self.visited_nodes.insert((flood_request.flood_id, flood_request.initiator_id)); //we have now visited it
+               if self.send_packets.len() == 1{ //if it has no neighbour
+                    if let Some(sender_flood_req) = flood_request.path_trace.iter().rev().nth(1) { //second to last in the path trace should be the one who sent me the flood request
+                        self.send_packet(&sender_flood_req.clone().0, flood_request.generate_response(packet.session_id)); //send a response to the one who sent the request
                     }
-                }
-            }
+               }else {
+                   let new_packet = Packet::new_flood_request(packet.routing_header, packet.session_id, flood_request.clone()); //create the packet of the flood request that needs to be forwarded
+                   for (neighbour, sender) in &self.send_packets{
+                       if let Some(sender_flood_req) = flood_request.path_trace.iter().rev().nth(1) {
+                           if *neighbour != sender_flood_req.0{
+                                sender.send(new_packet.clone()).unwrap()
+                           }
+                       }
+                   }
+               }
 
-        }else { println!("Flood request not found") }
+
+           }
+
+
+
+        }
 
     }
 
     pub fn handle_flood_response(& mut self, packet: Packet){
         if let PacketType::FloodResponse(flood_response) = packet.clone().pack_type {
+             // println!("{:?}", flood_response);
             if !flood_response.path_trace.is_empty(){
                 for (node_id, node_type) in &flood_response.path_trace{
                     if *node_type == NodeType::Server && !self.servers.contains(&node_id){
