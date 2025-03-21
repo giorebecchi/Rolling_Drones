@@ -358,7 +358,7 @@ pub fn start_simulation(
         controller.lock().unwrap().run();
     });
 
-    // thread::sleep(Duration::from_millis(200)); //questo da scommentare sempre se vuoi testare
+     // thread::sleep(Duration::from_millis(200)); //questo da scommentare sempre se vuoi testare
     // simulation_controller.client.get(&0).unwrap()
     //    .send(CommandChat::SendMessage(11, 12, "ciao".to_string()))
     //    .unwrap();

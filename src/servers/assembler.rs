@@ -23,6 +23,7 @@ pub trait Fragmentation{
                 session_id:session_id,
                 pack_type:MsgFragment(Fragment::from_string(i, tot_fragment, fragment.to_string()))
             };
+            vec.push(packet);
         }
         Ok(vec)
     }
