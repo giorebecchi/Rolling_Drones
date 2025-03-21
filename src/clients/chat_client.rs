@@ -256,7 +256,11 @@ impl ChatClient {
                     println!("incoming_message: {:?}", incoming_message);
                     match incoming_message {
                         ChatResponse::ServerType(server_type) => {self.server_types.insert(*src_id, server_type.clone());
-                        println!("YEAAAAAAAAAAAA {:?}", server_type);}
+                        println!("YEAAAAAAAAAAAA {:?}", server_type);},
+                        ChatResponse::EndChat(response) =>{},
+                        ChatResponse::RegisterClient(response) => {},
+                        ChatResponse::SendMessage(_) => {},
+                        ChatResponse::RegisteredClients(registered_clients) => {},
                         _ => {}
                     }
 

@@ -6,7 +6,7 @@ use serde::{Serialize, Deserialize};
 use wg_2024::config::Client;
 use wg_2024::network::{NodeId, SourceRoutingHeader};
 use wg_2024::packet::{FloodRequest, FloodResponse, Fragment, NodeType, Packet, PacketType};
-use crate::common_things::common::{CommandText, MessageWeb};
+use crate::common_things::common::{CommandText};
 
 pub struct WebBrowser {
     pub config: Client,

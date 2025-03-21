@@ -9,7 +9,6 @@ use wg_2024::network::{NodeId, SourceRoutingHeader};
 use wg_2024::packet::{Fragment, NodeType, Packet, FRAGMENT_DSIZE};
 use crate::common_things::common::{ChatRequest, ChatResponse, ServerType};
 use crate::common_things::common::MessageChat;
-use crate::common_things::common::MessageWeb;
 
 pub trait Serialization{
     fn stringify(&self) -> String where Self: Serialize{ //to serialize
@@ -70,16 +69,11 @@ impl MessageChat{
         MessageChat{ content, from_id, to_id }
     }
 }
-impl MessageWeb{
-    pub fn new(file_name: String, media: bool) -> MessageWeb{
-        MessageWeb{ file_name, media }
-    }
-}
+
+
 
 impl Serialization for MessageChat{}
-impl Serialization for MessageWeb{}
 impl Fragmentation for MessageChat{}
-impl Fragmentation for MessageWeb{}
 impl Serialization for ServerType{}
 impl Fragmentation for ServerType{}
 
@@ -117,27 +111,6 @@ pub fn main(){
     println!();
     let packet = MessageChat::create_packet(&fragments, vec![1,3,4], &mut session_id);
     println!("The packet is {:?}", packet);
-    println!();
-
-    let message_web_test = MessageWeb{
-        file_name: "ciao kleppa come stai foto?".to_string(),
-        media: true
-    };
-
-    let serialized_message = message_web_test.stringify();
-    println!("serialized msg: {}", serialized_message);
-
-    let fragments = message_web_test.fragment_message();
-    for fragment in &fragments {
-        println!("fragment index: {}, fragment: {}", fragment.0, fragment.1)
-    }
-    println!();
-
-    let reassembled_message = MessageWeb::reassemble_msg(&fragments);
-    match reassembled_message{
-        Ok(message) => {println!("Message reassembled: {:?}", message)},
-        Err(_) => println!("error in reassembling message")
-    }
     println!();
 
     let server_type = ServerType::CommunicationServer;
