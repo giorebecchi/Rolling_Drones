@@ -231,13 +231,15 @@ impl ChatClient {
 
     //incoming messages
     pub fn handle_fragments(& mut self, mut packet: Packet){ //doesn't perfectly respect the protocol
-        let src_id = packet.routing_header.hops.last().unwrap();
+        // println!("received packet by client: {}", packet);
+        let src_id = packet.routing_header.hops.first().unwrap();
         let check = (packet.session_id, *src_id);
+        // println!("src_id: {}", src_id);
 
-        println!("src_id: {}",src_id);
 
+        //i need to fix the sending of the ack, problem with the sender
         let ack = self.ack(&packet);
-        println!("{}", ack);
+        // println!("ack to send: {:?}", ack);
         self.send_packet(src_id, ack); //ack after receiving a fragment
 
         if let PacketType::MsgFragment(fragment) = packet.pack_type{
@@ -251,7 +253,6 @@ impl ChatClient {
 
             if let Some(fragments) = self.incoming_fragments.get_mut(&check){
                 if fragments.len() as u64 == fragment.total_n_fragments {
-                    println!("all fragments received");
                     let incoming_message = ChatResponse::reassemble_msg(&fragments).unwrap();
                     println!("incoming_message: {:?}", incoming_message);
                     match incoming_message {
