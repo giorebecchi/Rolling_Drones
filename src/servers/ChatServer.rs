@@ -108,8 +108,9 @@ impl Server{
             if self.fragments_recv.contains_key(&(p.routing_header.hops.clone()[0],p.session_id)){
                 if let Some(mut vec) = self.fragments_recv.get_mut(&(p.routing_header.hops[0],p.session_id)){
                     vec.push(fragment.clone());
-                }else { println!("no fragment found!"); }
-
+                }else {
+                    println!("no fragment found!");
+                }
             }else {
                 let mut vec = Vec::new();
                 vec.push(fragment.clone());
@@ -120,7 +121,6 @@ impl Server{
                     if let Ok(totalmsg) = ChatRequest::deserialize_data(vec){
                         match totalmsg{
                             ChatRequest::ServerType => {
-                                println!("qui arriva");
                                 self.send_packet(ChatResponse::ServerType(self.clone().server_type), p.routing_header.hops[0], NodeType::Client);
                             }
                             ChatRequest::RegisterClient(n) => {
@@ -161,8 +161,18 @@ impl Server{
         if let PacketType::Nack(nack) = packet.pack_type{
             match nack.clone().nack_type{
                 NackType::ErrorInRouting(crashed_id) => {
-                    self.neigh_map.remove_node(self.find_node(crashed_id,NodeType::Drone).unwrap());
+                    // self.neigh_map.remove_node(self.find_node(crashed_id,NodeType::Drone).unwrap());
 
+                    //da finire aspettando di capire come funziona il session_id dei pacchetti dei nack
+                    // self.neigh_map.remove_edge(self.neigh_map.find_edge(self.find_node(crashed_id,NodeType::Drone).unwrap_or_default(), self.find_node(packet.routing_header.hops[0], NodeType::Drone).unwrap_or_default()).unwrap_or_default());
+                    // if self.fragments_send.contains_key(&s_id){
+                    //     let vec = self.fragments_send.get(&s_id).unwrap();
+                    //     for i in vec.iter(){
+                    //         if i.fragment_index==nack.fragment_index{
+                    //
+                    //         }
+                    //     }
+                    // }
                 }
                 NackType::DestinationIsDrone => {}
                 NackType::Dropped => {
@@ -222,7 +232,7 @@ impl Server{
 
     fn handle_flood_response(&mut self, p:Packet){
         if let PacketType::FloodResponse(mut flood) = p.pack_type{
-            println!("server {} has received flood response {}", self.server_id,flood.clone());
+            // println!("server {} has received flood response {}", self.server_id,flood.clone());
             let mut safetoadd = true;
             for i in self.flooding.iter(){
                 if i.flood_id<flood.flood_id{
@@ -234,6 +244,24 @@ impl Server{
             }
             if safetoadd{
                 self.flooding.push(flood.clone());
+
+                let mut prev;
+                match self.find_node(self.server_id, NodeType::Server) {
+                    None => {prev=self.neigh_map.add_node((self.server_id,NodeType::Server))}
+                    Some(ni) => {prev=ni}
+                }
+
+                for (j,k) in flood.path_trace.iter(){
+                    if Self::node_exists(self.clone().neigh_map, j.clone(), k.clone()){
+                        let nodeid = self.find_node(j.clone(),k.clone()).unwrap();
+                        self.neigh_map.add_edge(nodeid, prev, 1);
+                        prev = nodeid;
+                    } else{
+                        let newnodeid = self.neigh_map.add_node((j.clone(),k.clone()));
+                        self.neigh_map.add_edge(newnodeid, prev, 1);
+                        prev = newnodeid;
+                    }
+                }
             }else {
                 println!("you received an outdated version of the flooding");
             }
@@ -262,22 +290,25 @@ impl Server{
             };
         }
     }
-    fn neigh_mapping(&mut self){
-        let mut prev = self.neigh_map.add_node((self.server_id, NodeType::Server));
-        for i in self.flooding.iter(){
-            for (j,k) in i.path_trace.iter(){
-                if Self::node_exists(self.clone().neigh_map, j.clone(), k.clone()){
-                    let nodeid = self.find_node(j.clone(),k.clone()).unwrap();
-                    self.neigh_map.add_edge(nodeid, prev, 1);
-                    prev = nodeid;
-                } else{
-                    let newnodeid = self.neigh_map.add_node((j.clone(),k.clone()));
-                    self.neigh_map.add_edge(newnodeid, prev, 1);
-                    prev = newnodeid;
-                }
-            }
-        }
-    }
+
+
+    //funzione commentata perchè non ha senso, ho trasferito quello che facevo qui all'interno di handle_flood_request, perchè altrimenti il self.flooding risultava sempre vuoto
+    // fn neigh_mapping(&mut self){
+    //     let mut prev = self.neigh_map.add_node((self.server_id, NodeType::Server));
+    //     for i in self.flooding.iter(){
+    //         for (j,k) in i.path_trace.iter(){
+    //             if Self::node_exists(self.clone().neigh_map, j.clone(), k.clone()){
+    //                 let nodeid = self.find_node(j.clone(),k.clone()).unwrap();
+    //                 self.neigh_map.add_edge(nodeid, prev, 1);
+    //                 prev = nodeid;
+    //             } else{
+    //                 let newnodeid = self.neigh_map.add_node((j.clone(),k.clone()));
+    //                 self.neigh_map.add_edge(newnodeid, prev, 1);
+    //                 prev = newnodeid;
+    //             }
+    //         }
+    //     }
+    // }
 
     fn node_exists(graph: Graph<(NodeId, NodeType), u32, petgraph::Undirected>, id:NodeId, nt:NodeType) -> bool {
         graph.node_indices().any(|i| graph[i] == (id,nt))
@@ -288,8 +319,8 @@ impl Server{
     }
 
     fn get_route(&mut self, id:NodeId, nt:NodeType)->Option<SourceRoutingHeader>{
-        let start = self.find_node(self.server_id, NodeType::Server).unwrap();
-        let end = self.find_node(id,nt).unwrap();
+        let start = self.find_node(self.server_id, NodeType::Server).unwrap_or_default();
+        let end = self.find_node(id,nt).unwrap_or_default();
 
         let paths: HashMap<NodeIndex, u32> = dijkstra(&self.neigh_map, start, Some(end), |e| *e.weight());
 
