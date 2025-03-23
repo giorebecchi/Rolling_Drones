@@ -2,6 +2,7 @@ use std::collections::{HashMap, HashSet};
 use petgraph::graph::{Graph, NodeIndex};
 use petgraph::algo::{astar, dijkstra};
 use crossbeam_channel::{select_biased, Receiver, Sender};
+use petgraph::data::Build;
 use serde::Serialize;
 use wg_2024::network::{NodeId, SourceRoutingHeader};
 use wg_2024::packet;
@@ -16,12 +17,12 @@ pub struct Server{
     session_id: u64,
     registered_clients: Vec<NodeId>,
     flooding: Vec<FloodResponse>,
-    neigh_map: Graph<(NodeId,NodeType), u32, petgraph::Undirected>,
+    neigh_map: Graph<(NodeId,NodeType), u32, petgraph::Directed>,
     packet_recv: Receiver<Packet>,
     already_visited: HashSet<(NodeId,u64)>,
     pub packet_send: HashMap<NodeId, Sender<Packet>>,
     fragments_recv : HashMap<(NodeId,u64),Vec<Fragment>>,
-    fragments_send : HashMap<(u64),Vec<Fragment>>,
+    fragments_send : HashMap<u64,(NodeId,NodeType,Vec<Fragment>)>,
 }
 
 impl Server{
@@ -32,7 +33,7 @@ impl Server{
             session_id:0,
             registered_clients: Vec::new(),
             flooding: Vec::new(),
-            neigh_map: Graph::new_undirected(),
+            neigh_map: Graph::new(),
             packet_recv:packet_recv,
             already_visited:HashSet::new(),
             packet_send:packet_send,
@@ -93,7 +94,7 @@ impl Server{
                     fragments_send.push(fragment);
                 }
             }
-            self.fragments_send.insert(self.session_id.clone(), fragments_send);
+            self.fragments_send.insert(self.session_id.clone(), (id,nt,fragments_send));
             self.session_id+=1;
             //aggiungere un field nella struct server per salvare tutti i vari pacchetti nel caso in cui fossero droppati ecc.
             for i in vec.iter(){
@@ -152,11 +153,12 @@ impl Server{
     fn handle_ack(&mut self, packet : Packet){
         let s_id=packet.session_id;
         if let PacketType::Ack(ack) = packet.pack_type{
-            self.fragments_send.get_mut(&s_id).unwrap().retain(|x| x.fragment_index!=ack.fragment_index);
+            self.fragments_send.get_mut(&s_id).unwrap().2.retain(|x| x.fragment_index!=ack.fragment_index);
         }
     }
 
     fn handle_nack(&mut self, packet : Packet){
+        let id = packet.routing_header.hops[0];
         let s_id=packet.session_id;
         if let PacketType::Nack(nack) = packet.pack_type{
             match nack.clone().nack_type{
@@ -164,21 +166,71 @@ impl Server{
                     // self.neigh_map.remove_node(self.find_node(crashed_id,NodeType::Drone).unwrap());
 
                     //da finire aspettando di capire come funziona il session_id dei pacchetti dei nack
-                    // self.neigh_map.remove_edge(self.neigh_map.find_edge(self.find_node(crashed_id,NodeType::Drone).unwrap_or_default(), self.find_node(packet.routing_header.hops[0], NodeType::Drone).unwrap_or_default()).unwrap_or_default());
-                    // if self.fragments_send.contains_key(&s_id){
-                    //     let vec = self.fragments_send.get(&s_id).unwrap();
-                    //     for i in vec.iter(){
-                    //         if i.fragment_index==nack.fragment_index{
-                    //
-                    //         }
-                    //     }
-                    // }
+                    self.neigh_map.remove_edge(self.neigh_map.find_edge(self.find_node(crashed_id,NodeType::Drone).unwrap_or_default(), self.find_node(packet.routing_header.hops[0], NodeType::Drone).unwrap_or_default()).unwrap_or_default());
+                    if self.fragments_send.contains_key(&s_id){
+                        let vec = self.fragments_send.get(&s_id).unwrap();
+                        for i in vec.2.clone().iter(){
+                            if i.fragment_index==nack.fragment_index{
+                                let packet = Packet{
+                                    routing_header: self.get_route(vec.0.clone(),vec.1.clone()).unwrap_or_default(),
+                                    session_id: s_id.clone(),
+                                    pack_type: PacketType::MsgFragment(i.clone()),
+                                };
+                            }
+                        }
+                    }
                 }
-                NackType::DestinationIsDrone => {}
+                NackType::DestinationIsDrone => {
+                    println!("This error shouldn't happen!");
+                    if self.fragments_send.contains_key(&s_id){
+                        let vec = self.fragments_send.get(&s_id).unwrap();
+                        for i in vec.2.clone().iter(){
+                            if i.fragment_index==nack.fragment_index{
+                                let packet = Packet{
+                                    routing_header: self.get_route(vec.0.clone(),vec.1.clone()).unwrap_or_default(),
+                                    session_id: s_id.clone(),
+                                    pack_type: PacketType::MsgFragment(i.clone()),
+                                };
+                            }
+                        }
+                    }
+                }
                 NackType::Dropped => {
+                    let node = self.find_node(id, NodeType::Drone).unwrap_or_default();
+                    for neighbor in self.clone().neigh_map.neighbors(node) {
+                        if let Some(edge) = self.neigh_map.find_edge(node, neighbor) {
+                            self.neigh_map[edge] += 1;
+                        }
+                    }
 
+                    if self.fragments_send.contains_key(&s_id){
+                        let vec = self.fragments_send.get(&s_id).unwrap();
+                        for i in vec.2.clone().iter(){
+                            if i.fragment_index==nack.fragment_index{
+                                let packet = Packet{
+                                    routing_header: self.get_route(vec.0.clone(),vec.1.clone()).unwrap_or_default(),
+                                    session_id: s_id.clone(),
+                                    pack_type: PacketType::MsgFragment(i.clone()),
+                                };
+                            }
+                        }
+                    }
                 }
-                NackType::UnexpectedRecipient(_) => {}
+                NackType::UnexpectedRecipient(ur) => {
+                    println!("This error shouldn't happen!");
+                    if self.fragments_send.contains_key(&s_id){
+                        let vec = self.fragments_send.get(&s_id).unwrap();
+                        for i in vec.2.clone().iter(){
+                            if i.fragment_index==nack.fragment_index{
+                                let packet = Packet{
+                                    routing_header: self.get_route(vec.0.clone(),vec.1.clone()).unwrap_or_default(),
+                                    session_id: s_id.clone(),
+                                    pack_type: PacketType::MsgFragment(i.clone()),
+                                };
+                            }
+                        }
+                    }
+                }
             }
         }
     }
@@ -254,11 +306,21 @@ impl Server{
                 for (j,k) in flood.path_trace.iter(){
                     if Self::node_exists(self.clone().neigh_map, j.clone(), k.clone()){
                         let nodeid = self.find_node(j.clone(),k.clone()).unwrap();
-                        self.neigh_map.add_edge(nodeid, prev, 1);
+                        if self.neigh_map.find_edge(nodeid, prev).is_none(){
+                            self.neigh_map.add_edge(nodeid, prev, 1);
+                        }
+                        if self.neigh_map.find_edge(prev,nodeid).is_none(){
+                            self.neigh_map.add_edge(prev, nodeid, 1);
+                        }
                         prev = nodeid;
                     } else{
                         let newnodeid = self.neigh_map.add_node((j.clone(),k.clone()));
-                        self.neigh_map.add_edge(newnodeid, prev, 1);
+                        if self.neigh_map.find_edge(prev,newnodeid).is_none(){
+                            self.neigh_map.add_edge(prev, newnodeid, 1);
+                        }
+                        if self.neigh_map.find_edge(newnodeid, prev).is_none(){
+                            self.neigh_map.add_edge(newnodeid, prev, 1);
+                        }
                         prev = newnodeid;
                     }
                 }
@@ -310,7 +372,7 @@ impl Server{
     //     }
     // }
 
-    fn node_exists(graph: Graph<(NodeId, NodeType), u32, petgraph::Undirected>, id:NodeId, nt:NodeType) -> bool {
+    fn node_exists(graph: Graph<(NodeId, NodeType), u32, petgraph::Directed>, id:NodeId, nt:NodeType) -> bool {
         graph.node_indices().any(|i| graph[i] == (id,nt))
     }
 
@@ -318,58 +380,77 @@ impl Server{
         self.neigh_map.node_indices().find(|&i| self.neigh_map[i] == (id, nt))
     }
 
-    fn get_route(&mut self, id:NodeId, nt:NodeType)->Option<SourceRoutingHeader>{
-        let start = self.find_node(self.server_id, NodeType::Server).unwrap_or_default();
-        let end = self.find_node(id,nt).unwrap_or_default();
 
-        let paths: HashMap<NodeIndex, u32> = dijkstra(&self.neigh_map, start, Some(end), |e| *e.weight());
+    //classico get_route con djikstra
 
-        if !paths.contains_key(&end) {
-            return None;
-        }
-
-        // Manual backtracking to reconstruct the shortest path
-        let mut path = vec![id];
-        let mut current = end;
-
-        while current != start {
-            let mut found = false;
-            for neighbor in self.neigh_map.neighbors(current) {
-                if let Some(weight) = self.neigh_map.find_edge(neighbor, current).map(|e| self.neigh_map[e]) {
-                    if let Some(&neighbor_dist) = paths.get(&neighbor) {
-                            if neighbor_dist + weight == paths[&current] {
-                                path.push(self.neigh_map[neighbor].0);
-                                current = neighbor;
-                                found = true;
-                                break;
-                            }
-                    }
-                }
-            }
-            if !found {
-                return None; // Shouldn't happen unless the graph is modified during traversal
-            }
-        }
-        path.reverse();
-        Some(SourceRoutingHeader{hops: path, hop_index:0})
-    }
+    // fn get_route(&mut self, id:NodeId, nt:NodeType)->Option<SourceRoutingHeader>{
+    //     let start = self.find_node(self.server_id, NodeType::Server).unwrap_or_default();
+    //     let end = self.find_node(id,nt).unwrap_or_default();
+    //
+    //     let paths: HashMap<NodeIndex, u32> = dijkstra(&self.neigh_map, start, Some(end), |e| *e.weight());
+    //
+    //     if !paths.contains_key(&end) {
+    //         return None;
+    //     }
+    //
+    //     // Manual backtracking to reconstruct the shortest path
+    //     let mut path = vec![id];
+    //     let mut current = end;
+    //
+    //     while current != start {
+    //         let mut found = false;
+    //         for neighbor in self.neigh_map.neighbors(current) {
+    //             if let Some(weight) = self.neigh_map.find_edge(neighbor, current).map(|e| self.neigh_map[e]) {
+    //                 if let Some(&neighbor_dist) = paths.get(&neighbor) {
+    //                         if neighbor_dist + weight == paths[&current] {
+    //                             path.push(self.neigh_map[neighbor].0);
+    //                             current = neighbor;
+    //                             found = true;
+    //                             break;
+    //                         }
+    //                 }
+    //             }
+    //         }
+    //         if !found {
+    //             return None; // Shouldn't happen unless the graph is modified during traversal
+    //         }
+    //     }
+    //     path.reverse();
+    //     Some(SourceRoutingHeader{hops: path, hop_index:0})
+    // }
 
 
     //altro metodo che permette di trovare la route più veloce basandosi sul costo dei collegamenti, ma senza bisogno di fare hashmap e robe varie come tocca fare per dijkstra
+    fn get_route(&self, id:NodeId, nt:NodeType) -> Option<(SourceRoutingHeader)> {
+        // Return Vec<NodeId> instead of Vec<NodeIndex>
+        let start = self.find_node(self.server_id, NodeType::Server)?;
+        let end = self.find_node(id,nt)?;
+        let path = astar(
+            &self.neigh_map,
+            start,
+            |finish| finish == end, // Stop when reaching the end node
+            |e| *e.weight(),        // Edge cost
+            |_| 0                   // No heuristic (Dijkstra behavior)
+        ).map(|(cost, path)| (cost, path.into_iter().map(|idx| self.neigh_map[idx].0).collect())); // Convert NodeIndex -> NodeId
+    Some(SourceRoutingHeader{hops:path?.1, hop_index:0})
+    }
 
-    // fn find_shortest_path(&self, id:NodeId, nt:NodeType) -> Option<(u32, Vec<NodeId>)> {
-    //     // Return Vec<NodeId> instead of Vec<NodeIndex>
-    //     let start = self.find_node(self.server_id, NodeType::Server)?;
-    //     let end = self.find_node(id,nt)?;
-    //     astar(
-    //         &self.neigh_map,
-    //         start,
-    //         |finish| finish == end, // Stop when reaching the end node
-    //         |e| *e.weight(),        // Edge cost
-    //         |_| 0                   // No heuristic (Dijkstra behavior)
-    //     ).map(|(cost, path)| (cost, path.into_iter().map(|idx| self.neigh_map[idx].0).collect())) // Convert NodeIndex -> NodeId
+
+    // fn create_ack(&mut self, packet: Packet) ->Packet{
+    //     let ack = Ack{
+    //         fragment_index: if let PacketType::MsgFragment(fragment)=packet.pack_type{
+    //             fragment.fragment_index
+    //         }else {
+    //             0
+    //         },
+    //     };
+    //     let pack = Packet {
+    //         pack_type: PacketType::Ack(ack.clone()),
+    //         routing_header: self.get_route(packet.routing_header.hops[0], NodeType::Client).unwrap_or_default(),
+    //         session_id: packet.session_id,
+    //     };
+    //     pack
     // }
-
 }
 
 
@@ -399,29 +480,30 @@ fn create_ack(packet: Packet)->Packet{
         session_id: packet.session_id,
     };
     pack
+}
 
-}
-fn create_nack(packet: Packet,nack_type: NackType)->Packet{
-    let mut vec = Vec::new();
-    for node_id in (0..=packet.routing_header.hop_index).rev() {
-        vec.push(packet.routing_header.hops[node_id]);
-    }
-    let nack = Nack {
-        fragment_index: if let PacketType::MsgFragment(fragment) = packet.pack_type {
-            fragment.fragment_index
-        } else {
-            0
-        },
-        nack_type,
-    };
-    let pack = Packet {
-        pack_type: PacketType::Nack(nack.clone()),
-        routing_header: SourceRoutingHeader {
-            hop_index: 0,
-            hops: vec.clone(),
-        },
-        session_id: packet.session_id,
-    };
-    pack
-}
+//stesso problema della funzione sopra, conviene usare l'algoritmo di routing per sicurezza
+// fn create_nack(packet: Packet,nack_type: NackType)->Packet{
+//     let mut vec = Vec::new();
+//     for node_id in (0..=packet.routing_header.hop_index).rev() {
+//         vec.push(packet.routing_header.hops[node_id]);
+//     }
+//     let nack = Nack {
+//         fragment_index: if let PacketType::MsgFragment(fragment) = packet.pack_type {
+//             fragment.fragment_index
+//         } else {
+//             0
+//         },
+//         nack_type,
+//     };
+//     let pack = Packet {
+//         pack_type: PacketType::Nack(nack.clone()),
+//         routing_header: SourceRoutingHeader {
+//             hop_index: 0,
+//             hops: vec.clone(),
+//         },
+//         session_id: packet.session_id,
+//     };
+//     pack
+// }
 
