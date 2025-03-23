@@ -80,12 +80,17 @@ impl Server{
 
 
     fn send_packet<T>(&mut self, p:T, id:NodeId, nt:NodeType)where T : Fragmentation+Serialize{
+        println!("flooding : {:?}", self.flooding);
+        println!("graph : {:?}", self.neigh_map);
+
         let route = self.get_route(id, nt);
         let mut srh= SourceRoutingHeader::new(Vec::new(), 0);
         match route {
             Some(final_route)=>{srh=final_route},
             None => {println!("no route found!");}
         }
+
+        println!("routing header: {:?}", srh);
 
         if let Ok(vec) = p.serialize_data(srh,self.session_id){
             let mut fragments_send = Vec::new();
@@ -171,11 +176,13 @@ impl Server{
                         let vec = self.fragments_send.get(&s_id).unwrap();
                         for i in vec.2.clone().iter(){
                             if i.fragment_index==nack.fragment_index{
-                                let packet = Packet{
+                                let pack = Packet{
                                     routing_header: self.get_route(vec.0.clone(),vec.1.clone()).unwrap_or_default(),
                                     session_id: s_id.clone(),
                                     pack_type: PacketType::MsgFragment(i.clone()),
                                 };
+                                self.forward_packet(pack);
+                                break;
                             }
                         }
                     }
@@ -186,17 +193,21 @@ impl Server{
                         let vec = self.fragments_send.get(&s_id).unwrap();
                         for i in vec.2.clone().iter(){
                             if i.fragment_index==nack.fragment_index{
-                                let packet = Packet{
+                                let pack = Packet{
                                     routing_header: self.get_route(vec.0.clone(),vec.1.clone()).unwrap_or_default(),
                                     session_id: s_id.clone(),
                                     pack_type: PacketType::MsgFragment(i.clone()),
                                 };
+                                self.forward_packet(pack);
+                                break;
                             }
                         }
                     }
                 }
                 NackType::Dropped => {
                     let node = self.find_node(id, NodeType::Drone).unwrap_or_default();
+
+                    //non so se il clone di self vada bene, l'ho messo solo perchè dava errore
                     for neighbor in self.clone().neigh_map.neighbors(node) {
                         if let Some(edge) = self.neigh_map.find_edge(node, neighbor) {
                             self.neigh_map[edge] += 1;
@@ -207,26 +218,30 @@ impl Server{
                         let vec = self.fragments_send.get(&s_id).unwrap();
                         for i in vec.2.clone().iter(){
                             if i.fragment_index==nack.fragment_index{
-                                let packet = Packet{
+                                let pack = Packet{
                                     routing_header: self.get_route(vec.0.clone(),vec.1.clone()).unwrap_or_default(),
                                     session_id: s_id.clone(),
                                     pack_type: PacketType::MsgFragment(i.clone()),
                                 };
+                                self.forward_packet(pack);
+                                break;
                             }
                         }
                     }
                 }
-                NackType::UnexpectedRecipient(ur) => {
+                NackType::UnexpectedRecipient(_) => {
                     println!("This error shouldn't happen!");
                     if self.fragments_send.contains_key(&s_id){
                         let vec = self.fragments_send.get(&s_id).unwrap();
                         for i in vec.2.clone().iter(){
                             if i.fragment_index==nack.fragment_index{
-                                let packet = Packet{
+                                let pack = Packet{
                                     routing_header: self.get_route(vec.0.clone(),vec.1.clone()).unwrap_or_default(),
                                     session_id: s_id.clone(),
                                     pack_type: PacketType::MsgFragment(i.clone()),
                                 };
+                                self.forward_packet(pack);
+                                break;
                             }
                         }
                     }
@@ -294,42 +309,82 @@ impl Server{
 
                 }else { safetoadd = false; break; }
             }
-            if safetoadd{
+            if safetoadd {
                 self.flooding.push(flood.clone());
 
+                let mut first=true;
                 let mut prev;
                 match self.find_node(self.server_id, NodeType::Server) {
-                    None => {prev=self.neigh_map.add_node((self.server_id,NodeType::Server))}
-                    Some(ni) => {prev=ni}
+                    None => { prev = self.neigh_map.add_node((self.server_id, NodeType::Server)) }
+                    Some(ni) => { prev = ni }
                 }
 
-                for (j,k) in flood.path_trace.iter(){
-                    if Self::node_exists(self.clone().neigh_map, j.clone(), k.clone()){
-                        let nodeid = self.find_node(j.clone(),k.clone()).unwrap();
-                        if self.neigh_map.find_edge(nodeid, prev).is_none(){
-                            self.neigh_map.add_edge(nodeid, prev, 1);
+                for &(j, k) in flood.path_trace.iter().skip(1) {
+                    if let Some(&(prev_id, prev_nt)) = self.neigh_map.node_weight(prev) {
+                        if self.node_exists(j.clone(), k.clone()) {
+                            let next = self.find_node(j.clone(), k.clone()).unwrap();
+                            if first {
+                                if self.neigh_map.find_edge(prev, next).is_none() {
+                                    self.neigh_map.add_edge(prev, next, 1);
+                                }
+                                if self.neigh_map.find_edge(next, prev).is_none() {
+                                    self.neigh_map.add_edge(next, prev, 1);
+                                }
+                                first = false;
+                            } else {
+                                if prev_nt == NodeType::Drone && k == NodeType::Drone {
+                                    if self.neigh_map.find_edge(prev, next).is_none() {
+                                        self.neigh_map.add_edge(prev, next, 1);
+                                    }
+                                    if self.neigh_map.find_edge(next, prev).is_none() {
+                                        self.neigh_map.add_edge(next, prev, 1);
+                                    }
+                                } else {
+                                    if prev_nt == NodeType::Drone {
+                                        if self.neigh_map.find_edge(prev, next).is_none() {
+                                            self.neigh_map.add_edge(prev, next, 1);
+                                        }
+                                    }
+                                    if k == NodeType::Drone {
+                                        if self.neigh_map.find_edge(next, prev).is_none() {
+                                            self.neigh_map.add_edge(next, prev, 1);
+                                        }
+                                    }
+                                }
+                            }
+
+                            prev = next;
+                    } else {
+                        let newnodeid = self.neigh_map.add_node((j.clone(), k.clone()));
+                            if prev_nt == NodeType::Drone && k == NodeType::Drone {
+                                if self.neigh_map.find_edge(prev, newnodeid).is_none() {
+                                    self.neigh_map.add_edge(prev, newnodeid, 1);
+                                }
+                                if self.neigh_map.find_edge(newnodeid, prev).is_none() {
+                                    self.neigh_map.add_edge(newnodeid, prev, 1);
+                                }
+                            } else {
+                                if prev_nt == NodeType::Drone {
+                                    if self.neigh_map.find_edge(prev, newnodeid).is_none() {
+                                        self.neigh_map.add_edge(prev, newnodeid, 1);
+                                    }
+                                }
+                                if k == NodeType::Drone {
+                                    if self.neigh_map.find_edge(newnodeid, prev).is_none() {
+                                        self.neigh_map.add_edge(newnodeid, prev, 1);
+                                    }
+                                }
+                            }
+                            prev = newnodeid;
                         }
-                        if self.neigh_map.find_edge(prev,nodeid).is_none(){
-                            self.neigh_map.add_edge(prev, nodeid, 1);
-                        }
-                        prev = nodeid;
-                    } else{
-                        let newnodeid = self.neigh_map.add_node((j.clone(),k.clone()));
-                        if self.neigh_map.find_edge(prev,newnodeid).is_none(){
-                            self.neigh_map.add_edge(prev, newnodeid, 1);
-                        }
-                        if self.neigh_map.find_edge(newnodeid, prev).is_none(){
-                            self.neigh_map.add_edge(newnodeid, prev, 1);
-                        }
-                        prev = newnodeid;
                     }
                 }
             }else {
                 println!("you received an outdated version of the flooding");
             }
-
         }
     }
+
 
     pub(crate) fn flooding(&mut self){
         println!("server {} is starting a flooding",self.server_id);
@@ -372,8 +427,8 @@ impl Server{
     //     }
     // }
 
-    fn node_exists(graph: Graph<(NodeId, NodeType), u32, petgraph::Directed>, id:NodeId, nt:NodeType) -> bool {
-        graph.node_indices().any(|i| graph[i] == (id,nt))
+    fn node_exists(&self, id:NodeId, nt:NodeType) -> bool {
+        self.neigh_map.node_indices().any(|i| self.neigh_map[i] == (id,nt))
     }
 
     fn find_node(&self, id: NodeId, nt: NodeType) -> Option<NodeIndex> {
