@@ -68,43 +68,34 @@ impl Server{
             packet.routing_header.hop_index += 1;
             let next_hop = packet.routing_header.hops[packet.routing_header.hop_index];
             if let Some(sender) = self.packet_send.get(&next_hop) {
-
                 sender.send(packet.clone()).unwrap_or_default();
             }
         } else {
             println!("destination reached!!");
-
             return;
         }
     }
 
 
     fn send_packet<T>(&mut self, p:T, id:NodeId, nt:NodeType)where T : Fragmentation+Serialize{
-        println!("flooding : {:?}", self.flooding);
-        println!("graph : {:?}", self.neigh_map);
-
-        let route = self.get_route(id, nt);
-        let mut srh= SourceRoutingHeader::new(Vec::new(), 0);
-        match route {
-            Some(final_route)=>{srh=final_route},
-            None => {println!("no route found!");}
-        }
-
-        println!("routing header: {:?}", srh);
-
-        if let Ok(vec) = p.serialize_data(srh,self.session_id){
-            let mut fragments_send = Vec::new();
-            for i in vec.iter(){
-                if let PacketType::MsgFragment(fragment) = i.clone().pack_type{
-                    fragments_send.push(fragment);
+        // println!("flooding : {:?}", self.flooding); //fa vedere tutte le flood response salvaate nel server
+        // println!("graph : {:?}", self.neigh_map); //fa vedere il grafo (tutti i nodi e tutti gli edges)
+        if let Some(srh) = self.get_route(id,nt){
+            println!("srh : {:?}",srh);
+            if let Ok(vec) = p.serialize_data(srh,self.session_id){
+                let mut fragments_send = Vec::new();
+                for i in vec.iter(){
+                    if let PacketType::MsgFragment(fragment) = i.clone().pack_type{
+                        fragments_send.push(fragment);
+                    }
+                    self.forward_packet(i.clone());
                 }
+                self.fragments_send.insert(self.session_id.clone(), (id,nt,fragments_send));
+                self.session_id+=1;
+                //aggiungere un field nella struct server per salvare tutti i vari pacchetti nel caso in cui fossero droppati ecc.
             }
-            self.fragments_send.insert(self.session_id.clone(), (id,nt,fragments_send));
-            self.session_id+=1;
-            //aggiungere un field nella struct server per salvare tutti i vari pacchetti nel caso in cui fossero droppati ecc.
-            for i in vec.iter(){
-                self.forward_packet(i.clone());
-            }
+        }else {
+            println!("no route found for {:?} {:?}!",nt,id);
         }
     }
 
@@ -112,31 +103,35 @@ impl Server{
         self.forward_packet(create_ack(p.clone()));
         if let PacketType::MsgFragment(fragment) = p.pack_type{
             if self.fragments_recv.contains_key(&(p.routing_header.hops.clone()[0],p.session_id)){
-                if let Some(mut vec) = self.fragments_recv.get_mut(&(p.routing_header.hops[0],p.session_id)){
+                if let Some(vec) = self.fragments_recv.get_mut(&(p.routing_header.hops[0],p.session_id)){
                     vec.push(fragment.clone());
                 }else {
-                    println!("no fragment found!");
+                    println!("This else shouldn't be reached, it means that the server has no vec of fragments (received) associated to the key");
                 }
             }else {
                 let mut vec = Vec::new();
                 vec.push(fragment.clone());
                 self.fragments_recv.insert((p.routing_header.hops.clone()[0], p.session_id), vec);
             }
-            if let Some((mut vec)) = self.fragments_recv.get_mut(&(p.routing_header.hops[0],p.session_id)){
+            if let Some(vec) = self.fragments_recv.get_mut(&(p.routing_header.hops[0],p.session_id)){
                 if fragment.total_n_fragments == vec.len() as u64{
                     if let Ok(totalmsg) = ChatRequest::deserialize_data(vec){
                         match totalmsg{
                             ChatRequest::ServerType => {
+                                println!("Server type request received from client: {:?}!", p.routing_header.hops.clone()[0]);
                                 self.send_packet(ChatResponse::ServerType(self.clone().server_type), p.routing_header.hops[0], NodeType::Client);
                             }
                             ChatRequest::RegisterClient(n) => {
+                                println!("Register client request received from client: {:?}!", p.routing_header.hops.clone()[0]);
                                 self.registered_clients.push(n);
                                 self.send_packet(ChatResponse::RegisterClient(true), p.routing_header.hops[0], NodeType::Client);
                             }
                             ChatRequest::GetListClients => {
+                                println!("Get client list request received from client: {:?}!", p.routing_header.hops.clone()[0]);
                                 self.send_packet(ChatResponse::RegisteredClients(self.clone().registered_clients), p.routing_header.hops[0], NodeType::Client);
                             }
                             ChatRequest::SendMessage(mc, _) => {
+                                println!("Send message request received from client: {:?}!", p.routing_header.hops.clone()[0]);
                                 if self.registered_clients.contains(&mc.from_id) && self.registered_clients.contains(&mc.to_id){
                                     self.send_packet(ChatResponse::SendMessage(Ok("The server will forward the message to the final client".to_string())), p.routing_header.hops[0], NodeType::Client);
                                     self.send_packet(ChatResponse::ForwardMessage(mc.clone()), mc.to_id, NodeType::Client);
@@ -145,6 +140,7 @@ impl Server{
                                 }
                             }
                             ChatRequest::EndChat(n) => {
+                                println!("end chat request received from client: {:?}!", p.routing_header.hops.clone()[0]);
                                 self.registered_clients.retain(|x| *x != n);
                                 self.send_packet(ChatResponse::EndChat(true), p.routing_header.hops[0], NodeType::Client);
                             }
@@ -160,7 +156,32 @@ impl Server{
         if let PacketType::Ack(ack) = packet.pack_type{
             self.fragments_send.get_mut(&s_id).unwrap().2.retain(|x| x.fragment_index!=ack.fragment_index);
         }
+        //forse da sistemare perchè c'è un unwrap, anche se in teoria gli ack che arrivano al mio server hanno un session id corretto
     }
+
+    fn packet_recover(&mut self, s_id: u64, lost_fragment_index: u64){
+        if self.fragments_send.contains_key(&s_id){
+            let info = self.fragments_send.get(&s_id).unwrap();
+            for i in info.2.clone().iter(){
+                if i.fragment_index==lost_fragment_index{
+                    if let Some(srh) = self.get_route(info.0.clone(),info.1.clone()){
+                        let pack = Packet{
+                            routing_header: srh,
+                            session_id: s_id.clone(),
+                            pack_type: PacketType::MsgFragment(i.clone()),
+                        };
+                        self.forward_packet(pack);
+                        break;
+                    }else {
+                        println!("there isn't a route to reach the packet destination (shouldn't happen)");
+                    }
+                }
+            }
+        }else {
+            println!("This else shouldn't be reached, it means that the server has no vec of fragments (sent) associated to the key");
+        }
+    }
+
 
     fn handle_nack(&mut self, packet : Packet){
         let id = packet.routing_header.hops[0];
@@ -169,82 +190,29 @@ impl Server{
             match nack.clone().nack_type{
                 NackType::ErrorInRouting(crashed_id) => {
                     // self.neigh_map.remove_node(self.find_node(crashed_id,NodeType::Drone).unwrap());
-
-                    //da finire aspettando di capire come funziona il session_id dei pacchetti dei nack
                     self.neigh_map.remove_edge(self.neigh_map.find_edge(self.find_node(crashed_id,NodeType::Drone).unwrap_or_default(), self.find_node(packet.routing_header.hops[0], NodeType::Drone).unwrap_or_default()).unwrap_or_default());
-                    if self.fragments_send.contains_key(&s_id){
-                        let vec = self.fragments_send.get(&s_id).unwrap();
-                        for i in vec.2.clone().iter(){
-                            if i.fragment_index==nack.fragment_index{
-                                let pack = Packet{
-                                    routing_header: self.get_route(vec.0.clone(),vec.1.clone()).unwrap_or_default(),
-                                    session_id: s_id.clone(),
-                                    pack_type: PacketType::MsgFragment(i.clone()),
-                                };
-                                self.forward_packet(pack);
-                                break;
-                            }
-                        }
-                    }
+                    self.packet_recover(s_id, nack.fragment_index);
                 }
                 NackType::DestinationIsDrone => {
                     println!("This error shouldn't happen!");
-                    if self.fragments_send.contains_key(&s_id){
-                        let vec = self.fragments_send.get(&s_id).unwrap();
-                        for i in vec.2.clone().iter(){
-                            if i.fragment_index==nack.fragment_index{
-                                let pack = Packet{
-                                    routing_header: self.get_route(vec.0.clone(),vec.1.clone()).unwrap_or_default(),
-                                    session_id: s_id.clone(),
-                                    pack_type: PacketType::MsgFragment(i.clone()),
-                                };
-                                self.forward_packet(pack);
-                                break;
-                            }
-                        }
-                    }
+                    self.packet_recover(s_id, nack.fragment_index);
                 }
                 NackType::Dropped => {
-                    let node = self.find_node(id, NodeType::Drone).unwrap_or_default();
-
-                    //non so se il clone di self vada bene, l'ho messo solo perchè dava errore
-                    for neighbor in self.clone().neigh_map.neighbors(node) {
-                        if let Some(edge) = self.neigh_map.find_edge(node, neighbor) {
-                            self.neigh_map[edge] += 1;
-                        }
-                    }
-
-                    if self.fragments_send.contains_key(&s_id){
-                        let vec = self.fragments_send.get(&s_id).unwrap();
-                        for i in vec.2.clone().iter(){
-                            if i.fragment_index==nack.fragment_index{
-                                let pack = Packet{
-                                    routing_header: self.get_route(vec.0.clone(),vec.1.clone()).unwrap_or_default(),
-                                    session_id: s_id.clone(),
-                                    pack_type: PacketType::MsgFragment(i.clone()),
-                                };
-                                self.forward_packet(pack);
-                                break;
+                    if let Some(node) = self.find_node(id, NodeType::Drone) {
+                        //non so se il clone di self vada bene, l'ho messo solo perchè dava errore
+                        for neighbor in self.clone().neigh_map.neighbors(node) {
+                            if let Some(edge) = self.neigh_map.find_edge(node, neighbor) {
+                                self.neigh_map[edge] += 1;
                             }
                         }
+                    }else {
+                        println!("node not found (shouldn't happen)");
                     }
+                    self.packet_recover(s_id, nack.fragment_index);
                 }
                 NackType::UnexpectedRecipient(_) => {
                     println!("This error shouldn't happen!");
-                    if self.fragments_send.contains_key(&s_id){
-                        let vec = self.fragments_send.get(&s_id).unwrap();
-                        for i in vec.2.clone().iter(){
-                            if i.fragment_index==nack.fragment_index{
-                                let pack = Packet{
-                                    routing_header: self.get_route(vec.0.clone(),vec.1.clone()).unwrap_or_default(),
-                                    session_id: s_id.clone(),
-                                    pack_type: PacketType::MsgFragment(i.clone()),
-                                };
-                                self.forward_packet(pack);
-                                break;
-                            }
-                        }
-                    }
+                    self.packet_recover(s_id, nack.fragment_index);
                 }
             }
         }
@@ -303,6 +271,7 @@ impl Server{
             let mut safetoadd = true;
             for i in self.flooding.iter(){
                 if i.flood_id<flood.flood_id{
+                    println!("the server is starting to receive new flood responses");
                     self.flooding.clear();
                     break;
                 }else if i.flood_id==flood.flood_id{
@@ -354,27 +323,27 @@ impl Server{
                             }
 
                             prev = next;
-                    } else {
-                        let newnodeid = self.neigh_map.add_node((j.clone(), k.clone()));
-                            if prev_nt == NodeType::Drone && k == NodeType::Drone {
-                                if self.neigh_map.find_edge(prev, newnodeid).is_none() {
-                                    self.neigh_map.add_edge(prev, newnodeid, 1);
-                                }
-                                if self.neigh_map.find_edge(newnodeid, prev).is_none() {
-                                    self.neigh_map.add_edge(newnodeid, prev, 1);
-                                }
-                            } else {
-                                if prev_nt == NodeType::Drone {
+                        } else {
+                            let newnodeid = self.neigh_map.add_node((j.clone(), k.clone()));
+                                if prev_nt == NodeType::Drone && k == NodeType::Drone {
                                     if self.neigh_map.find_edge(prev, newnodeid).is_none() {
                                         self.neigh_map.add_edge(prev, newnodeid, 1);
                                     }
-                                }
-                                if k == NodeType::Drone {
                                     if self.neigh_map.find_edge(newnodeid, prev).is_none() {
                                         self.neigh_map.add_edge(newnodeid, prev, 1);
                                     }
+                                } else {
+                                    if prev_nt == NodeType::Drone {
+                                        if self.neigh_map.find_edge(prev, newnodeid).is_none() {
+                                            self.neigh_map.add_edge(prev, newnodeid, 1);
+                                        }
+                                    }
+                                    if k == NodeType::Drone {
+                                        if self.neigh_map.find_edge(newnodeid, prev).is_none() {
+                                            self.neigh_map.add_edge(newnodeid, prev, 1);
+                                        }
+                                    }
                                 }
-                            }
                             prev = newnodeid;
                         }
                     }
