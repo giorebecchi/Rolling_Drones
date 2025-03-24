@@ -6,12 +6,12 @@ use serde::{Serialize, Deserialize};
 use wg_2024::config::Client;
 use wg_2024::network::{NodeId, SourceRoutingHeader};
 use wg_2024::packet::{FloodRequest, FloodResponse, Fragment, NodeType, Packet, PacketType};
-use crate::common_things::common::{CommandText};
+use crate::common_things::common::{CommandText, ContentCommands};
 
 pub struct WebBrowser {
     pub config: Client,
     pub receiver_msg: Receiver<Packet>,
-    pub receiver_commands: Receiver<CommandText>, //command received by the simulation control
+    pub receiver_commands: Receiver<ContentCommands>, //command received by the simulation control
     pub send_packets: HashMap<NodeId, Sender<Packet>>,
     pub servers: Vec<NodeId>,//to store id server once the flood is done
     pub visited_nodes: HashSet<(u64, NodeId)>,
@@ -24,7 +24,7 @@ pub struct WebBrowser {
 }
 
 impl WebBrowser {
-    pub fn new(id: NodeId, receiver_msg: Receiver<Packet>, receiver_commands: Receiver<CommandText>, send_packets: HashMap<NodeId, Sender<Packet>>) -> WebBrowser {
+    pub fn new(id: NodeId, receiver_msg: Receiver<Packet>, receiver_commands: Receiver<ContentCommands>, send_packets: HashMap<NodeId, Sender<Packet>>) -> WebBrowser {
         Self{
             config: Client{id, connected_drone_ids:Vec::new()},
             receiver_msg,
@@ -58,13 +58,12 @@ impl WebBrowser {
         }
     }
 
-    fn handle_commands(&mut self, command: CommandText) {
+    fn handle_commands(&mut self, command: ContentCommands) {
         match command {
-            CommandText::ServerType(id_server) => {self.ask_type(id_server)},
-            CommandText::GetFiles(id_server) => {self.get_list(id_server)},
-            CommandText::File(id_server, title) => {
-                self.get_file(id_server, title);
-            }
+            ContentCommands::GetServerType(id_server) => {self.ask_type(id_server)},
+            ContentCommands::GetTextList(id_server) => {self.get_list(id_server)},
+            ContentCommands::GetMediaPosition(id_server, id_media) => {self.get_position(id_server, id_media)},
+            ContentCommands::GetMedia(id_media_server, id_media) => {self.get_media(id_media_server, id_media)},
             _ => {}
         }
     }
@@ -89,7 +88,11 @@ impl WebBrowser {
 
     pub fn get_list(& mut self, id_server: NodeId) {}
 
-    pub fn get_file(& mut self, id_server: NodeId, title: String) {}
+    pub fn get_position (& mut self, id_server: NodeId, media_id: u8){}
+
+    pub fn get_media(& mut self, id_media_server: NodeId, media_id: u8){}
+
+
 
     pub fn flooding(& mut self){
         let mut flood_id = self.unique_flood_id;

@@ -234,13 +234,10 @@ impl ChatClient {
         // println!("received packet by client: {}", packet);
         let src_id = packet.routing_header.hops.first().unwrap();
         let check = (packet.session_id, *src_id);
-        // println!("src_id: {}", src_id);
 
-
-        //i need to fix the sending of the ack, problem with the sender
         let ack = self.ack(&packet);
-        // println!("ack to send: {:?}", ack);
-        self.send_packet(src_id, ack); //ack after receiving a fragment
+        let prev = packet.routing_header.hops[packet.routing_header.hop_index-1];
+        self.send_packet(&prev, ack);
 
         if let PacketType::MsgFragment(fragment) = packet.pack_type{
             if !self.incoming_fragments.contains_key(&check){
@@ -254,14 +251,28 @@ impl ChatClient {
             if let Some(fragments) = self.incoming_fragments.get_mut(&check){
                 if fragments.len() as u64 == fragment.total_n_fragments {
                     let incoming_message = ChatResponse::reassemble_msg(&fragments).unwrap();
-                    println!("incoming_message: {:?}", incoming_message);
                     match incoming_message {
                         ChatResponse::ServerType(server_type) => {self.server_types.insert(*src_id, server_type.clone());
-                        println!("YEAAAAAAAAAAAA {:?}", server_type);},
-                        ChatResponse::EndChat(response) =>{},
-                        ChatResponse::RegisterClient(response) => {},
-                        ChatResponse::SendMessage(_) => {},
-                        ChatResponse::RegisteredClients(registered_clients) => {},
+                        println!("server found is of type: {:?}", server_type);},
+                        ChatResponse::EndChat(response) =>{
+                            if response {
+                                println!("chat ended");
+                            }else { println!("error in the request: end the chat") }
+                        },
+                        ChatResponse::RegisterClient(response) => {
+                            if response{
+                                println!("registered successfully")
+                            }else { println!("not registered successfully") }
+                        },
+                        ChatResponse::SendMessage(response) => {
+                            match response{
+                                Ok(str) => println!("{}", str),
+                                Err(str) => println!("{}", str),
+                            }
+                        },
+                        ChatResponse::RegisteredClients(registered_clients) => {
+                            println!("registered clients: {:?}", registered_clients);
+                        },
                         _ => {}
                     }
 
