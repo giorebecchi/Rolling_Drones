@@ -273,7 +273,10 @@ impl ChatClient {
                         ChatResponse::RegisteredClients(registered_clients) => {
                             println!("registered clients: {:?}", registered_clients);
                         },
-                        _ => {}
+                        ChatResponse::ForwardMessage(message_chat) =>{
+                            let sender = message_chat.from_id;
+                            println!("Message from: {},content: \n {}", sender, message_chat.content);
+                        }
                     }
 
                     self.incoming_fragments.remove(&check); //removes fragments from tracking
