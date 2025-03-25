@@ -272,7 +272,7 @@ pub fn set_up_bundle(
                 },
                 Transform::from_xyz(node_data.position[0], node_data.position[1], 0.),
                 Clickable {
-                    name: format!("Client {}",node_data.id),
+                    name: format!("{}",node_data.id),
                 },
                 )).with_children(|parent|{
                 parent.spawn((
@@ -343,7 +343,7 @@ fn display_windows(
     let mut windows_to_close = Vec::new();
 
     for (i, window_name) in open_windows.windows.iter().enumerate() {
-        let window = egui::Window::new(window_name)
+        let window = egui::Window::new(format!("Client: {}",window_name))
             .id(egui::Id::new(format!("window_{}", i)))
             .resizable(true)
             .collapsible(true)
@@ -354,11 +354,14 @@ fn display_windows(
         window.show(contexts.ctx_mut(), |ui| {
             ui.label(format!("This is a window for {}", window_name));
             ui.separator();
-
             ui.horizontal(|ui| {
                 ui.label("Some controls:");
+                if ui.button("Register Client").clicked(){
+                    let client_id=parse_id(window_name.clone());
+                    sim.register_client(client_id,12);
+                }
                 if ui.button("Send Message").clicked() {
-                    sim.send_message("Ciao".to_string(),11,12);
+                    sim.send_message("Ciao".to_string(),0,11);
                 }
             });
 
