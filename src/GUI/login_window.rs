@@ -2,6 +2,7 @@ use std::collections::{HashMap, HashSet};
 use std::sync::{Arc, Mutex};
 use bevy::log::LogPlugin;
 use bevy::prelude::*;
+use bevy::window::PrimaryWindow;
 use bevy::winit::WinitSettings;
 use bevy_egui::{egui, EguiContexts, EguiPlugin};
 use bevy_egui::egui::menu;
@@ -69,6 +70,8 @@ pub enum NodeType{
     Server,
     Client,
 }
+#[derive(Event)]
+struct NewDroneSpawned;
 #[derive(Clone,Resource)]
 pub struct SimulationController {
     pub drones: HashMap<NodeId, Sender<DroneCommand>>,
@@ -124,11 +127,15 @@ pub fn main() {
         .insert_resource(SimState{
             state: shared_state.clone(),
         })
+        .init_resource::<OpenWindows>()
         .init_state::<AppState>()
+        .add_event::<NewDroneSpawned>()
         .add_systems(Update, ui_settings)
         .add_systems(Startup, setup_camera)
         .add_systems(OnEnter(AppState::InGame), (start_simulation,setup_network))
         .add_systems(Update , (draw_connections,set_up_bundle).run_if(in_state(AppState::InGame)))
+        .add_systems(Update, (handle_clicks, display_windows).run_if(in_state(AppState::InGame)))
+        //.add_systems(Update , recompute_network)
 
         .run();
 }
@@ -186,6 +193,41 @@ fn setup_network(
     }
 
 }
+fn recompute_network(
+    mut event_reader: EventReader<NewDroneSpawned>,
+    user_config : Res<UserConfig>,
+    mut nodes_config: ResMut<NodesConfig>
+){
+    for _ in event_reader.read(){
+        match user_config.0.as_str(){
+            "star"=>{
+                let nodes= spawn_star_decagram();
+                (*nodes_config).0=nodes;
+            },
+            "double_chain"=>{
+                let nodes=spawn_double_chain();
+                (*nodes_config).0=nodes;
+            },
+            "butterfly"=>{
+                let nodes= spawn_butterfly();
+                (*nodes_config).0=nodes;
+            },
+            "tree"=>{
+                let nodes= spawn_tree();
+                (*nodes_config).0=nodes;
+            },
+            _=> {
+                let nodes = spawn_star_decagram();
+                (*nodes_config).0=nodes;
+
+            }
+        }
+    }
+}
+#[derive(Component)]
+struct Clickable {
+    name: String,
+}
 pub fn set_up_bundle(
     node_data: Res<NodesConfig>,
     mut commands: Commands,
@@ -194,40 +236,147 @@ pub fn set_up_bundle(
 ) {
 
     for node_data in node_data.0.iter() {
-        //if node_data.node_type==NodeType::Client{
-        //    let entity = commands.spawn()
-        //}
 
-        let entity=commands.spawn((
-            Sprite {
-                image: match node_data.node_type{
-                    NodeType::Drone=>asset_server.load("images/Rolling_Drone.png"),
-                    NodeType::Client=>asset_server.load("images/client.png"),
-                    NodeType::Server=>asset_server.load("images/server.png")
-                },
-                custom_size: Some(Vec2::new(45.,45.)),
-                ..default()
-            },
-            Transform::from_xyz(node_data.position[0],node_data.position[1],0.)
-        )).with_children(|parent|{
-            parent.spawn((
-                Text2d::new(format!("{}",node_data.id)),
-                TextFont{
-                    font: asset_server.load("fonts/FiraSans-Bold.ttf"),
-                    font_size: 12.,
+        if node_data.node_type == NodeType::Server || node_data.node_type == NodeType::Drone {
+            let entity = commands.spawn((
+                Sprite {
+                    image: match node_data.node_type {
+                        NodeType::Drone => asset_server.load("images/Rolling_Drone.png"),
+                        NodeType::Client => unreachable!(),
+                        NodeType::Server => asset_server.load("images/server.png")
+                    },
+                    custom_size: Some(Vec2::new(45., 45.)),
                     ..default()
                 },
-                TextColor(Color::srgb(1.,0.,0.)),
-                Transform::from_translation(Vec3::new(-30.,-30.,0.))
-
-            ));
-        }).id();
-        entity_vector.0.push(entity);
+                Transform::from_xyz(node_data.position[0], node_data.position[1], 0.),
+            )).with_children(|parent| {
+                parent.spawn((
+                    Text2d::new(format!("{}", node_data.id)),
+                    TextFont {
+                        font: asset_server.load("fonts/FiraSans-Bold.ttf"),
+                        font_size: 12.,
+                        ..default()
+                    },
+                    TextColor(Color::srgb(1., 0., 0.)),
+                    Transform::from_translation(Vec3::new(-30., -30., 0.))
+                ));
+            }).id();
+            entity_vector.0.push(entity);
+        }
+        else{
+            let entity=commands.spawn((
+                Sprite {
+                    image: asset_server.load("images/client.png"),
+                    custom_size: Some(Vec2::new(45., 45.)),
+                    ..default()
+                },
+                Transform::from_xyz(node_data.position[0], node_data.position[1], 0.),
+                Clickable {
+                    name: format!("Client {}",node_data.id),
+                },
+                )).with_children(|parent|{
+                parent.spawn((
+                    Text2d::new(format!("{}",node_data.id)),
+                    TextFont {
+                        font: asset_server.load("fonts/FiraSans-Bold.ttf"),
+                        font_size: 12.,
+                        ..default()
+                    },
+                    TextColor(Color::srgb(1.,0.,0.)),
+                    Transform::from_translation(Vec3::new(-30.,-30.,0.))
+                    ));
+            }).id();
+            entity_vector.0.push(entity);
+        }
     }
 
 
+}
+#[derive(Resource, Default)]
+struct OpenWindows {
+    windows: Vec<String>,
+}
+fn handle_clicks(
+    windows: Query<&Window, With<PrimaryWindow>>,
+    buttons: Res<ButtonInput<MouseButton>>,
+    camera_q: Query<(&Camera, &GlobalTransform)>,
+    clickable_entities: Query<(Entity, &Transform, &Sprite, &Clickable)>,
+    mut open_windows: ResMut<OpenWindows>,
+) {
+    if !buttons.just_pressed(MouseButton::Left) {
+        return;
+    }
+
+    let window = windows.single();
+    let (camera, camera_transform) = camera_q.single();
+
+    if let Some(cursor_position) = window.cursor_position() {
+        if let Ok(ray) = camera.viewport_to_world(camera_transform, cursor_position) {
+            let cursor_world_position = ray.origin.truncate();
+
+            for (_entity, transform, sprite, clickable) in clickable_entities.iter() {
+                let sprite_size = sprite.custom_size.unwrap_or(Vec2::ONE);
+                let sprite_pos = transform.translation.truncate();
+
+                let half_width = sprite_size.x / 2.0;
+                let half_height = sprite_size.y / 2.0;
+
+                if cursor_world_position.x >= sprite_pos.x - half_width
+                    && cursor_world_position.x <= sprite_pos.x + half_width
+                    && cursor_world_position.y >= sprite_pos.y - half_height
+                    && cursor_world_position.y <= sprite_pos.y + half_height
+                {
+                    if !open_windows.windows.contains(&clickable.name) {
+                        open_windows.windows.push(clickable.name.clone());
+                        println!("Clicked on: {}", clickable.name);
+                    }
+                }
+            }
+        }
+    }
+}
+fn display_windows(
+    mut contexts: EguiContexts,
+    mut open_windows: ResMut<OpenWindows>,
+    mut sim: ResMut<SimulationController>
+) {
+    let mut windows_to_close = Vec::new();
+
+    for (i, window_name) in open_windows.windows.iter().enumerate() {
+        let window = egui::Window::new(window_name)
+            .id(egui::Id::new(format!("window_{}", i)))
+            .resizable(true)
+            .collapsible(true)
+            .default_size([300.0, 200.0]);
+
+        let mut should_close = false;
+
+        window.show(contexts.ctx_mut(), |ui| {
+            ui.label(format!("This is a window for {}", window_name));
+            ui.separator();
+
+            ui.horizontal(|ui| {
+                ui.label("Some controls:");
+                if ui.button("Send Message").clicked() {
+                    sim.send_message("Ciao".to_string(),11,12);
+                }
+            });
+
+            ui.add(egui::Slider::new(&mut 42, 0..=100).text("Value"));
 
 
+            if ui.button("Close Window").clicked() {
+                should_close = true;
+            }
+        });
+
+        if should_close {
+            windows_to_close.push(i);
+        }
+    }
+    for i in windows_to_close.into_iter().rev() {
+        open_windows.windows.remove(i);
+    }
 }
 pub fn draw_connections(
     mut gizmos : Gizmos,
@@ -255,7 +404,8 @@ fn ui_settings(
     mut sim_state: ResMut<SimState>,
     mut node_entities: ResMut<NodeEntities>,
     mut simulation_commands: ResMut<UiCommands>,
-    mut next_state: ResMut<NextState<AppState>>
+    mut next_state: ResMut<NextState<AppState>>,
+    mut event_writer: EventWriter<NewDroneSpawned>
 ) {
 
     if let Some(context)=contexts.try_ctx_mut() {
@@ -501,11 +651,11 @@ fn ui_settings(
                                         links.push(link);
                                     }
                                     let new_id=parse_id(simulation_commands.new_drone_id.clone());
-                                    //spawn_new_drone(links,new_id);
-                                    sim.spawn_new_drone(links, new_id);
                                     for entity in node_entities.0.clone(){
                                         commands.entity(entity).despawn_recursive();
                                     }
+                                    sim.spawn_new_drone(links, new_id);
+                                    event_writer.send(NewDroneSpawned);
 
                                 }
                                 if ui.button("Exit")
