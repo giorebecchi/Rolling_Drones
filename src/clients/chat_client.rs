@@ -275,7 +275,7 @@ impl ChatClient {
                         },
                         ChatResponse::ForwardMessage(message_chat) =>{
                             let sender = message_chat.from_id;
-                            println!("Message from: {},content: \n {}", sender, message_chat.content);
+                            println!("Message from: {}, content:\n {}", sender, message_chat.content);
                         }
                     }
 
