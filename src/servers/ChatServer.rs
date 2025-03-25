@@ -132,6 +132,7 @@ impl Server{
                             }
                             ChatRequest::SendMessage(mc, _) => {
                                 println!("Send message request received from client: {:?}!", p.routing_header.hops.clone()[0]);
+                                println!("Registered clients: {:?}",self.registered_clients);
                                 if self.registered_clients.contains(&mc.from_id) && self.registered_clients.contains(&mc.to_id){
                                     self.send_packet(ChatResponse::SendMessage(Ok("The server will forward the message to the final client".to_string())), p.routing_header.hops[0], NodeType::Client);
                                     self.send_packet(ChatResponse::ForwardMessage(mc.clone()), mc.to_id, NodeType::Client);

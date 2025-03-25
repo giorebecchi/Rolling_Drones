@@ -238,6 +238,9 @@ impl SimulationController {
     pub fn send_message(&mut self, message: String, client_id: NodeId, destination_client: NodeId){
         self.client.get(&client_id).unwrap().send(CommandChat::SendMessage(destination_client, 12, message)).unwrap()
     }
+    pub fn register_client(&mut self, client_id: NodeId, server_id: NodeId){
+        self.client.get(&client_id).unwrap().send(CommandChat::RegisterClient(server_id)).unwrap();
+    }
 }
 pub fn start_simulation(
     mut simulation_controller: ResMut<SimulationController>
