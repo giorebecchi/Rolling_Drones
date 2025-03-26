@@ -147,6 +147,15 @@ impl Server{
                             }
                         }
                     }
+                    // if let Ok(totalmsg) = TextServer::deserialize_data(vec){
+                    //     match totalmsg{
+                    //         TextServer::ServerTypeReq=>{
+                    //             println!("Server type request received from server: {:?}!", p.routing_header.hops.clone()[0]);
+                    //             self.send_packet(ChatResponse::ServerType(self.clone().server_type), p.routing_header.hops[0], NodeType::Client);
+                    //         }
+                    //         _=>{println!("I shouldn't receive this type of commands");}
+                    //     }
+                    // }
                 }
             }
         }
