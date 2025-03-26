@@ -62,8 +62,11 @@ impl WebBrowser {
         match command {
             ContentCommands::GetServerType(id_server) => {self.ask_type(id_server)},
             ContentCommands::GetTextList(id_server) => {self.get_list(id_server)},
-            ContentCommands::GetMediaPosition(id_server, id_media) => {self.get_position(id_server, id_media)},
-            ContentCommands::GetMedia(id_media_server, id_media) => {self.get_media(id_media_server, id_media)},
+            ContentCommands::GetMediaPosition(id_server, id_media) => {//self.get_position(id_server, id_media)
+                },
+            ContentCommands::GetMedia(id_media_server, id_media) => {
+                //self.get_media(id_media_server, id_media)
+                },
             _ => {}
         }
     }

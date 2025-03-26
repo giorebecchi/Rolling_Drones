@@ -24,7 +24,7 @@ use crate::GUI::login_window::{ SharedSimState, SimulationController, UserConfig
 use crate::network_initializer::network_initializer::parse_config;
 use crate::servers::ChatServer::Server;
 use crate::clients::chat_client::ChatClient;
-use crate::common_things::common::{ChatRequest, ChatResponse, CommandChat, ServerType};
+use crate::common_things::common::{ChatClientEvent, ChatRequest, ChatResponse, CommandChat, ServerType};
 use crate::common_things::common::ServerType::CommunicationServer;
 use crate::servers::Text_max::Server as ServerMax;
 
@@ -33,6 +33,7 @@ use crate::servers::Text_max::Server as ServerMax;
 impl Default for SimulationController{
     fn default() -> Self {
         let (sender, receiver) = unbounded();
+        let (_, chat_recv)=unbounded();
         Self {
             node_event_send: sender,
             node_event_recv: receiver,
@@ -41,7 +42,12 @@ impl Default for SimulationController{
             neighbours: HashMap::new(),
             client:  HashMap::new(),
             log : Arc::new(Mutex::new(SharedSimState::default())),
-            seen_floods: HashSet::new()
+            seen_floods: HashSet::new(),
+            client_list: HashMap::new(),
+            chat_event: chat_recv,
+            messages: Vec::new(),
+            incoming_message: HashMap::new(),
+            register_success : HashMap::new()
         }
     }
 }
@@ -53,6 +59,43 @@ impl SimulationController {
         let mut flood_req_hash=HashSet::new();
         loop{
             select_biased! {
+                recv(self.chat_event) -> event =>{
+                    if let Ok(chat_event) = event {
+                        match chat_event {
+                            ChatClientEvent::IncomingMessage((id_client,id_server),message)=>{
+                                if let Some(mut messages) = self.incoming_message.get_mut(&(id_client, id_server)){
+                                    messages.push(message)
+                                }else{
+                                    let mut messages=Vec::new();
+                                    messages.push(message);
+                                    self.incoming_message.insert((id_client,id_server), messages);
+                                }
+                            },
+                            ChatClientEvent::ClientList((id_client,id_server), mut registered_clients)=>{
+                                if let Some(mut current_clients) = self.client_list.get_mut(&(id_client, id_server)){
+                                    current_clients=&mut registered_clients;
+                                }else{
+                                    self.client_list.insert((id_client,id_server),registered_clients);
+                                }
+                            },
+                            ChatClientEvent::RegisteredSuccess((id_client, id_server), result)=>{
+                                match result{
+                                    Ok(_)=>{
+                                        self.register_success.insert((id_client, id_server), true);
+                                    },
+                                    Err(message)=>{
+                                        self.register_success.insert((id_client, id_server), false);
+                                        println!("{}",message);
+                                    }
+
+                                }
+                            },
+                            _=>{
+
+                            }
+                        }
+                    }
+                }
             recv(self.node_event_recv) -> command =>{
                 if let Ok(drone_event) = command {
                      match drone_event{
@@ -241,6 +284,9 @@ impl SimulationController {
     pub fn register_client(&mut self, client_id: NodeId, server_id: NodeId){
         self.client.get(&client_id).unwrap().send(CommandChat::RegisterClient(server_id)).unwrap();
     }
+    pub fn get_client_list(&mut self, client_id: NodeId, server_id: NodeId){
+        self.client.get(&client_id).unwrap().send(CommandChat::GetListClients(server_id)).unwrap();
+    }
 }
 pub fn start_simulation(
     mut simulation_controller: ResMut<SimulationController>
@@ -252,6 +298,7 @@ pub fn start_simulation(
     let mut packet_channels = HashMap::new();
     let mut command_chat_channel = HashMap::new();
 
+    let (chat_event_send, chat_event_recv)=unbounded();
     for node_id in config.drone.iter().map(|d| d.id)
         .chain(config.client.iter().map(|c| c.id))
         .chain(config.server.iter().map(|s| s.id)) {
@@ -332,6 +379,7 @@ pub fn start_simulation(
             packet_send.clone(),
             rcv_command,
             packet_send,
+            chat_event_send.clone()
         )));
 
         thread::spawn(move || {
@@ -355,6 +403,11 @@ pub fn start_simulation(
         client: simulation_controller.client.clone(),
         log,
         seen_floods: HashSet::new(),
+        client_list: HashMap::new(),
+        chat_event: chat_event_recv,
+        incoming_message: HashMap::new(),
+        messages: Vec::new(),
+        register_success: HashMap::new()
     }));
 
     thread::spawn(move || {

@@ -14,6 +14,13 @@ pub enum CommandChat {
     EndChat(NodeId),//node id del server
     Crash
 }
+///The NodeId identifies the client that sent the ChatClientEvent
+pub enum ChatClientEvent{
+    ClientList((NodeId, NodeId) ,Vec<NodeId>), //NodeId Client, NodeId Server, Vec<ClientIds>
+    IncomingMessage((NodeId,NodeId),String), //NodeId Client, NodeId server, message
+    RegisteredSuccess((NodeId,NodeId),Result<(), String>), //NodeId registered client and NodeId server { either Ok(()) or Err("something".to_string()) }
+    Error(NodeId) //Generic Error to send to SC
+}
 
 //comandi da client a server
 #[derive(Serialize, Deserialize, Debug)]
