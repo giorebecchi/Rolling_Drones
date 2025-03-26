@@ -6,7 +6,7 @@ use serde::{Serialize, Deserialize};
 use wg_2024::config::Client;
 use wg_2024::network::{NodeId, SourceRoutingHeader};
 use wg_2024::packet::{FloodRequest, FloodResponse, Fragment, NodeType, Packet, PacketType};
-use crate::common_things::common::{CommandText, ContentCommands};
+use crate::common_things::common::{CommandText, ContentCommands, MediaId};
 
 pub struct WebBrowser {
     pub config: Client,
@@ -88,9 +88,9 @@ impl WebBrowser {
 
     pub fn get_list(& mut self, id_server: NodeId) {}
 
-    pub fn get_position (& mut self, id_server: NodeId, media_id: u8){}
+    pub fn get_position (& mut self, id_server: NodeId, media_id: MediaId){}
 
-    pub fn get_media(& mut self, id_media_server: NodeId, media_id: u8){}
+    pub fn get_media(& mut self, id_media_server: NodeId, media_id: MediaId) {}
 
 
 
