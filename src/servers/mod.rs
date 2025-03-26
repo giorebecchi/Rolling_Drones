@@ -2,7 +2,8 @@ pub(crate) mod assembler;
 
 pub mod ChatServer;
 
-pub mod Text_max;
+pub(crate) mod Text_max;
+pub(crate) mod Chat_max;
 
-mod assembler_max;
+mod utilities_max;
 

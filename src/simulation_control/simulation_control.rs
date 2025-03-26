@@ -305,12 +305,12 @@ pub fn start_simulation(
             .map(|nid| (*nid, packet_channels[nid].0.clone()))
             .collect::<HashMap<_,_>>();
 
-        //let server_baia = Arc::new(Mutex::new(Server::new(cfg_server.id, rcv, packet_send)));
-        let mut server_max = ServerMax::new(cfg_server.id,rcv.clone(),packet_send);
+        let server_baia = Arc::new(Mutex::new(Server::new(cfg_server.id, rcv, packet_send)));
+        // let mut server_max = ServerMax::new(cfg_server.id,rcv.clone(),packet_send);
 
         thread::spawn(move || {
-            server_max.run();
-            //server_baia.lock().unwrap().run();
+            // server_max.run();
+            server_baia.lock().unwrap().run();
         });
     }
 
@@ -358,10 +358,12 @@ pub fn start_simulation(
         controller.lock().unwrap().run();
     });
 
-    //thread::sleep(Duration::from_millis(200));
-    //simulation_controller.client.get(&0).unwrap()
+     // thread::sleep(Duration::from_millis(200)); //questo da scommentare sempre se vuoi testare
+    // simulation_controller.client.get(&0).unwrap()
     //    .send(CommandChat::SendMessage(11, 12, "ciao".to_string()))
     //    .unwrap();
+    // simulation_controller.client.get(&11).unwrap() //scommenta questo che abbiamo i print
+    //     .send(CommandChat::ServerType(12)).unwrap()
 }
 
 fn create_drone(
