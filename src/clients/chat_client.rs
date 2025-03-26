@@ -13,7 +13,7 @@ use wg_2024::config::{Client};
 use wg_2024::network::{NodeId, SourceRoutingHeader};
 use wg_2024::packet::{FloodRequest, FloodResponse, Fragment, NackType, NodeType, Packet, PacketType, FRAGMENT_DSIZE};
 use crate::clients::assembler::{Fragmentation, Serialization};
-use crate::common_things::common::{ChatRequest, MessageChat, CommandChat, ChatResponse, ServerType};
+use crate::common_things::common::{ChatRequest, MessageChat, CommandChat, ChatResponse, ServerType, ChatClientEvent};
 use crate::servers::ChatServer::Server;
 
 pub struct ChatClient {
@@ -31,9 +31,16 @@ pub struct ChatClient {
     pub fragments_sent: HashMap<u64, Fragment>, //used for sending the correct fragment if was lost in the process
     pub problematic_nodes: Vec<NodeId>,
     pub server_types: HashMap<NodeId, ServerType>,
+    event_send : Sender<ChatClientEvent>
 }
 impl ChatClient {
-    pub fn new(id: NodeId, receiver_msg: Receiver<Packet>, send_packets: HashMap<NodeId, Sender<Packet>>, receiver_commands: Receiver<CommandChat>, simulation_control: HashMap<NodeId, Sender<Packet>>) -> Self {
+    pub fn new(
+        id: NodeId, receiver_msg: Receiver<Packet>,
+        send_packets: HashMap<NodeId, Sender<Packet>>,
+        receiver_commands: Receiver<CommandChat>,
+        simulation_control: HashMap<NodeId, Sender<Packet>>,
+        event_send: Sender<ChatClientEvent>
+    ) -> Self {
         Self {
             config: Client { id, connected_drone_ids: Vec::new() },
             receiver_msg,
@@ -49,6 +56,7 @@ impl ChatClient {
             fragments_sent: HashMap::new(),
             problematic_nodes: Vec::new(),
             server_types: HashMap::new(),
+            event_send
         }
     }
     pub fn run(&mut self) {

@@ -16,7 +16,7 @@ use crate::simulation_control::simulation_control::*;
 use egui::widgets::TextEdit;
 use wg_2024::controller::{DroneCommand, DroneEvent};
 use wg_2024::packet::Packet;
-use crate::common_things::common::CommandChat;
+use crate::common_things::common::{ChatClientEvent, CommandChat};
 
 #[derive(Component)]
 struct InputText;
@@ -81,7 +81,12 @@ pub struct SimulationController {
     pub neighbours: HashMap<NodeId, Vec<NodeId>>,
     pub client : HashMap<NodeId, Sender<CommandChat>>,
     pub log: Arc<Mutex<SharedSimState>>,
-    pub seen_floods: HashSet<(NodeId,u64,NodeId)>
+    pub seen_floods: HashSet<(NodeId,u64,NodeId)>,
+    pub client_list: HashMap<(NodeId, NodeId), Vec<NodeId>>,
+    pub chat_event: Receiver<ChatClientEvent>,
+    pub messages: Vec<String>,
+    pub incoming_message: HashMap<(NodeId,NodeId), Vec<String>>,
+    pub register_success: HashMap<(NodeId,NodeId),bool>
 }
 #[derive(Default,Debug,Clone)]
 pub struct NodeConfig{
@@ -103,6 +108,13 @@ impl NodeConfig {
 }
 #[derive(Resource,Default,Debug,Clone)]
 pub struct NodesConfig(pub Vec<NodeConfig>);
+#[derive(Resource, Default)]
+struct ChatState {
+    message_input: String,
+    messages: Vec<String>,
+    dest_client: String,
+    active_chat_node: Option<u32>
+}
 
 
 pub fn main() {
@@ -128,6 +140,7 @@ pub fn main() {
             state: shared_state.clone(),
         })
         .init_resource::<OpenWindows>()
+        .init_resource::<ChatState>()
         .init_state::<AppState>()
         .add_event::<NewDroneSpawned>()
         .add_systems(Update, ui_settings)
@@ -338,12 +351,13 @@ fn handle_clicks(
 fn display_windows(
     mut contexts: EguiContexts,
     mut open_windows: ResMut<OpenWindows>,
-    mut sim: ResMut<SimulationController>
+    mut sim: ResMut<SimulationController>,
+    mut chat_state: ResMut<ChatState>
 ) {
     let mut windows_to_close = Vec::new();
 
     for (i, window_name) in open_windows.windows.iter().enumerate() {
-        let window = egui::Window::new(format!("Client: {}",window_name))
+        let window = egui::Window::new(format!("Client: {}", window_name))
             .id(egui::Id::new(format!("window_{}", i)))
             .resizable(true)
             .collapsible(true)
@@ -351,23 +365,87 @@ fn display_windows(
 
         let mut should_close = false;
 
+        // Inside your existing function
         window.show(contexts.ctx_mut(), |ui| {
             ui.label(format!("This is a window for {}", window_name));
             ui.separator();
+
+            ui.horizontal_wrapped(|ui|{
+                ui.label("Available Clients:");
+
+            });
+            // Chat section with white background
+            ui.group(|ui| {
+                ui.set_min_width(300.0); // Optional: set a minimum width for the chat area
+
+                // Display existing messages
+                ui.vertical(|ui| {
+                    ui.heading("Chat Messages");
+                    egui::ScrollArea::vertical()
+                        .max_height(200.0) // Optional: limit message area height
+                        .show(ui, |ui| {
+                            for message in &chat_state.messages {
+                                ui.label(message);
+                            }
+                        });
+                });
+
+                // Message input area
+                ui.separator();
+
+                // Input field with grey background
+                let input_response = ui.add(
+                    egui::TextEdit::singleline(&mut chat_state.message_input)
+                        .frame(true)
+                        .background_color(egui::Color32::from_rgb(200, 200, 200))
+                );
+                ui.add(
+                    egui::TextEdit::singleline(&mut chat_state.dest_client)
+                        .frame(true)
+                        .background_color(egui::Color32::from_rgb(200,200,200))
+                );
+
+                // Send button with paper airplane icon
+                ui.horizontal(|ui| {
+                    let send_button = ui.button("📨 Send");
+
+                    // Send message logic
+                    if send_button.clicked() && !chat_state.message_input.is_empty() {
+                        let message_input = chat_state.message_input.clone();
+                        chat_state.messages.push(message_input);
+                        chat_state.message_input.clear();
+                    }
+
+                    // Allow sending with Enter key
+                    if input_response.lost_focus() && ui.input(|i| i.key_pressed(egui::Key::Enter)) {
+                        if !chat_state.message_input.is_empty() {
+                            let message_input = chat_state.message_input.clone();
+                            chat_state.messages.push(message_input);
+                            chat_state.message_input.clear();
+                        }
+                    }
+                });
+            });
+
+            ui.separator();
+
+            // Additional controls with default background
             ui.horizontal(|ui| {
                 ui.label("Some controls:");
-                if ui.button("Register Client").clicked(){
-                    let client_id=parse_id(window_name.clone());
-                    sim.register_client(client_id,12);
+                if ui.button("Register Client").clicked() {
+                    let client_id = parse_id(window_name.clone());
+                    sim.register_client(client_id, 12);
+                }
+                if ui.button("Get Client List").clicked(){
+
                 }
                 if ui.button("Send Message").clicked() {
-                    sim.send_message("Ciao".to_string(),0,11);
+                    let client_id = parse_id(window_name.clone());
+                    sim.send_message("Ciao".to_string(), client_id, 11);
                 }
             });
 
-            ui.add(egui::Slider::new(&mut 42, 0..=100).text("Value"));
-
-
+            // Close window button
             if ui.button("Close Window").clicked() {
                 should_close = true;
             }
@@ -377,9 +455,11 @@ fn display_windows(
             windows_to_close.push(i);
         }
     }
+
     for i in windows_to_close.into_iter().rev() {
-        open_windows.windows.remove(i);
+            open_windows.windows.remove(i);
     }
+
 }
 pub fn draw_connections(
     mut gizmos : Gizmos,
