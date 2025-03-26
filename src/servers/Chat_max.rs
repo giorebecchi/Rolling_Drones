@@ -337,15 +337,38 @@ impl Server {
                 let response = ChatResponse::RegisteredClients(self.registered_clients.clone());
                 self.send_response(id_client, response, session);
             }
-            ChatRequest::SendMessage(_, _) => {todo!()}
-            ChatRequest::EndChat(_) => {
-                self.registered_clients.retain(|&x| x != id_client);
+            ChatRequest::SendMessage(message, id) => {
+                let sender = message.from_id;
+                let receiver = message.to_id;
+                let present = self.is_present(receiver, sender);
+                match present {
+                    Ok(string) => {
+                        let r1 = ChatResponse::SendMessage(Ok(string));
+                        let r2 = ChatResponse::ForwardMessage(message.clone());
+                        self.send_response(sender, r1, session);
+                        self.send_response(receiver, r2, session);
+                    }
+                    Err(string) => {
+                        let r1 = ChatResponse::SendMessage(Err(string));
+                        self.send_response(sender, r1, session);
+                    }
+                }
+            }
+            ChatRequest::EndChat(id) => {
+                self.registered_clients.retain(|&x| x != id);
                 let response = ChatResponse::EndChat(true);
                 self.send_response(id_client, response, session);
             }
         }
 
 
+    }
+    fn is_present(&self, receiver: NodeId, sender: NodeId) -> Result<String, String> {
+        if self.registered_clients.contains(&sender) && self.registered_clients.contains(&receiver) {
+            Ok("The server will forward the message to the final client".to_string())
+        }else{
+            Err("Error with the registration of the two involved clients".to_string())
+        }
     }
     fn send_response(&mut self, id: NodeId, response: ChatResponse, session: &u64) {
         let dati = serialize_chat_response(&response);

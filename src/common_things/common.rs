@@ -4,6 +4,7 @@ use wg_2024::packet::Packet;
 use crate::GUI::login_window::NodeType;
 use crate::servers::Text_max::Server;
 
+
 //comandi sim_control
 #[derive(Clone)]
 pub enum CommandChat {
