@@ -420,6 +420,8 @@ pub fn start_simulation(
     //    .unwrap();
     // simulation_controller.client.get(&11).unwrap() //scommenta questo che abbiamo i print
     //     .send(CommandChat::ServerType(12)).unwrap()
+    // simulation_controller.client.get(&11).unwrap()
+    //     .send(CommandChat::GetListClients(12)).unwrap()
 }
 
 fn create_drone(

@@ -14,6 +14,7 @@ use wg_2024::network::{NodeId, SourceRoutingHeader};
 use wg_2024::packet::{FloodRequest, FloodResponse, Fragment, NackType, NodeType, Packet, PacketType, FRAGMENT_DSIZE};
 use crate::clients::assembler::{Fragmentation, Serialization};
 use crate::common_things::common::{ChatRequest, MessageChat, CommandChat, ChatResponse, ServerType, ChatClientEvent};
+use crate::common_things::common::ChatClientEvent::{ClientList, IncomingMessage, RegisteredSuccess};
 use crate::servers::ChatServer::Server;
 
 pub struct ChatClient {
@@ -31,7 +32,7 @@ pub struct ChatClient {
     pub fragments_sent: HashMap<u64, Fragment>, //used for sending the correct fragment if was lost in the process
     pub problematic_nodes: Vec<NodeId>,
     pub server_types: HashMap<NodeId, ServerType>,
-    event_send : Sender<ChatClientEvent>
+    pub event_send : Sender<ChatClientEvent>
 }
 impl ChatClient {
     pub fn new(
@@ -269,8 +270,16 @@ impl ChatClient {
                         },
                         ChatResponse::RegisterClient(response) => {
                             if response{
-                                println!("registered successfully")
-                            }else { println!("not registered successfully") }
+                                println!("registered successfully");
+                                if let Err(_) = self.event_send.send(RegisteredSuccess((self.config.id.clone(), src_id.clone()), Ok(()))){
+                                    println!("could not send to simulation control");
+                                }
+                            }else {
+                                println!("not registered successfully");
+                                if let Err(_) = self.event_send.send(RegisteredSuccess((self.config.id.clone(), src_id.clone()), Err("registration not successful".to_string()))){
+                                    println!("could not send to simulation control");
+                                }
+                            }
                         },
                         ChatResponse::SendMessage(response) => {
                             match response{
@@ -280,10 +289,16 @@ impl ChatClient {
                         },
                         ChatResponse::RegisteredClients(registered_clients) => {
                             println!("registered clients: {:?}", registered_clients);
+                            if let Err(_) = self.event_send.send(ClientList((self.config.id.clone(), src_id.clone()), registered_clients)){
+                                println!("failed to send the registered clients to sc");
+                            }
                         },
                         ChatResponse::ForwardMessage(message_chat) =>{
                             let sender = message_chat.from_id;
                             println!("Message from: {}, content:\n {}", sender, message_chat.content);
+                            if let Err(str) = self.event_send.send(IncomingMessage((self.config.id.clone(), src_id.clone() ), message_chat.content)){
+                                println!("failed to send message to simulation control: {}", str);
+                            }
                         }
                     }
 
