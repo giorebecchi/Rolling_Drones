@@ -62,18 +62,9 @@ pub enum RequestWeb {
     Media (String)
 }
 
-//solo per max per sistemare il suo server, da cancellare appena è a posto
-#[derive(Serialize, Deserialize, Debug)]
-pub enum TextRequest{
-    ServerType(NodeId),
-    GetFiles(NodeId),
-    File(NodeId, String)
-}
-
-
 // server to client
 #[derive(Serialize, Deserialize, Debug)]
-pub enum TextResponse{
+pub enum WebResponse{
     ServerType(ServerType),
     FileList(Vec<String>),
     File(String), // la stringa con tutto il file di testo

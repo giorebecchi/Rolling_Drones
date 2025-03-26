@@ -1,11 +1,11 @@
 use crate::servers::utilities_max::*;
 use crate::common_things::common::*;
 use crate::common_things::common::ServerType;
-use crossbeam_channel::{select_biased, unbounded, Receiver, Sender};
+use crossbeam_channel::{select_biased, Receiver, Sender};
 use std::collections::{BinaryHeap, HashMap};
-use std::{thread};
+use bevy::render::render_resource::encase::private::RuntimeSizedArray;
 use wg_2024::network::{NodeId, SourceRoutingHeader};
-use wg_2024::packet::{Ack, FloodRequest, FloodResponse, Fragment, Nack, NackType, NodeType, Packet, PacketType};
+use wg_2024::packet::{Ack, FloodRequest, Fragment, Nack, NackType, NodeType, Packet, PacketType};
 use bevy::utils::HashSet;
 
 pub struct Server{
@@ -16,9 +16,8 @@ pub struct Server{
     fragment_send: HashMap<u64, Data>,
     packet_recv: Receiver<Packet>,
     pub packet_send: HashMap<NodeId, Sender<Packet>>,
-    file_list: Vec<String>,
-    media_list: Vec<String>,
     already_visited: HashSet<(NodeId, u64)>,
+    registered_clients: Vec<NodeId>,
 }
 impl Server {
     fn new(server_id: NodeId, recv: Receiver<Packet>, send: HashMap<NodeId, Sender<Packet>>) -> Self {
@@ -30,14 +29,13 @@ impl Server {
         Server {
             server_id,
             server_type: ServerType::TextServer,
-            nodes_map: vec![(server_id, n,  links)],
+            nodes_map: vec![(server_id,n, links)],
             fragment_recv: HashMap::new(),
             fragment_send: HashMap::new(),
             packet_recv: recv,
             packet_send: send,
-            file_list: Vec::new(),
-            media_list: Vec::new(),
             already_visited: HashSet::new(),
+            registered_clients: Vec::new(),
         }
     }
     fn run(&mut self) {
@@ -229,8 +227,8 @@ impl Server {
         }
     }
     fn remove_drone(&mut self, node_id: NodeId) {
-        self.nodes_map.retain(|(id,_, _)| *id != node_id);
-        for (_, _, neighbors) in &mut self.nodes_map {
+        self.nodes_map.retain(|(id,_ , _)| *id != node_id);
+        for (_,_, neighbors) in &mut self.nodes_map {
             neighbors.retain(|&neighbor_id| neighbor_id != node_id);
         }
     }
@@ -239,7 +237,6 @@ impl Server {
             return; // Nessun nodo successivo disponibile
         }
         packet.routing_header.hop_index = 1;
-
         let next = packet.routing_header.hops[1];
         // Invia il pacchetto al prossimo nodo
         if let Some(sender) = self.packet_send.get_mut(&next) {
@@ -324,41 +321,34 @@ impl Server {
     fn handle_command(&mut self, session: &u64) {
         let data = self.fragment_recv.get(session).unwrap();
         let d = data.dati.clone();
-        let command :RequestWeb = deserialize_web_request(d);
-        let id_client = data.who_ask;
+        let id_client = data.who_ask.clone();
+        let command: ChatRequest = deserialize_chat_request(d);
         match command {
-            RequestWeb::ServerType => {
-                let response = WebResponse::ServerType(self.server_type.clone());
+            ChatRequest::ServerType => {
+                let response = ChatResponse::ServerType(self.server_type.clone());
                 self.send_response(id_client, response, session)
             }
-            RequestWeb::TextList => {
-                let files = self.file_list.clone();
-                let response: WebResponse = WebResponse::FileList(files);
-                self.send_response(id_client, response, session)
-            }
-            RequestWeb::TextFile(file) => {
-                let f = get_file(file);
-                let response;
-                match f {
-                    Some(content) => {
-                        response = WebResponse::File(content);
-                    },
-                    None => {
-                        response = WebResponse::Error("file not found".to_string());
-                    },
-                }
+            ChatRequest::RegisterClient(client_id) => {
+                self.registered_clients.push(client_id);
+                let response = ChatResponse::RegisterClient(true);
                 self.send_response(id_client, response, session);
             }
-            RequestWeb::MediaList => {
-                let files = self.media_list.clone();
-                let response: WebResponse = WebResponse::MediaList(files);
-                self.send_response(id_client, response, session)
+            ChatRequest::GetListClients => {
+                let response = ChatResponse::RegisteredClients(self.registered_clients.clone());
+                self.send_response(id_client, response, session);
             }
-            RequestWeb::Media(_) => {}
+            ChatRequest::SendMessage(_, _) => {todo!()}
+            ChatRequest::EndChat(_) => {
+                self.registered_clients.retain(|&x| x != id_client);
+                let response = ChatResponse::EndChat(true);
+                self.send_response(id_client, response, session);
+            }
         }
+
+
     }
-    fn send_response(&mut self, id: NodeId, response: WebResponse, session: &u64) {
-        let dati = serialize_web_response(&response);
+    fn send_response(&mut self, id: NodeId, response: ChatResponse, session: &u64) {
+        let dati = serialize_chat_response(&response);
         let total = dati.len();
         let d_to_send = Data { counter: total as u64, dati, who_ask: id };
         self.fragment_send.insert(*session, d_to_send);
@@ -379,420 +369,4 @@ impl Server {
             }
         }
     }
-}
-
-pub(crate) fn main() -> () {
-    // ID del server
-    let server_id: NodeId = 0;
-
-    // Simuliamo una rete connessa: ad esempio, il server è collegato direttamente ai nodi 2 e 3
-    let direct_neighbors = vec![1, 4, 7];
-
-
-
-
-    // Canali per ricezione pacchetti del server
-    let (packet_send_server, packet_recv_server) = unbounded();
-
-
-
-
-    // Mappa dei canali di comunicazione (solo i vicini diretti)
-    let mut packet_send_map: HashMap<NodeId, _> = HashMap::new();
-    packet_send_map.insert(server_id, packet_send_server.clone());
-
-
-
-
-    // Creiamo i canali per i nodi vicini e simuliamo i loro thread di ricezione
-    for &neighbor in &direct_neighbors {
-        let (tx, rx) = unbounded();
-        packet_send_map.insert(neighbor, tx);
-
-
-
-
-        // Simuliamo un nodo vicino che stampa i pacchetti ricevuti
-        thread::spawn(move || {
-            while let Ok(packet) = rx.recv() {
-                println!("🔹 Nodo {} ha ricevuto un pacchetto: {:?}", neighbor, packet);
-            }
-        });
-    }
-
-
-
-
-    // Creiamo il server con la topologia di rete (mappa completa)
-    let mut server = Server::new(server_id, packet_recv_server, packet_send_map);
-
-
-
-
-    // -------------------test flooding già fatto
-    // -------------------test handle_flood_response, routing, remove_drone... funzia
-    /*
-    let v0:Vec<(NodeId, NodeType)> = vec![(7, NodeType::Server), (6, NodeType::Server)];
-    let v1:Vec<(NodeId, NodeType)> = vec![(1, NodeType::Drone)];
-    let v2:Vec<(NodeId, NodeType)> = vec![(1, NodeType::Drone), (2, NodeType::Drone)];
-    let v3:Vec<(NodeId, NodeType)> = vec![(1, NodeType::Drone), (2, NodeType::Drone), (6, NodeType::Server)];
-    let v4:Vec<(NodeId, NodeType)> = vec![(1, NodeType::Drone), (3, NodeType::Drone)];
-    let v5:Vec<(NodeId, NodeType)> = vec![(1, NodeType::Drone), (3, NodeType::Drone), (5, NodeType::Drone)];
-    let v6:Vec<(NodeId, NodeType)> = vec![(1, NodeType::Drone), (3, NodeType::Drone), (5, NodeType::Drone), (6, NodeType::Server)];
-    let v7:Vec<(NodeId, NodeType)> = vec![(1, NodeType::Drone), (2, NodeType::Drone), (5, NodeType::Server)];
-    let v8:Vec<(NodeId, NodeType)> = vec![(4, NodeType::Drone)];
-    let v9:Vec<(NodeId, NodeType)> = vec![(4, NodeType::Drone), (3, NodeType::Drone)];
-    let v10:Vec<(NodeId, NodeType)> = vec![(4, NodeType::Drone), (3, NodeType::Drone), (5, NodeType::Drone)];
-    let v11:Vec<(NodeId, NodeType)> = vec![(4, NodeType::Drone), (3, NodeType::Drone), (5, NodeType::Drone), (6, NodeType::Server)];
-
-
-
-    let flood0 = FloodResponse{flood_id:0, path_trace:v0};
-    let flood1 = FloodResponse{ flood_id: 1, path_trace: v1 };
-    let flood2 = FloodResponse{ flood_id: 1, path_trace: v2 };
-    let flood3 = FloodResponse{ flood_id: 1, path_trace: v3 };
-    let flood4 = FloodResponse{ flood_id: 1, path_trace: v4 };
-    let flood5 = FloodResponse{ flood_id: 1, path_trace: v5 };
-    let flood6 = FloodResponse{ flood_id: 1, path_trace: v6 };
-    let flood7 = FloodResponse{ flood_id: 1, path_trace: v7 };
-    let flood8 = FloodResponse{ flood_id: 1, path_trace: v8 };
-    let flood9 = FloodResponse{ flood_id: 1, path_trace: v9 };
-    let flood10 = FloodResponse{ flood_id: 1, path_trace: v10 };
-    let flood11 = FloodResponse{ flood_id: 1, path_trace: v11 };
-
-
-
-    let p0 = Packet{routing_header: Default::default(), session_id: 0, pack_type: PacketType::FloodResponse(flood0)};
-    let p1 = Packet{ routing_header: Default::default(), session_id: 0, pack_type: PacketType::FloodResponse(flood1)};
-    let p2 = Packet{ routing_header: Default::default(), session_id: 0, pack_type: PacketType::FloodResponse(flood2)};
-    let p3 = Packet{ routing_header: Default::default(), session_id: 0, pack_type: PacketType::FloodResponse(flood3)};
-    let p4 = Packet{ routing_header: Default::default(), session_id: 0, pack_type: PacketType::FloodResponse(flood4)};
-    let p5 = Packet{ routing_header: Default::default(), session_id: 0, pack_type: PacketType::FloodResponse(flood5)};
-    let p6 = Packet{ routing_header: Default::default(), session_id: 0, pack_type: PacketType::FloodResponse(flood6)};
-    let p7 = Packet{ routing_header: Default::default(), session_id: 0, pack_type: PacketType::FloodResponse(flood7)};
-    let p8 = Packet{ routing_header: Default::default(), session_id: 0, pack_type: PacketType::FloodResponse(flood8)};
-    let p9 = Packet{ routing_header: Default::default(), session_id: 0, pack_type: PacketType::FloodResponse(flood9)};
-    let p10 = Packet{ routing_header: Default::default(), session_id: 0, pack_type: PacketType::FloodResponse(flood10)};
-    let p11 = Packet{ routing_header: Default::default(), session_id: 0, pack_type: PacketType::FloodResponse(flood11)};
-
-
-
-    server.handle_flood_response(p0);
-    server.handle_flood_response(p1);
-    server.handle_flood_response(p2);
-    server.handle_flood_response(p3);
-    server.handle_flood_response(p4);
-    server.handle_flood_response(p5);
-    server.handle_flood_response(p6);
-    server.handle_flood_response(p7);
-    server.handle_flood_response(p8);
-    server.handle_flood_response(p9);
-    server.handle_flood_response(p10);
-    server.handle_flood_response(p11);
-
-
-
-
-    println!("{:?}", server.nodes_map);
-
-
-
-
-    let route = server.routing(6);
-    if let Some(route) = route {
-        println!("{:?}", route);
-    }else{
-        println!("no route");
-    }
-
-     */
-
-
-
-
-
-    // -------------------test serialize e deserialize
-    /*
-    let e = TextResponse::File("unga bunga".to_string());
-    let serialized = serialize_text_response(&e);
-    println!("{:?}", serialized);
-    let i = deserialize_text_r(serialized);
-    println!("{:?}", i);
-
-
-
-
-     */
-
-
-    //--------------------test handle_paket
-    /*
-    let e = TextResponse::File("unga bunga".to_string());
-    let serialized = serialize_text_response(&e);
-    let data = serialized[0].0;
-    let len = serialized[0].1;
-
-
-
-
-    let fragment = Fragment{
-        fragment_index: 0,
-        total_n_fragments: 1,
-        length: len,
-        data: data,
-    };
-
-
-
-
-    let p = Packet{
-        routing_header: SourceRoutingHeader{ hop_index: 0, hops: vec![1, 2, 3, 0] },
-        session_id: 0,
-        pack_type: PacketType::MsgFragment(fragment),
-    };
-    server.handle_packet(p);
-    println!("{:?}", server.fragment_recv);
-
-
-
-
-    let ack = Ack{fragment_index: 0};
-    let pa = Packet {
-        routing_header: SourceRoutingHeader {
-            hop_index: 0,
-            hops: vec![1, 2, 3, 0],
-        },
-        session_id: 0,
-        pack_type: PacketType::Ack(ack),
-    };
-    server.handle_packet(pa);
-
-
-
-
-    let nack = Nack{ fragment_index: 0, nack_type: NackType::Dropped };
-    let pac = Packet{
-        routing_header: Default::default(),
-        session_id: 0,
-        pack_type: PacketType::Nack(nack),
-    };
-    server.handle_packet(pac);
-
-
-
-
-    let req = FloodRequest{
-        flood_id: 0,
-        initiator_id: 0,
-        path_trace: vec![(1, NodeType::Drone)],
-    };
-    let pack = Packet{
-        routing_header: Default::default(),
-        session_id: 0,
-        pack_type: PacketType::FloodRequest(req.clone()),
-    };
-    server.handle_packet(pack);
-
-
-
-
-    let resp = FloodResponse{ flood_id: 0, path_trace: vec![] };
-    let packe = Packet{
-        routing_header: Default::default(),
-        session_id: 0,
-        pack_type: PacketType::FloodResponse(resp),
-    };
-    server.handle_packet(packe);
-
-
-
-
-     */
-
-
-    //--------------------test handle message
-    /*
-    let e = TextRequest::File(6, "file1.txt".to_string());
-    let serialized = serialize_text_r(&e);
-    let data = serialized[0].0;
-    let len = serialized[0].1;
-
-
-
-
-    let fragment = Fragment{
-        fragment_index: 0,
-        total_n_fragments: 1,
-        length: len,
-        data: data,
-    };
-
-
-
-
-    let p = Packet{
-        routing_header: SourceRoutingHeader{ hop_index: 0, hops: vec![1, 2, 3, 0] },
-        session_id: 0,
-        pack_type: PacketType::MsgFragment(fragment),
-    };
-    server.handle_packet(p);
-
-
-     */
-
-
-    //--------------------test handle ack
-    /*
-    let e = TextRequest::File(6, "file1.txt".to_string());
-    let serialized = serialize_text_r(&e);
-    let data = serialized[0].0;
-    let len = serialized[0].1;
-
-
-
-
-    let fragment = Fragment{
-        fragment_index: 0,
-        total_n_fragments: 1,
-        length: len,
-        data: data,
-    };
-
-
-
-
-    let p = Packet{
-        routing_header: SourceRoutingHeader{ hop_index: 0, hops: vec![1, 2, 3, 0] },
-        session_id: 0,
-        pack_type: PacketType::MsgFragment(fragment),
-    };
-    server.handle_packet(p);
-    println!("fragment_ send  {:?}", server.fragment_send);
-
-
-    let ack = Ack{fragment_index: 0};
-    let pa = Packet {
-        routing_header: SourceRoutingHeader {
-            hop_index: 0,
-            hops: vec![1, 2, 3, 0],
-        },
-        session_id: 0,
-        pack_type: PacketType::Ack(ack),
-    };
-    server.handle_packet(pa);
-    let ack = Ack{fragment_index: 1};
-    let pa = Packet {
-        routing_header: SourceRoutingHeader {
-            hop_index: 0,
-            hops: vec![1, 2, 3, 0],
-        },
-        session_id: 0,
-        pack_type: PacketType::Ack(ack),
-    };
-    server.handle_packet(pa);
-
-
-    println!("{:?}", server.fragment_send)
-
-
-     */
-
-
-    //--------------------test handle nack
-
-    let v1:Vec<(NodeId, NodeType)> = vec![(1, NodeType::Drone)];
-    let v3:Vec<(NodeId, NodeType)> = vec![(1, NodeType::Drone), (2, NodeType::Drone), (6, NodeType::Server)];
-    let v6:Vec<(NodeId, NodeType)> = vec![(1, NodeType::Drone), (3, NodeType::Drone), (5, NodeType::Drone), (6, NodeType::Server)];
-    let v11:Vec<(NodeId, NodeType)> = vec![(4, NodeType::Drone), (3, NodeType::Drone), (5, NodeType::Drone), (6, NodeType::Server)];
-
-
-
-
-    let flood1 = FloodResponse{ flood_id: 1, path_trace: v1 };
-    let flood3 = FloodResponse{ flood_id: 1, path_trace: v3 };
-    let flood6 = FloodResponse{ flood_id: 1, path_trace: v6 };
-    let flood11 = FloodResponse{ flood_id: 1, path_trace: v11 };
-
-
-
-
-    let p1 = Packet{ routing_header: Default::default(), session_id: 0, pack_type: PacketType::FloodResponse(flood1)};
-
-    let p3 = Packet{ routing_header: Default::default(), session_id: 0, pack_type: PacketType::FloodResponse(flood3)};
-
-    let p6 = Packet{ routing_header: Default::default(), session_id: 0, pack_type: PacketType::FloodResponse(flood6)};
-
-    let p11 = Packet{ routing_header: Default::default(), session_id: 0, pack_type: PacketType::FloodResponse(flood11)};
-
-
-
-
-    server.handle_flood_response(p1);
-
-    server.handle_flood_response(p3);
-
-    server.handle_flood_response(p6);
-
-    server.handle_flood_response(p11);
-
-
-
-
-    println!("{:?}", server.nodes_map);
-
-
-
-
-    let route = server.routing(6);
-    if let Some(route) = route {
-        println!("{:?}", route);
-    }else{
-        println!("no route");
-    }
-    let e = RequestWeb::TextFile("file1.txt".to_string());
-    let serialized = serialize_text_r(&e);
-    let data = serialized[0].0;
-    let len = serialized[0].1;
-
-
-
-
-    let fragment = Fragment{
-        fragment_index: 0,
-        total_n_fragments: 1,
-        length: len,
-        data,
-    };
-
-
-
-
-    let p = Packet{
-        routing_header: SourceRoutingHeader{ hop_index: 0, hops: vec![6, 2, 1, 0] },
-        session_id: 0,
-        pack_type: PacketType::MsgFragment(fragment),
-    };
-    server.handle_packet(p);
-
-
-
-
-    let nack = Nack{ fragment_index: 1, nack_type: NackType::ErrorInRouting(2) };
-    let pac = Packet{
-        routing_header: SourceRoutingHeader{
-            hop_index: 3,
-            hops: vec![6, 2, 1 ,0],
-        } ,
-        session_id: 0,
-        pack_type: PacketType::Nack(nack),
-    };
-    server.handle_packet(pac);
-
-
-    println!("{:?}", server.nodes_map);
-
-
-
-
-
 }
