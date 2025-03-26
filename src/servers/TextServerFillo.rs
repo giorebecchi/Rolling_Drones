@@ -18,6 +18,7 @@ pub struct Server{
     registered_clients: Vec<NodeId>,
     flooding: Vec<FloodResponse>,
     neigh_map: Graph<(NodeId,NodeType), u32, petgraph::Directed>,
+    servers: Vec<(NodeId, ServerType)>,
     packet_recv: Receiver<Packet>,
     already_visited: HashSet<(NodeId,u64)>,
     pub packet_send: HashMap<NodeId, Sender<Packet>>,
@@ -34,6 +35,7 @@ impl Server{
             registered_clients: Vec::new(),
             flooding: Vec::new(),
             neigh_map: Graph::new(),
+            servers: Vec::new(),
             packet_recv:packet_recv,
             already_visited:HashSet::new(),
             packet_send:packet_send,
@@ -115,45 +117,33 @@ impl Server{
             }
             if let Some(vec) = self.fragments_recv.get_mut(&(p.routing_header.hops[0],p.session_id)){
                 if fragment.total_n_fragments == vec.len() as u64{
-                    if let Ok(totalmsg) = ChatRequest::deserialize_data(vec){
+                    if let Ok(totalmsg) = WebBrowser::deserialize_data(vec){
                         match totalmsg{
-                            ChatRequest::ServerType => {
-                                println!("Server type request received from client: {:?}!", p.routing_header.hops.clone()[0]);
-                                self.send_packet(ChatResponse::ServerType(self.clone().server_type), p.routing_header.hops[0], NodeType::Client);
-                            }
-                            ChatRequest::RegisterClient(n) => {
-                                println!("Register client request received from client: {:?}!", p.routing_header.hops.clone()[0]);
-                                self.registered_clients.push(n);
-                                self.send_packet(ChatResponse::RegisterClient(true), p.routing_header.hops[0], NodeType::Client);
-                            }
-                            ChatRequest::GetListClients => {
-                                println!("Get client list request received from client: {:?}!", p.routing_header.hops.clone()[0]);
-                                self.send_packet(ChatResponse::RegisteredClients(self.clone().registered_clients), p.routing_header.hops[0], NodeType::Client);
-                            }
-                            ChatRequest::SendMessage(mc, _) => {
-                                println!("Send message request received from client: {:?}!", p.routing_header.hops.clone()[0]);
-                                println!("Registered clients: {:?}",self.registered_clients);
-                                if self.registered_clients.contains(&mc.from_id) && self.registered_clients.contains(&mc.to_id){
-                                    self.send_packet(ChatResponse::SendMessage(Ok("The server will forward the message to the final client".to_string())), p.routing_header.hops[0], NodeType::Client);
-                                    self.send_packet(ChatResponse::ForwardMessage(mc.clone()), mc.to_id, NodeType::Client);
-                                }else {
-                                    self.send_packet(ChatResponse::SendMessage(Err("Error with the registration of the two involved clients".to_string())), p.routing_header.hops[0], NodeType::Client);
-                                }
-                            }
-                            ChatRequest::EndChat(n) => {
-                                println!("end chat request received from client: {:?}!", p.routing_header.hops.clone()[0]);
-                                self.registered_clients.retain(|x| *x != n);
-                                self.send_packet(ChatResponse::EndChat(true), p.routing_header.hops[0], NodeType::Client);
+                            WebBrowser::GetList => {}
+                            WebBrowser::GetPosition(Media_id) => {}
+                            WebBrowser::GetMedia(_) => {println!("I shouldn't receive this command");}
+                            WebBrowser::GetText(Text_id) => {}
+                            WebBrowser::GetServerType => {
+                                self.send_packet(TextServer::ServerType(self.clone().server_type), p.routing_header.hops[0], NodeType::Client);
                             }
                         }
                     }else {
-                        if let Ok(totalmsg) = TextServer::deserialize_data(vec) {
+                        if let Ok(totalmsg) = ChatResponse::deserialize_data(vec) {
                             match totalmsg {
-                                TextServer::ServerTypeReq => {
-                                    println!("Server type request received from server: {:?}!", p.routing_header.hops.clone()[0]);
-                                    self.send_packet(ChatResponse::ServerType(self.clone().server_type), p.routing_header.hops[0], NodeType::Client);
+                                ChatResponse::ServerType(st) => {
+                                    self.servers.push((p.routing_header.hops[0], st));
                                 }
                                 _ => { println!("I shouldn't receive these commands"); }
+                            }
+                        }else {
+                            if let Ok(totalmsg) = MediaServer::deserialize_data(vec){
+                                match totalmsg {
+                                    MediaServer::ServerType(st) => {
+                                        self.servers.push((p.routing_header.hops[0], st));
+                                    }
+                                    MediaServer::SendPath(path) => {}
+                                    MediaServer::SendMedia(_) => {println!("I shouldn't receive this command");}
+                                }
                             }
                         }
                     }
@@ -336,25 +326,25 @@ impl Server{
                             prev = next;
                         } else {
                             let newnodeid = self.neigh_map.add_node((j.clone(), k.clone()));
-                                if prev_nt == NodeType::Drone && k == NodeType::Drone {
+                            if prev_nt == NodeType::Drone && k == NodeType::Drone {
+                                if self.neigh_map.find_edge(prev, newnodeid).is_none() {
+                                    self.neigh_map.add_edge(prev, newnodeid, 1);
+                                }
+                                if self.neigh_map.find_edge(newnodeid, prev).is_none() {
+                                    self.neigh_map.add_edge(newnodeid, prev, 1);
+                                }
+                            } else {
+                                if prev_nt == NodeType::Drone {
                                     if self.neigh_map.find_edge(prev, newnodeid).is_none() {
                                         self.neigh_map.add_edge(prev, newnodeid, 1);
                                     }
+                                }
+                                if k == NodeType::Drone {
                                     if self.neigh_map.find_edge(newnodeid, prev).is_none() {
                                         self.neigh_map.add_edge(newnodeid, prev, 1);
                                     }
-                                } else {
-                                    if prev_nt == NodeType::Drone {
-                                        if self.neigh_map.find_edge(prev, newnodeid).is_none() {
-                                            self.neigh_map.add_edge(prev, newnodeid, 1);
-                                        }
-                                    }
-                                    if k == NodeType::Drone {
-                                        if self.neigh_map.find_edge(newnodeid, prev).is_none() {
-                                            self.neigh_map.add_edge(newnodeid, prev, 1);
-                                        }
-                                    }
                                 }
+                            }
                             prev = newnodeid;
                         }
                     }
@@ -467,7 +457,7 @@ impl Server{
             |e| *e.weight(),        // Edge cost
             |_| 0                   // No heuristic (Dijkstra behavior)
         ).map(|(cost, path)| (cost, path.into_iter().map(|idx| self.neigh_map[idx].0).collect())); // Convert NodeIndex -> NodeId
-    Some(SourceRoutingHeader{hops:path?.1, hop_index:0})
+        Some(SourceRoutingHeader{hops:path?.1, hop_index:0})
     }
 
 
