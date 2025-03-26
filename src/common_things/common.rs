@@ -105,6 +105,7 @@ pub enum WebBrowser{
 //probably also need a way to ask the server type
 #[derive(Serialize, Deserialize, Debug)]
 pub enum TextServer{
+    ServerTypeReq,
     ServerType(ServerType),
     PathResolution, //text server asks all media servers which media he has
     SendFileList(Vec<String>), //send the resolved text list to the client
