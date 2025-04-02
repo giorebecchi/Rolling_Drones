@@ -1,5 +1,5 @@
 use std::collections::{HashMap, HashSet};
-use std::sync::{Arc, Mutex};
+use std::sync::{Mutex};
 use bevy::log::LogPlugin;
 use bevy::prelude::*;
 use bevy::window::PrimaryWindow;
@@ -17,6 +17,57 @@ use egui::widgets::TextEdit;
 use wg_2024::controller::{DroneCommand, DroneEvent};
 use wg_2024::packet::Packet;
 use crate::common_things::common::{ChatClientEvent, CommandChat};
+use bevy_framepace::{FramepacePlugin, FramepaceSettings, Limiter};
+use once_cell::sync::Lazy;
+use std::sync::{Arc, RwLock};
+pub static SHARED_STATE: Lazy<Arc<RwLock<ThreadInfo>>> = Lazy::new(|| {
+    Arc::new(RwLock::new(ThreadInfo::default()))
+});
+
+
+#[derive(Default)]
+pub struct ThreadInfo {
+    pub responses: HashMap<(NodeId,NodeId),Vec<String>>,
+    pub client_list: HashMap<(NodeId,NodeId), Vec<NodeId>>,
+    pub registered_clients: HashMap<(NodeId,NodeId), bool>,
+    pub is_updated: bool,
+
+}
+
+
+#[derive(Resource, Default)]
+struct StateBridge;
+
+
+struct BackendBridgePlugin;
+
+impl Plugin for BackendBridgePlugin {
+    fn build(&self, app: &mut App) {
+        app.init_resource::<StateBridge>()
+            .add_systems(Update, sync_backend_to_frontend);
+    }
+}
+
+
+fn sync_backend_to_frontend(
+    mut chat_state: ResMut<ChatState>,
+) {
+
+    if let Ok(state) = SHARED_STATE.try_read() {
+        if state.is_updated {
+
+            chat_state.responses = state.responses.clone();
+            chat_state.client_list= state.client_list.clone();
+            chat_state.registered_clients = state.registered_clients.clone();
+
+            drop(state);
+
+            if let Ok(mut state) = SHARED_STATE.try_write() {
+                state.is_updated = false;
+            }
+        }
+    }
+}
 
 #[derive(Component)]
 struct InputText;
@@ -84,10 +135,11 @@ pub struct SimulationController {
     pub seen_floods: HashSet<(NodeId,u64,NodeId)>,
     pub client_list: HashMap<(NodeId, NodeId), Vec<NodeId>>,
     pub chat_event: Receiver<ChatClientEvent>,
-    pub messages: Vec<String>,
+    pub messages: HashMap<(NodeId,NodeId),Vec<String>>,
     pub incoming_message: HashMap<(NodeId,NodeId), Vec<String>>,
     pub register_success: HashMap<(NodeId,NodeId),bool>
 }
+
 #[derive(Default,Debug,Clone)]
 pub struct NodeConfig{
     pub node_type: NodeType,
@@ -112,8 +164,13 @@ pub struct NodesConfig(pub Vec<NodeConfig>);
 struct ChatState {
     message_input: String,
     messages: Vec<String>,
-    dest_client: String,
-    active_chat_node: Option<u32>
+    dest_client: Option<NodeId>,
+    dest_server: Option<NodeId>,
+    active_chat_server: Option<NodeId>,
+    active_chat_node: Option<NodeId>,
+    registered_clients: HashMap<(NodeId,NodeId),bool>,
+    client_list: HashMap<(NodeId,NodeId),Vec<NodeId>>,
+    responses : HashMap<(NodeId,NodeId),Vec<String>>,
 }
 
 
@@ -126,6 +183,11 @@ pub fn main() {
             filter: "".to_string(),
             ..default()
         }))
+        .add_plugins(BackendBridgePlugin)
+        .add_plugins(FramepacePlugin)
+        .insert_resource(FramepaceSettings {
+            limiter: Limiter::Auto,
+        })
         .add_plugins(EguiPlugin)
         .init_resource::<OccupiedScreenSpace>()
         .init_resource::<UserConfig>()
@@ -147,7 +209,14 @@ pub fn main() {
         .add_systems(Startup, setup_camera)
         .add_systems(OnEnter(AppState::InGame), (start_simulation,setup_network))
         .add_systems(Update , (draw_connections,set_up_bundle).run_if(in_state(AppState::InGame)))
-        .add_systems(Update, (handle_clicks, display_windows).run_if(in_state(AppState::InGame)))
+        .add_systems(
+            Update,
+            (
+                handle_clicks,
+                display_windows
+            )
+                .run_if(in_state(AppState::InGame))
+        )
         //.add_systems(Update , recompute_network)
 
         .run();
@@ -239,7 +308,7 @@ fn recompute_network(
 }
 #[derive(Component)]
 struct Clickable {
-    name: String,
+    name: NodeId,
 }
 pub fn set_up_bundle(
     node_data: Res<NodesConfig>,
@@ -285,7 +354,7 @@ pub fn set_up_bundle(
                 },
                 Transform::from_xyz(node_data.position[0], node_data.position[1], 0.),
                 Clickable {
-                    name: format!("{}",node_data.id),
+                    name: node_data.id,
                 },
                 )).with_children(|parent|{
                 parent.spawn((
@@ -307,7 +376,7 @@ pub fn set_up_bundle(
 }
 #[derive(Resource, Default)]
 struct OpenWindows {
-    windows: Vec<String>,
+    windows: Vec<NodeId>,
 }
 fn handle_clicks(
     windows: Query<&Window, With<PrimaryWindow>>,
@@ -348,13 +417,16 @@ fn handle_clicks(
         }
     }
 }
+
 fn display_windows(
     mut contexts: EguiContexts,
     mut open_windows: ResMut<OpenWindows>,
     mut sim: ResMut<SimulationController>,
+    nodes: Res<NodesConfig>,
     mut chat_state: ResMut<ChatState>
 ) {
     let mut windows_to_close = Vec::new();
+
 
     for (i, window_name) in open_windows.windows.iter().enumerate() {
         let window = egui::Window::new(format!("Client: {}", window_name))
@@ -365,87 +437,116 @@ fn display_windows(
 
         let mut should_close = false;
 
-        // Inside your existing function
+
         window.show(contexts.ctx_mut(), |ui| {
             ui.label(format!("This is a window for {}", window_name));
             ui.separator();
+            let available_clients=chat_state.client_list.get(&(window_name.clone(), chat_state.active_chat_server.unwrap_or(0)))
+                .unwrap_or(&Vec::new())
+                .clone();
 
-            ui.horizontal_wrapped(|ui|{
-                ui.label("Available Clients:");
+               for client in available_clients {
+                   if ui.button(format!("Chat with {}", client)).clicked() {
+                       if chat_state.active_chat_node == Some(client.clone()) {
+                           chat_state.active_chat_node = None;
+                           chat_state.dest_client = None;
+                       } else {
+                           chat_state.active_chat_node = Some(client.clone());
+                           chat_state.dest_client = Some(client.clone());
+                       }
+                   }
+               }
+                ui.group(|ui| {
+                    ui.set_min_width(300.0);
 
-            });
-            // Chat section with white background
-            ui.group(|ui| {
-                ui.set_min_width(300.0); // Optional: set a minimum width for the chat area
+                    ui.vertical(|ui| {
+                        ui.heading(format!("Chat with {:?}", chat_state.active_chat_node));
 
-                // Display existing messages
-                ui.vertical(|ui| {
-                    ui.heading("Chat Messages");
-                    egui::ScrollArea::vertical()
-                        .max_height(200.0) // Optional: limit message area height
-                        .show(ui, |ui| {
-                            for message in &chat_state.messages {
-                                ui.label(message);
+                        // Scrollable message area
+                        egui::ScrollArea::vertical()
+                            .max_height(200.0)
+                            .show(ui, |ui| {
+                                // Display sent messages
+                                for message in &chat_state.messages {
+                                    ui.horizontal(|ui| {
+                                        ui.label(message);
+                                    });
+                                }
+
+
+                                if let Some(active_server) = chat_state.active_chat_server {
+                                    let responses = chat_state.responses.get(&(window_name.clone(), active_server));
+                                    if let Some(responses) = responses {
+                                        for response in responses {
+                                            ui.horizontal(|ui| {
+                                                ui.add_space(ui.available_width());
+                                                ui.label(response);
+                                            });
+                                        }
+                                    }
+                                }
+                            });
+                    });
+
+                    ui.separator();
+
+                    let input_response = ui.add(
+                        egui::TextEdit::singleline(&mut chat_state.message_input)
+                            .frame(true)
+                            .background_color(egui::Color32::from_rgb(200, 200, 200))
+                    );
+
+                    ui.horizontal(|ui| {
+                        let send_button = ui.button("📨 Send");
+
+
+                        if (send_button.clicked() ||
+                            (input_response.lost_focus() && ui.input(|i| i.key_pressed(egui::Key::Enter))))
+                            && !chat_state.message_input.is_empty()
+                            && chat_state.dest_client.is_some()
+                        {
+                            let message_input = chat_state.message_input.clone();
+                            chat_state.messages.push(message_input.clone());
+
+
+                            if let Some(dest_client) = &chat_state.dest_client {
+                                sim.send_message(message_input, window_name.clone(), dest_client.clone());
                             }
-                        });
+
+                            chat_state.message_input.clear();
+                        }
+                    });
                 });
 
-                // Message input area
-                ui.separator();
 
-                // Input field with grey background
-                let input_response = ui.add(
-                    egui::TextEdit::singleline(&mut chat_state.message_input)
-                        .frame(true)
-                        .background_color(egui::Color32::from_rgb(200, 200, 200))
-                );
-                ui.add(
-                    egui::TextEdit::singleline(&mut chat_state.dest_client)
-                        .frame(true)
-                        .background_color(egui::Color32::from_rgb(200,200,200))
-                );
+            ui.separator();
 
-                // Send button with paper airplane icon
-                ui.horizontal(|ui| {
-                    let send_button = ui.button("📨 Send");
+            menu::bar(ui, |ui| {
+                ui.menu_button("Register to server: ", |ui| {
+                    let servers = nodes.0.iter()
+                        .filter(|node| node.node_type == NodeType::Server)
+                        .cloned()
+                        .collect::<Vec<NodeConfig>>();
 
-                    // Send message logic
-                    if send_button.clicked() && !chat_state.message_input.is_empty() {
-                        let message_input = chat_state.message_input.clone();
-                        chat_state.messages.push(message_input);
-                        chat_state.message_input.clear();
-                    }
-
-                    // Allow sending with Enter key
-                    if input_response.lost_focus() && ui.input(|i| i.key_pressed(egui::Key::Enter)) {
-                        if !chat_state.message_input.is_empty() {
-                            let message_input = chat_state.message_input.clone();
-                            chat_state.messages.push(message_input);
-                            chat_state.message_input.clear();
+                    for server in servers {
+                        if ui.button(format!("{}", server.id)).clicked() {
+                            if chat_state.active_chat_server == Some(server.id) {
+                                chat_state.active_chat_server = None;
+                                chat_state.dest_server = None;
+                            } else {
+                                chat_state.active_chat_server = Some(server.id);
+                                chat_state.dest_server = Some(server.id);
+                                sim.register_client(window_name.clone(),server.id);
+                            }
                         }
                     }
                 });
             });
 
-            ui.separator();
+            if ui.button("Get Client List").clicked() {
+                sim.get_client_list(window_name.clone(), chat_state.active_chat_server.unwrap_or(0));
+            }
 
-            // Additional controls with default background
-            ui.horizontal(|ui| {
-                ui.label("Some controls:");
-                if ui.button("Register Client").clicked() {
-                    let client_id = parse_id(window_name.clone());
-                    sim.register_client(client_id, 12);
-                }
-                if ui.button("Get Client List").clicked(){
-
-                }
-                if ui.button("Send Message").clicked() {
-                    let client_id = parse_id(window_name.clone());
-                    sim.send_message("Ciao".to_string(), client_id, 11);
-                }
-            });
-
-            // Close window button
             if ui.button("Close Window").clicked() {
                 should_close = true;
             }
@@ -457,9 +558,8 @@ fn display_windows(
     }
 
     for i in windows_to_close.into_iter().rev() {
-            open_windows.windows.remove(i);
+        open_windows.windows.remove(i);
     }
-
 }
 pub fn draw_connections(
     mut gizmos : Gizmos,
@@ -782,7 +882,7 @@ fn parse_id(id: String)->NodeId{
         Ok(node_id)=>node_id,
         Err(_)=>{
             eprintln!("Error occured while parsing");
-            0
+            27
         }
     }
 }

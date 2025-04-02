@@ -1,66 +1,52 @@
-/*use bevy::prelude::*;
-use bevy_egui::{egui, EguiContexts, EguiPlugin};
+use bevy::prelude::*;
+use bevy_egui::{egui,EguiContexts, EguiPlugin};
+use bevy_framepace::{FramepacePlugin, FramepaceSettings, Limiter};
 
-// Define our app state to manage chat input
-#[derive(Resource, Default)]
-struct ChatState {
-    message_input: String,
-    messages: Vec<String>,
+
+// Resource to track UI state
+#[derive(Resource)]
+struct UiState {
+    is_open: bool,
+}
+impl Default for UiState {
+    fn default() -> Self {
+        Self { is_open: true }
+    }
 }
 
 pub fn main() {
     App::new()
         .add_plugins(DefaultPlugins)
         .add_plugins(EguiPlugin)
-        .init_resource::<ChatState>()
-        .add_systems(Update, chat_ui)
+        .init_resource::<UiState>()
+        .add_plugins(FramepacePlugin)
+        // Configure frame rate limiter
+        .insert_resource(FramepaceSettings {
+            // Limit to 144 FPS for smooth performance
+            limiter: Limiter::from_framerate(144.0),
+
+            // Optional: Use automatic framerate adjustment
+            // limiter: Limiter::Auto,
+        })
+        .add_systems(Update, ui_system)
         .run();
 }
 
-fn chat_ui(mut contexts: EguiContexts, mut chat_state: ResMut<ChatState>) {
-    egui::CentralPanel::default()
-        .frame(egui::Frame::default().fill(egui::Color32::WHITE))
+fn ui_system(
+    mut contexts: EguiContexts,
+    mut ui_state: ResMut<UiState>,
+) {
+    // Create a persistent window that stays open
+    egui::Window::new("Stable UI Window")
+        .open(&mut ui_state.is_open)
         .show(contexts.ctx_mut(), |ui| {
-            // Display existing messages
-            ui.vertical(|ui| {
-                ui.heading("Chat Messages");
-                egui::ScrollArea::vertical().show(ui, |ui| {
-                    for message in &chat_state.messages {
-                        ui.label(message);
-                    }
-                });
-            });
+            // Basic content that always renders
+            ui.label("This is a stable UI window");
 
-            // Message input area
-            ui.separator();
-
-            // Input field with grey background
-            let input_response = ui.add(
-                egui::TextEdit::singleline(&mut chat_state.message_input)
-                    .desired_width(f32::INFINITY)
-                    .frame(true)
-                    .background_color(egui::Color32::from_rgb(200, 200, 200))
-            );
-
-            // Send button with paper airplane icon
-            ui.horizontal(|ui| {
-                let send_button = ui.button("📨 Send");
-
-                // Send message logic
-                if send_button.clicked() && !chat_state.message_input.is_empty() {
-                    let message_input=chat_state.message_input.clone();
-                    chat_state.messages.push(message_input);
-                    chat_state.message_input.clear();
-                }
-
-                // Allow sending with Enter key
-                if input_response.lost_focus() && ui.input(|i| i.key_pressed(egui::Key::Enter)) {
-                    if !chat_state.message_input.is_empty() {
-                        let message_input=chat_state.message_input.clone();
-                        chat_state.messages.push(message_input);
-                        chat_state.message_input.clear();
-                    }
-                }
-            });
+            // Example of adding interactive elements
+            if ui.button("Toggle Something").clicked() {
+                // Example of state interaction
+                println!("Button clicked!");
+            }
         });
-}*/
+}

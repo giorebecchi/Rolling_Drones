@@ -1,5 +1,7 @@
+use std::cell::RefCell;
 use crossbeam_channel::{select_biased, unbounded, Receiver, Sender};
 use std::collections::{HashMap, HashSet};
+use std::rc::Rc;
 use std::thread;
 use std::sync::{Arc,Mutex};
 use std::time::Duration;
@@ -20,13 +22,14 @@ use rusteze_drone::RustezeDrone;
 use rustafarian_drone::RustafarianDrone;
 use wg_2024::packet::PacketType::FloodRequest;
 use crate::clients::assembler::Fragmentation;
-use crate::GUI::login_window::{ SharedSimState, SimulationController, UserConfig};
+use crate::GUI::login_window::{ SharedSimState, SimulationController, SHARED_STATE};
 use crate::network_initializer::network_initializer::parse_config;
 use crate::servers::ChatServer::Server;
 use crate::clients::chat_client::ChatClient;
 use crate::common_things::common::{ChatClientEvent, ChatRequest, ChatResponse, CommandChat, ServerType};
 use crate::common_things::common::ServerType::CommunicationServer;
 use crate::servers::Text_max::Server as ServerMax;
+
 
 
 
@@ -45,7 +48,7 @@ impl Default for SimulationController{
             seen_floods: HashSet::new(),
             client_list: HashMap::new(),
             chat_event: chat_recv,
-            messages: Vec::new(),
+            messages: HashMap::new(),
             incoming_message: HashMap::new(),
             register_success : HashMap::new()
         }
@@ -63,32 +66,58 @@ impl SimulationController {
                     if let Ok(chat_event) = event {
                         match chat_event {
                             ChatClientEvent::IncomingMessage((id_client,id_server),message)=>{
-                                if let Some(mut messages) = self.incoming_message.get_mut(&(id_client, id_server)){
-                                    messages.push(message)
-                                }else{
-                                    let mut messages=Vec::new();
-                                    messages.push(message);
-                                    self.incoming_message.insert((id_client,id_server), messages);
+                                //if let Some(mut messages) = self.incoming_message.get_mut(&(id_client, id_server)){
+                                //    messages.push(message)
+                                //}else{
+                                //    let mut messages=Vec::new();
+                                //    messages.push(message);
+                                //    self.incoming_message.insert((id_client,id_server), messages);
+                                //}
+                                if let Ok(mut state)=SHARED_STATE.write(){
+                                    if let Some(mut messages) = state.responses.get_mut(&(id_client,id_server)){
+                                        messages.push(message.clone());
+                                    }else{
+                                        let mut messages=Vec::new();
+                                        messages.push(message);
+                                        state.responses.insert((id_client,id_server),messages);
+                                    }
+                                    state.is_updated=true;
                                 }
+
                             },
                             ChatClientEvent::ClientList((id_client,id_server), mut registered_clients)=>{
-                                if let Some(mut current_clients) = self.client_list.get_mut(&(id_client, id_server)){
-                                    current_clients=&mut registered_clients;
-                                }else{
-                                    self.client_list.insert((id_client,id_server),registered_clients);
+
+                                //if let Some(mut current_clients) = self.client_list.get_mut(&(id_client, id_server)){
+                                //    current_clients=&mut registered_clients;
+                                //}else{
+                                //    self.client_list.insert((id_client,id_server),registered_clients);
+                                //}
+                                //println!("SC_client_list: {:?}",self.client_list);
+                                if let Ok(mut state)=SHARED_STATE.write(){
+                                    if let Some( current_clients) = state.client_list.get_mut(&(id_client,id_server)) {
+                                        let _=std::mem::replace(current_clients, registered_clients);
+                                    }else{
+                                        state.client_list.insert((id_client,id_server),registered_clients);
+                                    }
+                                    state.is_updated=true;
                                 }
                             },
                             ChatClientEvent::RegisteredSuccess((id_client, id_server), result)=>{
-                                match result{
-                                    Ok(_)=>{
-                                        self.register_success.insert((id_client, id_server), true);
-                                    },
-                                    Err(message)=>{
-                                        self.register_success.insert((id_client, id_server), false);
-                                        println!("{}",message);
-                                    }
 
+                                if let Ok(mut state)=SHARED_STATE.write(){
+                                    match result{
+                                        Ok(_)=>{
+                                            state.registered_clients.insert((id_client, id_server), true);
+                                        },
+                                        Err(_)=>{
+                                            state.registered_clients.insert((id_client, id_server), false);
+
+                                        }
+
+                                    }
+                                    state.is_updated=true;
                                 }
+
                             },
                             _=>{
 
@@ -288,6 +317,7 @@ impl SimulationController {
         self.client.get(&client_id).unwrap().send(CommandChat::GetListClients(server_id)).unwrap();
     }
 }
+
 pub fn start_simulation(
     mut simulation_controller: ResMut<SimulationController>
 ) {
@@ -394,7 +424,7 @@ pub fn start_simulation(
     simulation_controller.packet_channel = packet_drones;
     simulation_controller.client = client;
 
-    let controller = Arc::new(Mutex::new(SimulationController {
+    let mut controller = SimulationController {
         node_event_send,
         drones: simulation_controller.drones.clone(),
         node_event_recv: simulation_controller.node_event_recv.clone(),
@@ -406,13 +436,14 @@ pub fn start_simulation(
         client_list: HashMap::new(),
         chat_event: chat_event_recv,
         incoming_message: HashMap::new(),
-        messages: Vec::new(),
+        messages: HashMap::new(),
         register_success: HashMap::new()
-    }));
+    };
 
     thread::spawn(move || {
-        controller.lock().unwrap().run();
+        controller.run();
     });
+
 
      // thread::sleep(Duration::from_millis(200)); //questo da scommentare sempre se vuoi testare
     // simulation_controller.client.get(&0).unwrap()
