@@ -65,7 +65,7 @@ impl SimulationController {
                 recv(self.chat_event) -> event =>{
                     if let Ok(chat_event) = event {
                         match chat_event {
-                            ChatClientEvent::IncomingMessage((id_client,id_server),message)=>{
+                            ChatClientEvent::IncomingMessage((id_client,id_server,id_from),message)=>{
                                 //if let Some(mut messages) = self.incoming_message.get_mut(&(id_client, id_server)){
                                 //    messages.push(message)
                                 //}else{
@@ -74,12 +74,12 @@ impl SimulationController {
                                 //    self.incoming_message.insert((id_client,id_server), messages);
                                 //}
                                 if let Ok(mut state)=SHARED_STATE.write(){
-                                    if let Some(mut messages) = state.responses.get_mut(&(id_client,id_server)){
+                                    if let Some(mut messages) = state.responses.get_mut(&(id_server,(id_from,id_client))){
                                         messages.push(message.clone());
                                     }else{
                                         let mut messages=Vec::new();
                                         messages.push(message);
-                                        state.responses.insert((id_client,id_server),messages);
+                                        state.responses.insert((id_server,(id_from,id_client)),messages);
                                     }
                                     state.is_updated=true;
                                 }
