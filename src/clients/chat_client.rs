@@ -296,7 +296,7 @@ impl ChatClient {
                         ChatResponse::ForwardMessage(message_chat) =>{
                             let sender = message_chat.from_id;
                             println!("Message from: {}, content:\n {}", sender, message_chat.content);
-                            if let Err(str) = self.event_send.send(IncomingMessage((self.config.id.clone(), src_id.clone() ), message_chat.content)){
+                            if let Err(str) = self.event_send.send(IncomingMessage((self.config.id.clone(), src_id.clone(), sender), message_chat.content)){
                                 println!("failed to send message to simulation control: {}", str);
                             }
                         }
