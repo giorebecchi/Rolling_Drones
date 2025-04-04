@@ -1,6 +1,9 @@
 use std::collections::{HashMap, HashSet};
 use petgraph::graph::{Graph, NodeIndex};
 use petgraph::algo::{astar, dijkstra};
+use std::fs::File;
+use std::io::{self, BufRead};
+use std::path::Path;
 use crossbeam_channel::{select_biased, Receiver, Sender};
 use petgraph::data::Build;
 use serde::Serialize;
@@ -15,10 +18,12 @@ pub struct Server{
     server_id: NodeId,
     server_type: ServerType,
     session_id: u64,
-    registered_clients: Vec<NodeId>,
+    paths: HashMap<String,String>,
+    texts_ids: Vec<TextId>,
     flooding: Vec<FloodResponse>,
     neigh_map: Graph<(NodeId,NodeType), u32, petgraph::Directed>,
-    servers: Vec<(NodeId, ServerType)>,
+    media_servers: Vec<NodeId>,
+    media_info: HashMap<NodeId, Vec<MediaId>>,
     packet_recv: Receiver<Packet>,
     already_visited: HashSet<(NodeId,u64)>,
     pub packet_send: HashMap<NodeId, Sender<Packet>>,
@@ -27,15 +32,35 @@ pub struct Server{
 }
 
 impl Server{
-    pub fn new(id:NodeId, packet_recv: Receiver<Packet>, packet_send: HashMap<NodeId,Sender<Packet>>)->Self{
+    pub fn new(id:NodeId, packet_recv: Receiver<Packet>, packet_send: HashMap<NodeId,Sender<Packet>>, file_path:&str)->Self{
+        let path = Path::new(file_path);
+        let file = File::open(path).unwrap();
+        let reader = io::BufReader::new(file);
+
+        let mut all_paths = HashMap::new();
+        let mut texts_ids = Vec::new();
+
+        for line in reader.lines() {
+            if let Ok(line) = line {
+                let parts: Vec<&str> = line.split('/').collect();
+                if let Some(last) = parts.last() {
+                    texts_ids.push(last.clone().to_string());
+                    all_paths.insert(last.to_string(), line.clone().to_string());
+                }
+
+            }
+        }
+
         Self{
             server_id:id,
-            server_type: ServerType::CommunicationServer,
+            server_type: ServerType::TextServer,
             session_id:0,
-            registered_clients: Vec::new(),
+            paths:all_paths,
+            texts_ids:texts_ids,
             flooding: Vec::new(),
             neigh_map: Graph::new(),
-            servers: Vec::new(),
+            media_servers: Vec::new(),
+            media_info: HashMap::new(),
             packet_recv:packet_recv,
             already_visited:HashSet::new(),
             packet_send:packet_send,
@@ -62,6 +87,14 @@ impl Server{
             PacketType::Nack(_) => {self.handle_nack(p)}
             PacketType::FloodRequest(_) => {self.handle_flood_request(p)}
             PacketType::FloodResponse(_) => {self.handle_flood_response(p)}
+        }
+    }
+
+
+    //questa funzione va inserita da qualche parte altrimenti non riceverò mai nulla dai media!!!!!!!!!!!!!
+    fn get_media_list(&mut self){
+        for i in self.media_servers.clone(){
+            self.send_packet(TextServer::PathResolution,i,NodeType::Server);
         }
     }
 
@@ -119,10 +152,32 @@ impl Server{
                 if fragment.total_n_fragments == vec.len() as u64{
                     if let Ok(totalmsg) = WebBrowser::deserialize_data(vec){
                         match totalmsg{
-                            WebBrowser::GetList => {}
-                            WebBrowser::GetPosition(Media_id) => {}
+                            WebBrowser::GetList => {
+                                let mut total_list = Vec::new();
+                                for (_,i) in self.media_info.clone(){
+                                    for j in i{
+                                        total_list.push(j);
+                                    }
+                                }
+                                for i in self.texts_ids.clone(){
+                                    total_list.push(i);
+                                }
+                                self.send_packet(TextServer::SendFileList(total_list),p.routing_header.hops[0],NodeType::Client);
+                            }
+                            WebBrowser::GetPosition(media_id) => {
+                                for i in self.media_info.clone(){
+                                    if i.1.contains(&media_id){
+                                        self.send_packet(TextServer::PositionMedia(i.0),p.routing_header.hops[0],NodeType::Client);
+                                    }
+                                }
+                            }
                             WebBrowser::GetMedia(_) => {println!("I shouldn't receive this command");}
-                            WebBrowser::GetText(Text_id) => {}
+                            WebBrowser::GetText(text_id) => {
+                                if self.paths.contains_key(&text_id){
+                                    let path = self.paths.get(&text_id).unwrap();
+
+                                }
+                            }
                             WebBrowser::GetServerType => {
                                 self.send_packet(TextServer::ServerType(self.clone().server_type), p.routing_header.hops[0], NodeType::Client);
                             }
@@ -131,7 +186,10 @@ impl Server{
                         if let Ok(totalmsg) = ChatResponse::deserialize_data(vec) {
                             match totalmsg {
                                 ChatResponse::ServerType(st) => {
-                                    self.servers.push((p.routing_header.hops[0], st));
+                                    match st{
+                                        ServerType::MediaServer => {self.media_servers.push(p.routing_header.hops[0]);}
+                                        _ => {}
+                                    }
                                 }
                                 _ => { println!("I shouldn't receive these commands"); }
                             }
@@ -139,9 +197,14 @@ impl Server{
                             if let Ok(totalmsg) = MediaServer::deserialize_data(vec){
                                 match totalmsg {
                                     MediaServer::ServerType(st) => {
-                                        self.servers.push((p.routing_header.hops[0], st));
+                                        match st{
+                                            ServerType::MediaServer => {self.media_servers.push(p.routing_header.hops[0]);}
+                                            _ => {}
+                                        }
                                     }
-                                    MediaServer::SendPath(path) => {}
+                                    MediaServer::SendPath(path) => {
+                                        self.media_info.insert(p.routing_header.hops[0], path);
+                                    }
                                     MediaServer::SendMedia(_) => {println!("I shouldn't receive this command");}
                                 }
                             }
@@ -290,6 +353,10 @@ impl Server{
                 }
 
                 for &(j, k) in flood.path_trace.iter().skip(1) {
+                    match k.clone() {
+                        NodeType::Server => {self.send_packet(TextServer::ServerTypeReq, j.clone(), k.clone())},
+                        _ => {}
+                    }
                     if let Some(&(prev_id, prev_nt)) = self.neigh_map.node_weight(prev) {
                         if self.node_exists(j.clone(), k.clone()) {
                             let next = self.find_node(j.clone(), k.clone()).unwrap();
