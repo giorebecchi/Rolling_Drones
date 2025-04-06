@@ -9,6 +9,7 @@ use crate::servers::Text_max::Server;
 #[derive(Clone)]
 pub enum CommandChat {
     ServerType(NodeId),//node id server
+    SearchChatServers,
     RegisterClient(NodeId),//node id server
     GetListClients(NodeId),//node id server
     SendMessage(NodeId, NodeId, String),//node id del client a cui mandare la string, node id server da cui passare
@@ -16,11 +17,13 @@ pub enum CommandChat {
     Crash
 }
 ///The NodeId identifies the client that sent the ChatClientEvent
+#[derive(Debug)]
 pub enum ChatClientEvent{
     ClientList((NodeId, NodeId) ,Vec<NodeId>), //NodeId Client, NodeId Server, Vec<ClientIds>
     IncomingMessage((NodeId,NodeId,NodeId),String), //NodeId Client a cui è arrivato msg, NodeId server, NodeId del client da cui il messaggio è arrivato msg
     RegisteredSuccess((NodeId,NodeId),Result<(), String>), //NodeId registered client and NodeId server { either Ok(()) or Err("something".to_string()) }
-    Error(NodeId) //Generic Error to send to SC
+    Error(NodeId),//Generic Error to send to SC
+    ChatServers(NodeId, Vec<NodeId>)
 }
 
 //comandi da client a server
@@ -52,7 +55,7 @@ pub struct MessageChat{ //which needs to be fragmented
     pub to_id: NodeId //id destination client
 }
 
-#[derive(Clone, Serialize, Deserialize, Debug)]
+#[derive(Clone, Serialize, Deserialize, Debug, PartialEq)]
 pub enum ServerType{
     CommunicationServer,
     TextServer,

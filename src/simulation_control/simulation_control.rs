@@ -408,7 +408,6 @@ pub fn start_simulation(
             rcv_packet,
             packet_send.clone(),
             rcv_command,
-            packet_send,
             chat_event_send.clone()
         )));
 
@@ -445,7 +444,9 @@ pub fn start_simulation(
     });
 
 
-     // thread::sleep(Duration::from_millis(200)); //questo da scommentare sempre se vuoi testare
+    //  thread::sleep(Duration::from_millis(200)); //questo da scommentare sempre se vuoi testare
+    // simulation_controller.client.get(&11).unwrap()
+    //     .send(CommandChat::SearchChatServers).unwrap()
     // simulation_controller.client.get(&0).unwrap()
     //    .send(CommandChat::SendMessage(11, 12, "ciao".to_string()))
     //    .unwrap();
