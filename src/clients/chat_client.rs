@@ -5,6 +5,9 @@ use std::thread;
 use std::time::{Duration, Instant};
 use bevy_egui::egui::debug_text::print;
 use crossbeam_channel::{select_biased, unbounded, Receiver, RecvError, Sender};
+use petgraph::algo::dijkstra;
+use petgraph::graphmap::DiGraphMap;
+use petgraph::prelude::EdgeRef;
 use wg_2024::packet;
 use wg_2024::controller;
 use wg_2024::config;
@@ -22,7 +25,6 @@ pub struct ChatClient {
     pub receiver_msg: Receiver<Packet>,
     pub receiver_commands: Receiver<CommandChat>, //command received by the simulation control
     pub send_packets: HashMap<NodeId, Sender<Packet>>,
-    pub simulation_control: HashMap<NodeId, Sender<Packet>>,
     pub servers: Vec<NodeId>,//to store id server once the flood is done
     pub visited_nodes: HashSet<(u64, NodeId)>,
     pub flood: Vec<FloodResponse> ,//to store all the flood responses found
@@ -31,22 +33,22 @@ pub struct ChatClient {
     pub incoming_fragments: HashMap<(u64, NodeId ), HashMap<u64, Fragment>>,
     pub fragments_sent: HashMap<u64, Fragment>, //used for sending the correct fragment if was lost in the process
     pub problematic_nodes: Vec<NodeId>,
-    pub server_types: HashMap<NodeId, ServerType>,
-    pub event_send : Sender<ChatClientEvent>
+    pub chat_servers: Vec<NodeId>,
+    pub event_send : Sender<ChatClientEvent>,
+    topology: DiGraphMap<NodeId, u32>,
+    waiting_response: usize
 }
 impl ChatClient {
     pub fn new(
         id: NodeId, receiver_msg: Receiver<Packet>,
         send_packets: HashMap<NodeId, Sender<Packet>>,
         receiver_commands: Receiver<CommandChat>,
-        simulation_control: HashMap<NodeId, Sender<Packet>>,
         event_send: Sender<ChatClientEvent>
     ) -> Self {
         Self {
             config: Client { id, connected_drone_ids: Vec::new() },
             receiver_msg,
             receiver_commands,
-            simulation_control,
             send_packets,
             servers: Vec::new(),
             visited_nodes: HashSet::new(),
@@ -56,21 +58,26 @@ impl ChatClient {
             incoming_fragments: HashMap::new(),
             fragments_sent: HashMap::new(),
             problematic_nodes: Vec::new(),
-            server_types: HashMap::new(),
-            event_send
+            chat_servers: Vec::new(),
+            event_send,
+            topology: DiGraphMap::new(),
+            waiting_response: 0,
         }
     }
     pub fn run(&mut self) {
         self.initiate_flooding();
+
         loop{
             select_biased! {
                 recv(self.receiver_commands) -> command =>{
                     if let Ok(command) = command {
+                        self.build_topology();
                         self.handle_sim_command(command);
                     }
                 }
                 recv(self.receiver_msg) -> message =>{
                     if let Ok(message) = message {
+                        self.build_topology();
                         self.handle_incoming(message)
                     }
                 }
@@ -78,6 +85,29 @@ impl ChatClient {
 
         }
 
+    }
+
+    pub fn get_chat_servers(& mut self){
+        println!("Discovered servers: {:?}", self.servers);
+        for server in self.servers.clone(){
+            let request_to_send = ChatRequest::ServerType;
+            self.fragments_sent = ChatRequest::fragment_message(&request_to_send);
+
+            match self.find_route(&server) {
+                Ok(route) => {
+                    println!("route: {:?}", route);
+                    let packets_to_send = ChatRequest::create_packet(&self.fragments_sent, route.clone(), &mut self.session_id_packet);
+                    for packet in packets_to_send {
+                        if let Some(next_hop) = route.get(1){
+                            self.send_packet(next_hop, packet);
+                        }else { println!("No next hop found") }
+                    }
+                    println!("Sent request to get the server type to server: {}", server);
+
+                }
+                Err(_) => {println!("No route found for the destination server")}
+            }
+        }
     }
 
     pub fn handle_sim_command(&mut self, command: CommandChat) {
@@ -98,6 +128,9 @@ impl ChatClient {
             CommandChat::EndChat(server_id) => {
                 self.end_chat(server_id);
             }
+            CommandChat::SearchChatServers => {
+                self.search_chat_servers();
+            }
             _ => {}
         }
     }
@@ -110,6 +143,14 @@ impl ChatClient {
             PacketType::Nack(_) => {self.handle_nacks(message);},
             PacketType::FloodRequest(_) => { self.handle_flood_req(message); },
             PacketType::FloodResponse(_) => { self.handle_flood_response(message); },
+        }
+    }
+
+    pub fn search_chat_servers(&mut self) {
+        self.waiting_response = self.servers.len();
+        println!("servers: {:?}", self.servers);
+        for server in self.servers.clone(){
+            self.ask_server_type(server);
         }
     }
 
@@ -261,8 +302,21 @@ impl ChatClient {
                 if fragments.len() as u64 == fragment.total_n_fragments {
                     let incoming_message = ChatResponse::reassemble_msg(&fragments).unwrap();
                     match incoming_message {
-                        ChatResponse::ServerType(server_type) => {self.server_types.insert(*src_id, server_type.clone());
-                        println!("server found is of type: {:?}", server_type);},
+                        ChatResponse::ServerType(server_type) => {
+                            println!("server found is of type: {:?}", server_type);
+                            if server_type == ServerType::CommunicationServer{
+                                self.chat_servers.push(src_id.clone());
+                            }
+
+                            self.waiting_response -= 1;
+
+                            if self.waiting_response == 0 {
+                                println!("sending to sc");
+                                if let Err(err) = self.event_send.send(ChatClientEvent::ChatServers(self.config.id.clone(), self.chat_servers.clone())) {
+                                    println!("Failed to notify SC about server list: {}", err);
+                                }
+                            }
+                        },
                         ChatResponse::EndChat(response) =>{
                             if response {
                                 println!("chat ended");
@@ -295,7 +349,7 @@ impl ChatClient {
                         },
                         ChatResponse::ForwardMessage(message_chat) =>{
                             let sender = message_chat.from_id;
-                            println!("Message from: {}, content:\n {}", sender, message_chat.content);
+                            println!("Message from: {}, content:\n{}", sender, message_chat.content);
                             if let Err(str) = self.event_send.send(IncomingMessage((self.config.id.clone(), src_id.clone(), sender), message_chat.content)){
                                 println!("failed to send message to simulation control: {}", str);
                             }
@@ -330,7 +384,7 @@ impl ChatClient {
                         Ok(route) => {
                             println!("route: {:?}",route);
                         }
-                        Err(_) => {println!("No route found for the destination client")}
+                        Err(_) => {println!("No route found for the destination server")}
                     }
 
 
@@ -390,28 +444,35 @@ impl ChatClient {
            }else { //if we have not already received the request
                flood_request.path_trace.push((self.config.id, NodeType::Client)); //added to the path trace the client
                self.visited_nodes.insert((flood_request.flood_id, flood_request.initiator_id)); //we have now visited it
-               if self.send_packets.len() == 1{ //if it has no neighbour
-                    if let Some(sender_flood_req) = flood_request.path_trace.iter().rev().nth(1) { //second to last in the path trace should be the one who sent me the flood request
-                        self.send_packet(&sender_flood_req.clone().0, flood_request.generate_response(packet.session_id)); //send a response to the one who sent the request
-                    }
-               }else {
+               if self.send_packets.len() == 1 { //if it has no neighbour
+                   if let Some(sender_flood_req) = flood_request.path_trace.iter().rev().nth(1) { //second to last in the path trace should be the one who sent me the flood request
+                       self.send_packet(&sender_flood_req.clone().0, flood_request.generate_response(packet.session_id)); //send a response to the one who sent the request
+                   }
+               } else {
                    let new_packet = Packet::new_flood_request(packet.routing_header, packet.session_id, flood_request.clone()); //create the packet of the flood request that needs to be forwarded
-                   for (neighbour, sender) in &self.send_packets{
+                   for (neighbour, sender) in &self.send_packets {
                        if let Some(sender_flood_req) = flood_request.path_trace.iter().rev().nth(1) {
-                           if *neighbour != sender_flood_req.0{
-                                sender.send(new_packet.clone()).unwrap()
+                           if *neighbour != sender_flood_req.0 {
+                               sender.send(new_packet.clone()).unwrap()
                            }
                        }
                    }
                }
-
-
            }
+       }
+    }
 
+    pub fn build_topology(& mut self ){
+        self.topology.clear();
 
-
+        for resp in &self.flood{
+            let path = &resp.path_trace;
+            for pair in path.windows(2) {
+                let (src, _) = pair[0];
+                let (dst, _) = pair[1];
+                self.topology.add_edge(src.clone(), dst.clone(), 1); // use 1 as weight (hop)
+            }
         }
-
     }
 
     pub fn handle_flood_response(& mut self, packet: Packet){
@@ -431,15 +492,15 @@ impl ChatClient {
     }
 
     pub fn find_route(& mut self, destination_id : &NodeId)-> Result<Vec<NodeId>, String>{
-        let mut shortest_route: Option<Vec<NodeId>> = None;
-        for flood_resp in &self.flood{
-            if flood_resp.path_trace.contains(&(*destination_id, NodeType::Server))&& !flood_resp.path_trace.iter().any(|(id, _)| self.problematic_nodes.contains(id)){
-                let length = flood_resp.path_trace.len();
-                if shortest_route.is_none() || length < shortest_route.as_ref().unwrap().len(){
-                    shortest_route = Some(flood_resp.path_trace.iter().map(|(id,_ )| *id).collect());
-                }
-            }
-        }
+        // let mut shortest_route: Option<Vec<NodeId>> = None;
+        // for flood_resp in &self.flood{
+        //     if flood_resp.path_trace.contains(&(*destination_id, NodeType::Server))&& !flood_resp.path_trace.iter().any(|(id, _)| self.problematic_nodes.contains(id)){
+        //         let length = flood_resp.path_trace.len();
+        //         if shortest_route.is_none() || length < shortest_route.as_ref().unwrap().len(){
+        //             shortest_route = Some(flood_resp.path_trace.iter().map(|(id,_ )| *id).collect());
+        //         }
+        //     }
+        // }
         // for flood_resp in &self.flood {
         //     if flood_resp.path_trace.contains(&(*destination_id, NodeType::Server)) {
         //         let route: Vec<NodeId> = flood_resp.path_trace.iter().map(|(id, _)| *id).collect();
@@ -454,9 +515,44 @@ impl ChatClient {
         //         }
         //     }
         // }
-        if let Some(best_route) = shortest_route{
-            Ok(best_route)
-        }else { Err(String::from("route not found")) }
+        // if let Some(best_route) = shortest_route{
+        //     Ok(best_route)
+        // }else { Err(String::from("route not found")) }
+        let source = self.config.id.clone();
+        let result = dijkstra(&self.topology, source.clone(), Some(destination_id.clone()), |_| 1);
+
+        if let Some(_) = result.get(destination_id) {
+            let mut path = vec![destination_id.clone()];
+            let mut current = destination_id.clone();
+
+            while current != source {
+                // Look for a predecessor node 'prev' with:
+                // result[prev] + weight == result[current]
+                let mut found = false;
+                for edge in self.topology.edges_directed(current.clone(), petgraph::Direction::Incoming) {
+                    let prev = edge.source();
+                    let weight = edge.weight();
+
+                    if let (Some(&prev_cost), Some(&curr_cost)) = (result.get(&prev), result.get(&current)) {
+                        if prev_cost + weight == curr_cost {
+                            path.push(prev.clone());
+                            current = prev.clone();
+                            found = true;
+                            break;
+                        }
+                    }
+                }
+
+                if !found {
+                    return Err("Failed to reconstruct path".into());
+                }
+            }
+
+            path.reverse();
+            Ok(path)
+        } else {
+            Err("No route found".into())
+        }
     }
 
     pub fn send_packet(& mut self, destination_id: &NodeId, mut packet: Packet){
