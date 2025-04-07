@@ -5,4 +5,4 @@ pub mod butterfly;
 pub mod tree;
 pub mod test_try;
 pub mod chat_windows;
-
+pub mod shared_info_plugin;

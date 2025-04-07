@@ -5,7 +5,7 @@ edition = "2021"
 
 [dependencies]
 wg_2024 = { git = "https://github.com/WGL-2024/WGL_repo_2024.git", features = ["serialize", "debug"]}
-bevy =  "0.15.3"
+bevy =  { version = "0.15.3", features = ["webgpu"] }
 bevy_framepace = "0.18.1"
 toml = "0.8.19"
 crossbeam-channel = "0.5.13"

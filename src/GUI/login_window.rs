@@ -21,55 +21,8 @@ use once_cell::sync::Lazy;
 use std::sync::{Arc, RwLock};
 use crate::GUI::chat_windows::ChatSystemPlugin;
 use crate::GUI::chat_windows::ChatState;
+use crate::GUI::shared_info_plugin::BackendBridgePlugin;
 
-pub static SHARED_STATE: Lazy<Arc<RwLock<ThreadInfo>>> = Lazy::new(|| {
-    Arc::new(RwLock::new(ThreadInfo::default()))
-});
-
-
-#[derive(Default)]
-pub struct ThreadInfo {
-    pub responses: HashMap<(NodeId,(NodeId,NodeId)),Vec<String>>,
-    pub client_list: HashMap<(NodeId,NodeId), Vec<NodeId>>,
-    pub registered_clients: HashMap<(NodeId,NodeId), bool>,
-    pub is_updated: bool,
-
-}
-
-
-#[derive(Resource, Default)]
-struct StateBridge;
-
-
-struct BackendBridgePlugin;
-
-impl Plugin for BackendBridgePlugin {
-    fn build(&self, app: &mut App) {
-        app.init_resource::<StateBridge>()
-            .add_systems(Update, sync_backend_to_frontend);
-    }
-}
-
-
-fn sync_backend_to_frontend(
-    mut chat_state: ResMut<ChatState>,
-) {
-
-    if let Ok(state) = SHARED_STATE.try_read() {
-        if state.is_updated {
-
-            chat_state.chat_responses = state.responses.clone();
-            // chat_state.client_list= state.client_list.clone();
-            chat_state.registered_clients = state.registered_clients.clone();
-
-            drop(state);
-
-            if let Ok(mut state) = SHARED_STATE.try_write() {
-                state.is_updated = false;
-            }
-        }
-    }
-}
 
 #[derive(Component)]
 struct InputText;

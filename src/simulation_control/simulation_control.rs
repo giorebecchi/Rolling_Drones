@@ -22,8 +22,9 @@ use rusteze_drone::RustezeDrone;
 use rustafarian_drone::RustafarianDrone;
 use wg_2024::packet::PacketType::FloodRequest;
 use crate::clients::assembler::Fragmentation;
-use crate::GUI::login_window::{ SharedSimState, SimulationController, SHARED_STATE};
+use crate::GUI::login_window::{ SharedSimState, SimulationController};
 use crate::network_initializer::network_initializer::parse_config;
+use crate::GUI::shared_info_plugin::SHARED_STATE;
 use crate::servers::ChatServer::Server;
 use crate::clients::chat_client::ChatClient;
 use crate::common_things::common::{ChatClientEvent, ChatRequest, ChatResponse, CommandChat, ServerType};
@@ -119,9 +120,14 @@ impl SimulationController {
                                 }
 
                             },
-                            _=>{
+                            ChatClientEvent::ChatServers(client_id, chat_servers)=>{
+                                if let Ok(mut state)=SHARED_STATE.write(){
+                                    state.chat_servers.insert(client_id,chat_servers);
+                                    state.is_updated=true;
+                                }
 
-                            }
+                            },
+                            _=>{}
                         }
                     }
                 }
@@ -315,6 +321,11 @@ impl SimulationController {
     }
     pub fn get_client_list(&mut self, client_id: NodeId, server_id: NodeId){
         self.client.get(&client_id).unwrap().send(CommandChat::GetListClients(server_id)).unwrap();
+    }
+    pub fn get_chat_servers(&self){
+        for (_,sender) in self.client.iter(){
+            sender.send(CommandChat::SearchChatServers).unwrap();
+        }
     }
 }
 

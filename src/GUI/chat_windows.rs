@@ -8,6 +8,7 @@ use wg_2024::network::NodeId;
 use crate::GUI::login_window::Clickable;
 use crate::GUI::login_window::AppState;
 
+
 pub struct ChatSystemPlugin;
 
 impl Plugin for ChatSystemPlugin {
@@ -18,6 +19,7 @@ impl Plugin for ChatSystemPlugin {
             .add_systems(Update,(handle_clicks, display_windows).run_if(in_state(AppState::InGame)));
     }
 }
+
 #[derive(Resource, Default)]
 pub struct ChatState {
     message_input: HashMap<NodeId, String>, // Each client has for every activ
@@ -28,17 +30,20 @@ pub struct ChatState {
     // Chat messages: (server_id, (sender_id, receiver_id)) -> [messages]
     pub chat_messages: HashMap<(NodeId, (NodeId, NodeId)), Vec<String>>,
     //Chat responses : (server_id, (receiver_id, sender_id)) -> [messages]
-    pub chat_responses: HashMap<(NodeId, (NodeId, NodeId)), Vec<String>>
+    pub chat_responses: HashMap<(NodeId, (NodeId, NodeId)), Vec<String>>,
+    pub chat_servers: HashMap<NodeId, Vec<NodeId>>
 }
 #[derive(Resource, Default)]
 struct OpenWindows {
     windows: Vec<NodeId>,
+    click_count: usize
 }
 fn handle_clicks(
     windows: Query<&Window, With<PrimaryWindow>>,
     buttons: Res<ButtonInput<MouseButton>>,
     camera_q: Query<(&Camera, &GlobalTransform)>,
     clickable_entities: Query<(Entity, &Transform, &Sprite, &Clickable)>,
+    sim: Res<SimulationController>,
     mut open_windows: ResMut<OpenWindows>,
 ) {
     if !buttons.just_pressed(MouseButton::Left) {
@@ -66,7 +71,12 @@ fn handle_clicks(
                 {
                     if !open_windows.windows.contains(&clickable.name) {
                         open_windows.windows.push(clickable.name.clone());
+                        open_windows.click_count+=1;
                         println!("Clicked on: {}", clickable.name);
+                        if open_windows.click_count==1{
+                            sim.get_chat_servers();
+                        }
+
                     }
                 }
             }
@@ -284,18 +294,16 @@ fn display_windows(
                 egui::ComboBox::from_id_salt(format!("server_selector_{}", window_id))
                     .selected_text(current_server_text)
                     .show_ui(ui, |ui| {
-                        let servers = nodes.0.iter()
-                            .filter(|node| node.node_type == NodeType::Server)
-                            .cloned()
-                            .collect::<Vec<NodeConfig>>();
-
-                        for server in servers {
-                            let selected = chat_state.active_chat_server.get(&window_id) == Some(&Some(server.id));
-                            if ui.selectable_label(selected, format!("Server {}", server.id)).clicked() {
-                                if chat_state.active_chat_server.get(&window_id) == Some(&Some(server.id)) {
-                                    chat_state.active_chat_server.insert(window_id, None);
-                                } else {
-                                    chat_state.active_chat_server.insert(window_id, Some(server.id));
+                        let servers = chat_state.chat_servers.get(&window_id).cloned();
+                        if let Some(servers)=servers {
+                            for server in servers {
+                                let selected = chat_state.active_chat_server.get( &window_id) == Some( & Some(server));
+                                if ui.selectable_label(selected, format! ("Server {}", server)).clicked() {
+                                    if chat_state.active_chat_server.get( & window_id) == Some( & Some(server)) {
+                                        chat_state.active_chat_server.insert(window_id, None);
+                                    } else {
+                                        chat_state.active_chat_server.insert(window_id, Some(server));
+                                    }
                                 }
                             }
                         }
