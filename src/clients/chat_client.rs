@@ -1,27 +1,21 @@
 use std::collections::{HashMap, HashSet};
-use std::process::id;
-use std::sync::{Arc, Mutex};
-use std::thread;
-use std::time::{Duration, Instant};
-use bevy_egui::egui::debug_text::print;
-use crossbeam_channel::{select_biased, unbounded, Receiver, RecvError, Sender};
+use crossbeam_channel::{select_biased, Receiver, Sender};
 use petgraph::algo::dijkstra;
+use petgraph::data::Build;
+use petgraph::Direction;
 use petgraph::graphmap::DiGraphMap;
 use petgraph::prelude::EdgeRef;
-use wg_2024::packet;
-use wg_2024::controller;
-use wg_2024::config;
-use serde::{Serialize, Deserialize};
+use petgraph::visit::IntoEdgesDirected;
 use wg_2024::config::{Client};
 use wg_2024::network::{NodeId, SourceRoutingHeader};
-use wg_2024::packet::{FloodRequest, FloodResponse, Fragment, NackType, NodeType, Packet, PacketType, FRAGMENT_DSIZE};
-use crate::clients::assembler::{Fragmentation, Serialization};
-use crate::common_things::common::{ChatRequest, MessageChat, CommandChat, ChatResponse, ServerType, ChatClientEvent};
-use crate::common_things::common::ChatClientEvent::{ClientList, IncomingMessage, RegisteredSuccess};
-use crate::servers::ChatServer::Server;
+use wg_2024::packet::{FloodRequest, FloodResponse, Fragment, NackType, NodeType, Packet, PacketType};
+use crate::clients::assembler::{Fragmentation};
+use crate::common_things::common::{ChatRequest, MessageChat, CommandChat, ChatResponse, ServerType, ChatClientEvent, ClientType};
+use crate::common_things::common::ChatClientEvent::{ClientList, ClientType as OtherClientType, IncomingMessage, RegisteredSuccess};
 
 pub struct ChatClient {
     pub config: Client,
+    pub client_type: ClientType,
     pub receiver_msg: Receiver<Packet>,
     pub receiver_commands: Receiver<CommandChat>, //command received by the simulation control
     pub send_packets: HashMap<NodeId, Sender<Packet>>,
@@ -35,8 +29,9 @@ pub struct ChatClient {
     pub problematic_nodes: Vec<NodeId>,
     pub chat_servers: Vec<NodeId>,
     pub event_send : Sender<ChatClientEvent>,
-    topology: DiGraphMap<NodeId, u32>,
-    waiting_response: usize
+    pub topology: DiGraphMap<NodeId, u32>,
+    pub waiting_response: usize,
+    pub packet_sent: (NodeId, Vec<Packet>),
 }
 impl ChatClient {
     pub fn new(
@@ -47,6 +42,7 @@ impl ChatClient {
     ) -> Self {
         Self {
             config: Client { id, connected_drone_ids: Vec::new() },
+            client_type: ClientType::ChatClient,
             receiver_msg,
             receiver_commands,
             send_packets,
@@ -62,10 +58,15 @@ impl ChatClient {
             event_send,
             topology: DiGraphMap::new(),
             waiting_response: 0,
+            packet_sent: (0, Vec::new()),
         }
     }
     pub fn run(&mut self) {
         self.initiate_flooding();
+        let mut send_type = false;
+        if !send_type{
+            self.send_type_client(&mut send_type)
+        }
 
         loop{
             select_biased! {
@@ -85,6 +86,13 @@ impl ChatClient {
 
         }
 
+    }
+
+    pub fn send_type_client(& mut self, send_type: & mut bool){
+        *send_type = true;
+        if let Err(_) = self.event_send.send(OtherClientType(self.client_type.clone())){
+            println!("Error sending client type");
+        }
     }
 
     pub fn get_chat_servers(& mut self){
@@ -148,7 +156,6 @@ impl ChatClient {
 
     pub fn search_chat_servers(&mut self) {
         self.waiting_response = self.servers.len();
-        println!("servers: {:?}", self.servers);
         for server in self.servers.clone(){
             self.ask_server_type(server);
         }
@@ -190,8 +197,8 @@ impl ChatClient {
         match self.find_route(&id_server) {
             Ok(route) => {
                 println!("route: {:?}", route);
-                let packets_to_send = ChatRequest::create_packet(&self.fragments_sent, route.clone(),  & mut self.session_id_packet);
-                for packet in packets_to_send {
+                self.packet_sent = (id_server, ChatRequest::create_packet(&self.fragments_sent, route.clone(),  & mut self.session_id_packet));
+                for packet in self.packet_sent.1.clone() { //odio sti clone
                     if let Some(next_hop) = route.get(1){
                         self.send_packet(next_hop, packet);
                     }
@@ -234,7 +241,7 @@ impl ChatClient {
         //     self.ask_server_type(server.clone());
         // }
 
-        //i would need to wait for all of the responses from the other server. based on that go on with sending the message
+        //i would need to wait for all the responses from the other server. based on that go on with sending the message
 
         let request = ChatRequest::SendMessage(message, id_server);
         self.fragments_sent = ChatRequest::fragment_message(&request);
@@ -367,25 +374,42 @@ impl ChatClient {
             match nack.nack_type{
                 NackType::ErrorInRouting(id) => {
                     //need to resend packet changing the route, not including the node specified
-                    println!("resend the request changing route");
-                    self.problematic_nodes.push(id);
-                    //re-compute the route
+                    let failed_path = packet.routing_header.clone();
+                    println!("failed path: {}", failed_path);
 
                 }
                 NackType::Dropped => {
-                    //resend packets dropped, which should be the one dropped by the drone and the packet remaining inside of the hashmap
-                    // let route = packet.routing_header.hops.into_iter().rev().collect::<Vec<NodeId>>();
-                    // println!("{:?}", route);
-                    //  let send_packet = ChatRequest::create_packet(&self.fragments_sent, route.clone(), & mut self.session_id_packet);
-                    println!("Drone {} dropped the packet", packet.routing_header.hops.get(0).unwrap());
-                    self.problematic_nodes.push(*packet.routing_header.hops.get(0).unwrap());
-                    let destination_id = 11;
+                    //resend packets dropped, which should be the one dropped by the drone and the packet remaining inside the hashmap
+                    let failed_path = packet.routing_header.clone();
+                    println!("failed path (from nack): {}", failed_path);
+                    let failed_src = packet.routing_header.hops[packet.routing_header.hop_index];
+                    let failed_node = packet.routing_header.hops[0];
+                    println!("failed src: {}", failed_src);
+                    println!("failed node: {}", failed_node);
+
+                    // if let Some(edge) = self.topology.edges_directed(failed_node, Direction::Outgoing){}
+
+                    if let Some(fragment_lost) = self.fragments_sent.get(&nack.fragment_index){
+                        println!("fragment lost: {}", fragment_lost);
+                    }
+                    let destination_id = self.packet_sent.0;
+                    println!("destination id: {}", destination_id);
+
+                    // for edge in self.topology.edges_directed(failed_src, Direction::Outgoing) {
+                    //     if edge.target() == failed_node {
+                    //
+                    //         self.topology.add_edge(failed_src, failed_node, 100);
+                    //     }
+                    // }
+
+
                     match self.find_route(&destination_id){
                         Ok(route) => {
-                            println!("route: {:?}",route);
+                            println!("new route: {:?}", route);
                         }
-                        Err(_) => {println!("No route found for the destination server")}
+                        Err(str) => {println!("no new route found ")}
                     }
+
 
 
 
@@ -529,7 +553,7 @@ impl ChatClient {
                 // Look for a predecessor node 'prev' with:
                 // result[prev] + weight == result[current]
                 let mut found = false;
-                for edge in self.topology.edges_directed(current.clone(), petgraph::Direction::Incoming) {
+                for edge in self.topology.edges_directed(current.clone(), Direction::Incoming) {
                     let prev = edge.source();
                     let weight = edge.weight();
 

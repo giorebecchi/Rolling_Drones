@@ -23,7 +23,8 @@ pub enum ChatClientEvent{
     IncomingMessage((NodeId,NodeId,NodeId),String), //NodeId Client a cui è arrivato msg, NodeId server, NodeId del client da cui il messaggio è arrivato msg
     RegisteredSuccess((NodeId,NodeId),Result<(), String>), //NodeId registered client and NodeId server { either Ok(()) or Err("something".to_string()) }
     Error(NodeId),//Generic Error to send to SC
-    ChatServers(NodeId, Vec<NodeId>)
+    ChatServers(NodeId, Vec<NodeId>),
+    ClientType(ClientType)
 }
 
 //comandi da client a server
@@ -60,6 +61,12 @@ pub enum ServerType{
     CommunicationServer,
     TextServer,
     MediaServer
+}
+
+#[derive(Clone, Serialize, Deserialize, Debug, PartialEq)]
+pub enum ClientType{
+    ChatClient,
+    WebBrowser
 }
 
 // text/media server and client
