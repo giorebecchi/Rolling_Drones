@@ -123,7 +123,7 @@ pub fn main() {
     App::new()
         .insert_resource(WinitSettings::desktop_app())
         .add_plugins(DefaultPlugins.set(LogPlugin {
-            level: bevy::log::Level::ERROR,
+            level: bevy::log::Level::INFO,
             filter: "".to_string(),
             ..default()
         }))

@@ -63,10 +63,7 @@ impl ChatClient {
     }
     pub fn run(&mut self) {
         self.initiate_flooding();
-        let mut send_type = false;
-        if !send_type{
-            self.send_type_client(&mut send_type)
-        }
+        self.send_type_client();
 
         loop{
             select_biased! {
@@ -88,9 +85,9 @@ impl ChatClient {
 
     }
 
-    pub fn send_type_client(& mut self, send_type: & mut bool){
-        *send_type = true;
-        if let Err(_) = self.event_send.send(OtherClientType(self.client_type.clone())){
+    pub fn send_type_client(& mut self){
+
+        if let Err(_) = self.event_send.send(OtherClientType(self.client_type.clone(),self.config.id)){
             println!("Error sending client type");
         }
     }
