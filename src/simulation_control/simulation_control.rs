@@ -27,7 +27,7 @@ use crate::network_initializer::network_initializer::parse_config;
 use crate::GUI::shared_info_plugin::SHARED_STATE;
 use crate::servers::ChatServer::Server;
 use crate::clients::chat_client::ChatClient;
-use crate::common_things::common::{ChatClientEvent, ChatRequest, ChatResponse, CommandChat, ServerType};
+use crate::common_things::common::{ChatClientEvent, ChatRequest, ChatResponse, ClientType, CommandChat, ServerType};
 use crate::common_things::common::ServerType::CommunicationServer;
 use crate::servers::Text_max::Server as ServerMax;
 
@@ -127,6 +127,15 @@ impl SimulationController {
                                 }
 
                             },
+                            ChatClientEvent::ClientType(client_type,node_id)=>{
+                                if let Ok(mut state)=SHARED_STATE.write(){
+                                    match client_type{
+                                        ClientType::ChatClient=>state.chat_clients.push(node_id),
+                                        ClientType::WebBrowser=>state.web_clients.push(node_id),
+                                    }
+                                    state.is_updated=true;
+                                }
+                            }
                             _=>{}
                         }
                     }

@@ -31,6 +31,7 @@ pub struct ChatState {
     pub chat_messages: HashMap<(NodeId, (NodeId, NodeId)), Vec<String>>,
     //Chat responses : (server_id, (receiver_id, sender_id)) -> [messages]
     pub chat_responses: HashMap<(NodeId, (NodeId, NodeId)), Vec<String>>,
+    pub chat_clients: Vec<NodeId>,
     pub chat_servers: HashMap<NodeId, Vec<NodeId>>
 }
 #[derive(Resource, Default)]
@@ -116,16 +117,13 @@ fn display_windows(
             ui.label(format!("This is a window for Client {}", window_id));
             ui.separator();
             ui.heading("Available Clients");
-            let available_clients = nodes.0.iter()
-                .filter(|node| node.node_type == NodeType::Client && node.id != window_id)
-                .cloned()
-                .collect::<Vec<NodeConfig>>();
+            let available_clients = chat_state.chat_clients.iter().filter(|id| **id!=window_id).cloned().collect::<Vec<u8>>();
 
             let active_server = chat_state.active_chat_server.get(&window_id).cloned().flatten();
 
             for client in available_clients {
                 let is_registered = if let Some(server_id) = active_server {
-                    chat_state.registered_clients.get(&(client.id, server_id))
+                    chat_state.registered_clients.get(&(client, server_id))
                         .copied()
                         .unwrap_or(false)
                 } else {
@@ -133,7 +131,7 @@ fn display_windows(
                 };
 
                 let button_text = format!("Chat with Client {} {}",
-                                          client.id,
+                                          client,
                                           if is_registered { "✓" } else { "" }
                 );
 
@@ -141,10 +139,10 @@ fn display_windows(
                 let button = ui.button(button_text);
 
                 if button.clicked() {
-                    if chat_state.active_chat_node.get(&window_id) == Some(&Some(client.id)) {
+                    if chat_state.active_chat_node.get(&window_id) == Some(&Some(client)) {
                         chat_state.active_chat_node.insert(window_id, None);
                     } else if is_registered {
-                        chat_state.active_chat_node.insert(window_id, Some(client.id));
+                        chat_state.active_chat_node.insert(window_id, Some(client));
                     }
                 }
             }

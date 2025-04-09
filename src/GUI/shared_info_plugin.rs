@@ -17,6 +17,8 @@ pub struct ThreadInfo {
     pub client_list: HashMap<(NodeId,NodeId), Vec<NodeId>>,
     pub chat_servers: HashMap<NodeId, Vec<NodeId>>,
     pub registered_clients: HashMap<(NodeId,NodeId), bool>,
+    pub chat_clients: Vec<NodeId>,
+    pub web_clients: Vec<NodeId>,
     pub is_updated: bool,
 
 }
@@ -47,6 +49,7 @@ fn sync_backend_to_frontend(
             // chat_state.client_list= state.client_list.clone();
             chat_state.registered_clients = state.registered_clients.clone();
             chat_state.chat_servers = state.chat_servers.clone();
+            chat_state.chat_clients=state.chat_clients.clone();
 
             drop(state);
 
