@@ -91,7 +91,9 @@ impl Server{
     }
 
 
-    //questa funzione va inserita da qualche parte altrimenti non riceverò mai nulla dai media!!!!!!!!!!!!!
+    //attualmente il server appena riceve un servertype::media manda direttamente il comando pathresolution
+    //quindi questa funzione è sostanzialmente inutile
+    //potrebbe servire nell'eventualità che venga fatto spawnare un nuovo server
     fn get_media_list(&mut self){
         for i in self.media_servers.clone(){
             self.send_packet(TextServer::PathResolution,i,NodeType::Server);
@@ -131,6 +133,24 @@ impl Server{
             }
         }else {
             println!("no route found for {:?} {:?}!",nt,id);
+        }
+    }
+
+    fn send_text(&mut self, path:&str, id:NodeId, nt:NodeType){
+        if let Some(srh)=self.get_route(id,nt){
+            if let Ok(vec) = Vec::<u8>::serialize_file_from_path(path, srh, self.session_id){
+                let mut fragments_send = Vec::new();
+                for i in vec.iter(){
+                    if let PacketType::MsgFragment(fragment) = i.clone().pack_type{
+                        fragments_send.push(fragment);
+                    }
+                    self.forward_packet(i.clone());
+                }
+                self.fragments_send.insert(self.session_id.clone(), (id,nt,fragments_send));
+                self.session_id+=1;
+            }
+        }else { 
+            println!("no route found for {:?} {:?}!",nt,path);
         }
     }
 
@@ -174,8 +194,8 @@ impl Server{
                             WebBrowser::GetMedia(_) => {println!("I shouldn't receive this command");}
                             WebBrowser::GetText(text_id) => {
                                 if self.paths.contains_key(&text_id){
-                                    let path = self.paths.get(&text_id).unwrap();
-
+                                    let path = self.paths.get(&text_id).unwrap().clone();
+                                    self.send_text(path.as_str(),p.routing_header.hops[0],NodeType::Client);
                                 }
                             }
                             WebBrowser::GetServerType => {
@@ -186,10 +206,11 @@ impl Server{
                         if let Ok(totalmsg) = ChatResponse::deserialize_data(vec) {
                             match totalmsg {
                                 ChatResponse::ServerType(st) => {
-                                    match st{
-                                        ServerType::MediaServer => {self.media_servers.push(p.routing_header.hops[0]);}
-                                        _ => {}
-                                    }
+                                    // match st{
+                                    //     ServerType::MediaServer => {self.media_servers.push(p.routing_header.hops[0]);}
+                                    //     _ => {}
+                                    // }
+                                    //questa roba tecnicamente è inutile visto che il server type mi sta arrivando tramite una chat response, ciò significa che il server è di tipo chat
                                 }
                                 _ => { println!("I shouldn't receive these commands"); }
                             }
@@ -198,7 +219,10 @@ impl Server{
                                 match totalmsg {
                                     MediaServer::ServerType(st) => {
                                         match st{
-                                            ServerType::MediaServer => {self.media_servers.push(p.routing_header.hops[0]);}
+                                            ServerType::MediaServer => {
+                                                self.media_servers.push(p.routing_header.hops[0]);
+                                                self.send_packet(TextServer::PathResolution,p.routing_header.hops[0],NodeType::Server);
+                                            }
                                             _ => {}
                                         }
                                     }
