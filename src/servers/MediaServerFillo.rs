@@ -123,7 +123,24 @@ impl Server{
     }
 
     fn send_image(&mut self, path:&str, id:NodeId, nt:NodeType){
+        let pos = path.rfind('.').unwrap();
+        let fmd = FileMetaData{
+            title: path[..pos].to_string(),
+            extension:path[pos+1..].to_string(),
+            s_id: self.session_id.clone() + 1,
+        };
         if let Some(srh)=self.get_route(id,nt){
+            if let Ok(vec) = TextServer::Text(fmd).serialize_data(srh.clone(),self.session_id){
+                let mut fragments_send = Vec::new();
+                for i in vec.iter(){
+                    if let PacketType::MsgFragment(fragment) = i.clone().pack_type{
+                        fragments_send.push(fragment);
+                    }
+                    self.forward_packet(i.clone());
+                }
+                self.fragments_send.insert(self.session_id.clone(), (id,nt,fragments_send));
+                self.session_id+=1;
+            }
             if let Ok(vec) = Vec::<u8>::serialize_file_from_path(path, srh, self.session_id){
                 let mut fragments_send = Vec::new();
                 for i in vec.iter(){
