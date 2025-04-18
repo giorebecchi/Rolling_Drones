@@ -173,18 +173,18 @@ impl Server{
             }
             if let Some(vec) = self.fragments_recv.get_mut(&(p.routing_header.hops[0],p.session_id)){
                 if fragment.total_n_fragments == vec.len() as u64{
-                    if let Ok(totalmsg) = WebBrowser::deserialize_data(vec){
+                    if let Ok(totalmsg) = WebBrowserCommands::deserialize_data(vec){
                         match totalmsg{
-                            WebBrowser::GetList => {println!("I shouldn't receive this command");}
-                            WebBrowser::GetPosition(_) => {println!("I shouldn't receive this command");}
-                            WebBrowser::GetMedia(media_id) => {
+                            WebBrowserCommands::GetList => {println!("I shouldn't receive this command");}
+                            WebBrowserCommands::GetPosition(_) => {println!("I shouldn't receive this command");}
+                            WebBrowserCommands::GetMedia(media_id) => {
                                 if self.paths.contains_key(&media_id){
                                     let path = self.paths.get(&media_id).unwrap().clone();
                                     self.send_image(path.as_str(),p.routing_header.hops[0],NodeType::Client);
                                 }
                             }
-                            WebBrowser::GetText(_) => {println!("I shouldn't receive this command");}
-                            WebBrowser::GetServerType => {
+                            WebBrowserCommands::GetText(_) => {println!("I shouldn't receive this command");}
+                            WebBrowserCommands::GetServerType => {
                                 self.send_packet(MediaServer::ServerType(self.clone().server_type), p.routing_header.hops[0], NodeType::Client);
                             }
                         }
