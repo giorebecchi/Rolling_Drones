@@ -105,6 +105,12 @@ pub enum CommandText{ //questi vengono mandati al client dal simulation control
 pub type MediaId = String;
 pub type TextId = String;
 #[derive(Serialize, Deserialize, Debug)]
+pub struct FileMetaData{
+    pub(crate) title: String, 
+    pub(crate) extension: String,
+    pub(crate) s_id: u64,
+}
+#[derive(Serialize, Deserialize, Debug)]
 pub enum WebBrowser{
     GetList, //to have the text list resolved by the text server
     GetPosition(MediaId), //to ask the position of the media (need an id of the media, could be u8)
@@ -120,14 +126,14 @@ pub enum TextServer{
     PathResolution, //text server asks all media servers which media he has
     SendFileList(Vec<String>), //send the resolved text list to the client
     PositionMedia(NodeId), //send exact position of the media to the client
-    Text(String)
+    Text(FileMetaData)
 }
 
 #[derive(Serialize, Deserialize, Debug)]
 pub enum MediaServer{
     ServerType(ServerType), //probably needed
     SendPath(Vec<MediaId>), //send paths to the text server
-    SendMedia(String) //send correct media to the client who asked
+    SendMedia(FileMetaData) //send correct media to the client who asked
 }
 
 //need to add the simulation control commands
