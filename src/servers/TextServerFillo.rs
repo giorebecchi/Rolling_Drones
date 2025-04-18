@@ -187,9 +187,9 @@ impl Server{
             }
             if let Some(vec) = self.fragments_recv.get_mut(&(p.routing_header.hops[0],p.session_id)){
                 if fragment.total_n_fragments == vec.len() as u64{
-                    if let Ok(totalmsg) = WebBrowser::deserialize_data(vec){
+                    if let Ok(totalmsg) = WebBrowserCommands::deserialize_data(vec){
                         match totalmsg{
-                            WebBrowser::GetList => {
+                            WebBrowserCommands::GetList => {
                                 let mut total_list = Vec::new();
                                 for (_,i) in self.media_info.clone(){
                                     for j in i{
@@ -201,21 +201,21 @@ impl Server{
                                 }
                                 self.send_packet(TextServer::SendFileList(total_list),p.routing_header.hops[0],NodeType::Client);
                             }
-                            WebBrowser::GetPosition(media_id) => {
+                            WebBrowserCommands::GetPosition(media_id) => {
                                 for i in self.media_info.clone(){
                                     if i.1.contains(&media_id){
                                         self.send_packet(TextServer::PositionMedia(i.0),p.routing_header.hops[0],NodeType::Client);
                                     }
                                 }
                             }
-                            WebBrowser::GetMedia(_) => {println!("I shouldn't receive this command");}
-                            WebBrowser::GetText(text_id) => {
+                            WebBrowserCommands::GetMedia(_) => {println!("I shouldn't receive this command");}
+                            WebBrowserCommands::GetText(text_id) => {
                                 if self.paths.contains_key(&text_id){
                                     let path = self.paths.get(&text_id).unwrap().clone();
                                     self.send_text(path.as_str(),p.routing_header.hops[0],NodeType::Client);
                                 }
                             }
-                            WebBrowser::GetServerType => {
+                            WebBrowserCommands::GetServerType => {
                                 self.send_packet(TextServer::ServerType(self.clone().server_type), p.routing_header.hops[0], NodeType::Client);
                             }
                         }

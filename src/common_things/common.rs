@@ -111,7 +111,7 @@ pub struct FileMetaData{
     pub(crate) s_id: u64,
 }
 #[derive(Serialize, Deserialize, Debug)]
-pub enum WebBrowser{
+pub enum WebBrowserCommands{
     GetList, //to have the text list resolved by the text server
     GetPosition(MediaId), //to ask the position of the media (need an id of the media, could be u8)
     GetMedia(MediaId), //to ask the media to the correct media server (also here need the id of the wanted media),

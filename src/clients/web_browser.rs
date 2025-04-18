@@ -1,12 +1,17 @@
 use std::collections::{HashMap, HashSet};
 use crossbeam_channel::{select_biased, Receiver, Sender};
+use petgraph::algo::dijkstra;
+use petgraph::Direction;
+use petgraph::graphmap::DiGraphMap;
+use petgraph::visit::EdgeRef;
 use wg_2024::packet;
 use wg_2024::controller;
 use serde::{Serialize, Deserialize};
 use wg_2024::config::Client;
 use wg_2024::network::{NodeId, SourceRoutingHeader};
 use wg_2024::packet::{FloodRequest, FloodResponse, Fragment, NodeType, Packet, PacketType};
-use crate::common_things::common::{CommandText, ContentCommands, MediaId};
+use crate::clients::assembler::Fragmentation;
+use crate::common_things::common::{ChatRequest, CommandText, ContentCommands, MediaId, WebBrowserCommands};
 
 pub struct WebBrowser {
     pub config: Client,
@@ -20,7 +25,8 @@ pub struct WebBrowser {
     pub session_id_packet: u64,
     pub incoming_fragments: HashMap<(u64, NodeId ), HashMap<u64, Fragment>>,
     pub fragments_sent: HashMap<u64, Fragment>, //used for sending the correct fragment if was lost in the process
-    pub problematic_nodes: Vec<NodeId>
+    pub problematic_nodes: Vec<NodeId>,
+    pub topology: DiGraphMap<NodeId, u32>
 }
 
 impl WebBrowser {
@@ -38,6 +44,7 @@ impl WebBrowser {
             incoming_fragments: HashMap::new(),
             fragments_sent: HashMap::new(),
             problematic_nodes: Vec::new(),
+            topology: DiGraphMap::new()
         }
     }
     pub fn run(& mut self) {
@@ -62,11 +69,15 @@ impl WebBrowser {
         match command {
             ContentCommands::GetServerType(id_server) => {self.ask_type(id_server)},
             ContentCommands::GetTextList(id_server) => {self.get_list(id_server)},
-            ContentCommands::GetMediaPosition(id_server, id_media) => {//self.get_position(id_server, id_media)
-                },
+            ContentCommands::GetMediaPosition(id_server, id_media) => {
+                self.get_position(id_server, id_media)
+            },
             ContentCommands::GetMedia(id_media_server, id_media) => {
-                //self.get_media(id_media_server, id_media)
-                },
+                self.get_media(id_media_server, id_media)
+            },
+            ContentCommands::GetText(id_server, text_id) => {
+                self.get_text(id_server, text_id);
+            }
             _ => {}
         }
     }
@@ -87,14 +98,117 @@ impl WebBrowser {
             return;
         }
 
+        let request = WebBrowserCommands::GetServerType;
+        self.fragments_sent = WebBrowserCommands::fragment_message(&request);
+
+        match self.find_path(&id_server) {
+            Ok(route) => {
+                let packets_to_send = ChatRequest::create_packet(&self.fragments_sent, route.clone(), &mut self.session_id_packet);
+                for packet in packets_to_send {
+                    if let Some(next_hop) = route.get(1) {
+                        self.send_messages(next_hop, packet);
+                    } else { println!("No next hop found") }
+                }
+                println!("Sent request to get the server type to server: {}", id_server);
+            }
+            Err(_) => { println!("No route found for the destination server") }
+        }
     }
 
-    pub fn get_list(& mut self, id_server: NodeId) {}
 
-    pub fn get_position (& mut self, id_server: NodeId, media_id: MediaId){}
 
-    pub fn get_media(& mut self, id_media_server: NodeId, media_id: MediaId) {}
 
+
+    pub fn get_list(& mut self, id_server: NodeId) {
+        if !self.servers.contains(&id_server) {
+            println!("server was not found");
+            return;
+        }
+
+        let request = WebBrowserCommands::GetList;
+        self.fragments_sent = WebBrowserCommands::fragment_message(&request);
+
+        match self.find_path(&id_server) {
+            Ok(route) => {
+                let packets_to_send = ChatRequest::create_packet(&self.fragments_sent, route.clone(), &mut self.session_id_packet);
+                for packet in packets_to_send {
+                    if let Some(next_hop) = route.get(1) {
+                        self.send_messages(next_hop, packet);
+                    } else { println!("No next hop found") }
+                }
+                println!("Sent request to get the server type to server: {}", id_server);
+            }
+            Err(_) => { println!("No route found for the destination server") }
+        }
+    }
+
+    pub fn get_position (& mut self, id_server: NodeId, media_id: MediaId){
+        if !self.servers.contains(&id_server) {
+            println!("server was not found");
+            return;
+        }
+
+        let request = WebBrowserCommands::GetPosition(media_id);
+        self.fragments_sent = WebBrowserCommands::fragment_message(&request);
+
+        match self.find_path(&id_server) {
+            Ok(route) => {
+                let packets_to_send = ChatRequest::create_packet(&self.fragments_sent, route.clone(), &mut self.session_id_packet);
+                for packet in packets_to_send {
+                    if let Some(next_hop) = route.get(1) {
+                        self.send_messages(next_hop, packet);
+                    } else { println!("No next hop found") }
+                }
+                println!("Sent request to get the server type to server: {}", id_server);
+            }
+            Err(_) => { println!("No route found for the destination server") }
+        }
+    }
+
+    pub fn get_media(& mut self, id_media_server: NodeId, media_id: MediaId) {
+        if !self.servers.contains(&id_media_server) {
+            println!("server was not found");
+            return;
+        }
+        let request = WebBrowserCommands::GetMedia(media_id);
+        self.fragments_sent = WebBrowserCommands::fragment_message(&request);
+
+        match self.find_path(&id_media_server) {
+            Ok(route) => {
+                let packets_to_send = ChatRequest::create_packet(&self.fragments_sent, route.clone(), &mut self.session_id_packet);
+                for packet in packets_to_send {
+                    if let Some(next_hop) = route.get(1) {
+                        self.send_messages(next_hop, packet);
+                    } else { println!("No next hop found") }
+                }
+                println!("Sent request to get the server type to server: {}", id_media_server);
+            }
+            Err(_) => { println!("No route found for the destination server") }
+        }
+    }
+
+    pub fn get_text (& mut self, id_server: NodeId, text_id: String) {
+        if !self.servers.contains(&id_server) {
+            println!("server was not found");
+            return;
+        }
+        let request = WebBrowserCommands::GetText(text_id);
+        self.fragments_sent = WebBrowserCommands::fragment_message(&request);
+
+        match self.find_path(&id_server) {
+            Ok(route) => {
+                let packets_to_send = ChatRequest::create_packet(&self.fragments_sent, route.clone(), &mut self.session_id_packet);
+                for packet in packets_to_send {
+                    if let Some(next_hop) = route.get(1) {
+                        self.send_messages(next_hop, packet);
+                    } else { println!("No next hop found") }
+                }
+                println!("Sent request to get the server type to server: {}", id_server);
+            }
+            Err(_) => { println!("No route found for the destination server") }
+        }
+
+    }
 
 
     pub fn flooding(& mut self){
@@ -177,32 +291,41 @@ impl WebBrowser {
     }
 
     pub fn find_path(& mut self, destination_id : &NodeId)-> Result<Vec<NodeId>, String>{
-        let mut shortest_route: Option<Vec<NodeId>> = None;
-        for flood_resp in &self.flood{
-            if flood_resp.path_trace.contains(&(*destination_id, NodeType::Server))&& !flood_resp.path_trace.iter().any(|(id, _)| self.problematic_nodes.contains(id)){
-                let length = flood_resp.path_trace.len();
-                if shortest_route.is_none() || length < shortest_route.as_ref().unwrap().len(){
-                    shortest_route = Some(flood_resp.path_trace.iter().map(|(id,_ )| *id).collect());
+        let source = self.config.id.clone();
+        let result = dijkstra(&self.topology, source.clone(), Some(destination_id.clone()), |_| 1);
+
+        if let Some(_) = result.get(destination_id) {
+            let mut path = vec![destination_id.clone()];
+            let mut current = destination_id.clone();
+
+            while current != source {
+                // Look for a predecessor node 'prev' with:
+                // result[prev] + weight == result[current]
+                let mut found = false;
+                for edge in self.topology.edges_directed(current.clone(), Direction::Incoming) {
+                    let prev = edge.source();
+                    let weight = edge.weight();
+
+                    if let (Some(&prev_cost), Some(&curr_cost)) = (result.get(&prev), result.get(&current)) {
+                        if prev_cost + weight == curr_cost {
+                            path.push(prev.clone());
+                            current = prev.clone();
+                            found = true;
+                            break;
+                        }
+                    }
+                }
+
+                if !found {
+                    return Err("Failed to reconstruct path".into());
                 }
             }
+
+            path.reverse();
+            Ok(path)
+        } else {
+            Err("No route found".into())
         }
-        // for flood_resp in &self.flood {
-        //     if flood_resp.path_trace.contains(&(*destination_id, NodeType::Server)) {
-        //         let route: Vec<NodeId> = flood_resp.path_trace.iter().map(|(id, _)| *id).collect();
-        //
-        //         if route.iter().any(|id| self.problematic_nodes.contains(id)) {
-        //             continue; // Skip this route and look for another one
-        //         }
-        //
-        //         let length = route.len();
-        //         if shortest_route.as_ref().map_or(true, |r| length < r.len()) {
-        //             shortest_route = Some(route);
-        //         }
-        //     }
-        // }
-        if let Some(best_route) = shortest_route{
-            Ok(best_route)
-        }else { Err(String::from("route not found")) }
     }
 
     pub fn send_messages(& mut self, destination_id: &NodeId, mut packet: Packet){

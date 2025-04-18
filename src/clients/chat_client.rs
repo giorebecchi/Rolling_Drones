@@ -86,7 +86,6 @@ impl ChatClient {
     }
 
     pub fn send_type_client(& mut self){
-
         if let Err(_) = self.event_send.send(OtherClientType(self.client_type.clone(),self.config.id)){
             println!("Error sending client type");
         }
@@ -159,7 +158,6 @@ impl ChatClient {
     }
 
     pub fn ask_server_type(&mut self, id_server: NodeId) {
-        //if the client has to send it to a specific server (?)
         if !self.servers.contains(&id_server){
             println!("server not found ");
             return;
@@ -183,7 +181,6 @@ impl ChatClient {
         }
     }
     pub fn register_client(&mut self, id_server: NodeId) {
-        //to register client to the server specified in the command by simulation control.
         if !self.servers.contains(&id_server){
             println!("The server was not found during flooding");
             return;
@@ -230,15 +227,10 @@ impl ChatClient {
         }
     }
     pub fn send_message(&mut self, message: MessageChat, id_server: NodeId) {
-        println!("servers: {:?}", self.servers);
-        println!("I've done the flooding");
-
-        // let servers = self.servers.clone();
-        // for server in &servers{
-        //     self.ask_server_type(server.clone());
-        // }
-
-        //i would need to wait for all the responses from the other server. based on that go on with sending the message
+        if !self.servers.contains(&id_server){
+            println!("server not found after the flooding");
+            return;
+        }
 
         let request = ChatRequest::SendMessage(message, id_server);
         self.fragments_sent = ChatRequest::fragment_message(&request);
