@@ -1,12 +1,19 @@
+use base64::engine::general_purpose::STANDARD as BASE64;
+use base64::Engine; // questo serve per il metodo .encode()
 use crate::servers::utilities_max::*;
 use crate::common_things::common::*;
 use crate::common_things::common::ServerType;
 use crossbeam_channel::{select_biased, unbounded, Receiver, Sender};
 use std::collections::{BinaryHeap, HashMap};
-use std::{thread};
+use std::{fs, io, thread};
+use std::fs::File;
+use std::io::{BufRead, BufReader, Error};
+use std::path::Path;
 use wg_2024::network::{NodeId, SourceRoutingHeader};
 use wg_2024::packet::{Ack, FloodRequest, FloodResponse, Fragment, Nack, NackType, NodeType, Packet, PacketType};
 use bevy::utils::HashSet;
+use rand::Rng;
+
 
 pub struct Server{
     server_id: NodeId,
@@ -16,12 +23,17 @@ pub struct Server{
     fragment_send: HashMap<u64, Data>,
     packet_recv: Receiver<Packet>,
     pub packet_send: HashMap<NodeId, Sender<Packet>>,
-    file_list: Vec<String>,
-    media_list: Vec<String>,
+    path: String,
+    file_list: Vec<(TextId, String)>,
+    media_list: Vec<(MediaId, String)>,
+    media_others: HashMap<NodeId, Vec<MediaId>>,
+    others : HashMap<NodeId, Vec<NodeId>>,
     already_visited: HashSet<(NodeId, u64)>,
 }
+
+
 impl Server {
-    fn new(server_id: NodeId, recv: Receiver<Packet>, send: HashMap<NodeId, Sender<Packet>>) -> Self {
+    fn new(server_id: NodeId, recv: Receiver<Packet>, send: HashMap<NodeId, Sender<Packet>>, path: String) -> Self {
         let mut links: Vec<NodeId> = Vec::new();
         for i in send.clone() {
             links.push(i.0.clone());
@@ -30,29 +42,38 @@ impl Server {
         Server {
             server_id,
             server_type: ServerType::TextServer,
-            nodes_map: vec![(server_id, n,  links)],
+            nodes_map: vec![(server_id, n, links)],
             fragment_recv: HashMap::new(),
             fragment_send: HashMap::new(),
             packet_recv: recv,
             packet_send: send,
+            path,
             file_list: Vec::new(),
             media_list: Vec::new(),
+            media_others: HashMap::new(),
+            others: HashMap::new(),
             already_visited: HashSet::new(),
         }
     }
     fn run(&mut self) {
-        self.floading();
+        let path = self.path.clone();
+        self.load_files_from_directory(Path::new(&path));
+        println!("{:?}", self.file_list);
+        println!("{:?}", self.media_list);
+        //self.floading();
+
+
         loop {
             select_biased! {
-                     recv(self.packet_recv) -> packet => {
-                         if let Ok(packet) = packet {
-                             self.handle_packet(packet);
-                         }
-                         else{
-                             break
-                         }
-                     },
-                 }
+                    recv(self.packet_recv) -> packet => {
+                        if let Ok(packet) = packet {
+                            self.handle_packet(packet);
+                        }
+                        else{
+                            break
+                        }
+                    },
+                }
         }
     }
     fn handle_packet(&mut self, packet: Packet) {
@@ -191,10 +212,12 @@ impl Server {
                 return; // Se la traccia è troppo corta, non ci sono connessioni da aggiungere
             }
 
+
             for i in 0..len {
                 let (current_node, current_type) = flood_response.path_trace[i];
                 let prev_node = if i > 0 { Some(flood_response.path_trace[i - 1].0) } else { None };
                 let next_node = if i < len - 1 { Some(flood_response.path_trace[i + 1].0) } else { None };
+
 
                 // Trova o aggiunge il nodo corrente con il suo tipo
                 if let Some(k) = self.nodes_map.iter_mut().find(|(id, _, _)| *id == current_node) {
@@ -202,6 +225,7 @@ impl Server {
                     if k.1 != current_type {
                         k.1 = current_type;
                     }
+
 
                     // Aggiunge i collegamenti se non già presenti
                     if let Some(prev) = prev_node {
@@ -226,10 +250,27 @@ impl Server {
                     self.nodes_map.push((current_node, current_type, connections));
                 }
             }
+            let (last_node, last_type) = flood_response.path_trace[len - 1];
+            if matches!(last_type, NodeType::Server) {
+                let mut w = false;
+                for i in self.media_others.clone(){
+                    if i.0 == last_node{
+                        w = true;
+                    }
+                }
+                if w == false{
+                    let risposta = Risposta::Text(TextServer::ServerTypeReq);
+                    let mut rng = rand::thread_rng();
+                    let session: u64 = rng.gen_range(0..100);
+                    self.send_response(last_node, risposta, &session);
+                }
+            }
+
+
         }
     }
     fn remove_drone(&mut self, node_id: NodeId) {
-        self.nodes_map.retain(|(id,_, _)| *id != node_id);
+        self.nodes_map.retain(|(id, _, _)| *id != node_id);
         for (_, _, neighbors) in &mut self.nodes_map {
             neighbors.retain(|&neighbor_id| neighbor_id != node_id);
         }
@@ -239,6 +280,7 @@ impl Server {
             return; // Nessun nodo successivo disponibile
         }
         packet.routing_header.hop_index = 1;
+
 
         let next = packet.routing_header.hops[1];
         // Invia il pacchetto al prossimo nodo
@@ -259,6 +301,7 @@ impl Server {
         // Inseriamo il nodo sorgente nella coda
         queue.push(State { node: self.server_id, cost: 0 });
 
+
         while let Some(State { node, cost }) = queue.pop() {
             // Se abbiamo trovato la destinazione, possiamo ricostruire il percorso
             if node == destination {
@@ -273,10 +316,12 @@ impl Server {
                 return Some(path);
             }
 
+
             // Se il costo attuale è maggiore di quello già registrato, saltiamo
             if cost > table.get(&node)?.0 {
                 continue;
             }
+
 
             // Iteriamo sui vicini
             if let Some((_, _, neighbors)) = self.nodes_map.iter().find(|(id, _, _)| *id == node) {
@@ -290,6 +335,7 @@ impl Server {
                         }
                     }
 
+
                     let new_cost = cost + 1; // Supponiamo un costo uniforme di 1 per ogni collegamento
                     if new_cost < table.get(&neighbor).unwrap_or(&(i64::MAX, None)).0 {
                         table.insert(neighbor, (new_cost, Some(node)));
@@ -298,6 +344,7 @@ impl Server {
                 }
             }
         }
+
 
         // Se il ciclo termina senza trovare la destinazione, non esiste un percorso valido
         None
@@ -324,66 +371,280 @@ impl Server {
     fn handle_command(&mut self, session: &u64) {
         let data = self.fragment_recv.get(session).unwrap();
         let d = data.dati.clone();
-        let command :RequestWeb = deserialize_web_request(d);
+        let command: ComandoText = deserialize_comando_text(d);
         let id_client = data.who_ask;
         match command {
-            RequestWeb::ServerType => {
-                let response = WebResponse::ServerType(self.server_type.clone());
-                self.send_response(id_client, response, session)
+            ComandoText::Media(media) => {
+                match media {
+                    MediaServer::ServerType(ServerType) => {
+                        if self.media_others.contains_key(&id_client) {} else {
+                            if ServerType == ServerType::MediaServer {
+                                self.media_others.insert(id_client, Vec::new());
+                                let response = Risposta::Text(TextServer::PathResolution);
+                                self.send_response(id_client, response, session)
+                            }
+                        }
+                    }
+                    MediaServer::SendPath(v) => {
+                        if self.media_others.contains_key(&id_client) {
+                            self.media_others.insert(id_client, v);
+                        } else {
+                            unreachable!()
+                        }
+                    }
+                    MediaServer::SendMedia(_) => {
+                        unreachable!()
+                    }
+                }
             }
-            RequestWeb::TextList => {
-                let files = self.file_list.clone();
-                let response: WebResponse = WebResponse::FileList(files);
-                self.send_response(id_client, response, session)
+            ComandoText::Text(text) => {
+                match text {
+                    TextServer::ServerTypeReq => {
+                        let response = Risposta::Media(MediaServer::ServerType(ServerType::MediaServer));
+                        self.send_response(id_client, response, session);
+                    }
+                    TextServer::PathResolution => {
+                        let response = Risposta::Media(MediaServer::SendPath(self.get_list()));
+                        self.send_response(id_client, response, session);
+                    }
+
+
+                    _ => {
+                        unreachable!()
+                    }
+                }
             }
-            RequestWeb::TextFile(file) => {
-                let f = get_file(file);
-                let response;
-                match f {
-                    Some(content) => {
-                        response = WebResponse::File(content);
-                    },
+            ComandoText::Chat(chat) => {
+                match chat {
+                    ChatResponse::ServerType(chat) => {}
+                    _ => {}
+                }
+            }
+            ComandoText::Client(client) => {
+                match client {
+                    WebBrowserCommands::GetList => {
+                        let list = self.get_list();
+                        let response = Risposta::Text(TextServer::SendFileList(list));
+                        self.send_response(id_client, response, session)
+                    }
+                    WebBrowserCommands::GetPosition(media) => {
+                        let mut id_server = 0;
+                        let server = self.find_position_media(media);
+                        match server {
+                            Ok(id) => {
+                                id_server = id;
+                                let response = Risposta::Text(TextServer::PositionMedia(id_server));
+                                self.send_response(id_client, response, session);
+                            }
+
+
+                            _ => {} // chiedi per la gestione degli errori
+                        }
+
+
+                    }
+                    WebBrowserCommands::GetMedia(media_name) => {
+                        let media = self.get_media(media_name.clone());
+                        let file = FileMetaData{
+                            title: media_name,
+                            extension: media.unwrap(),
+                            s_id: session.clone(),
+                        };
+                        let response = Risposta::Media(MediaServer::SendMedia(file));
+                        self.send_response(id_client, response, session);
+                    }
+                    WebBrowserCommands::GetText(text_name) => {
+                        let text = self.get_text_from_file(text_name.clone());
+                        let file = FileMetaData{
+                            title: text_name,
+                            extension: text.unwrap(),
+                            s_id: session.clone(),
+                        };
+                        let response = Risposta::Text(TextServer::Text(file));
+                        self.send_response(id_client, response, session);
+                    }
+                    WebBrowserCommands::GetServerType => {
+                        let response = Risposta::Text(TextServer::ServerType(self.server_type.clone()));
+                        self.send_response(id_client, response, session);
+                    }
+                }
+            }
+        }
+    }
+    fn send_response(&mut self, id: NodeId, response: Risposta, session: &u64) {
+        match response {
+            Risposta::Text(text) => {
+                let dati = serialize(&text);
+                let total = dati.len();
+                let d_to_send = Data { counter: total as u64, dati, who_ask: id };
+                self.fragment_send.insert(*session, d_to_send);
+                let root = self.routing(id);
+                match root {
                     None => {
-                        response = WebResponse::Error("file not found".to_string());
-                    },
-                }
-                self.send_response(id_client, response, session);
-            }
-            RequestWeb::MediaList => {
-                let files = self.media_list.clone();
-                let response: WebResponse = WebResponse::MediaList(files);
-                self.send_response(id_client, response, session)
-            }
-            RequestWeb::Media(_) => {}
-        }
-    }
-    fn send_response(&mut self, id: NodeId, response: WebResponse, session: &u64) {
-        let dati = serialize_web_response(&response);
-        let total = dati.len();
-        let d_to_send = Data { counter: total as u64, dati, who_ask: id };
-        self.fragment_send.insert(*session, d_to_send);
-        let root = self.routing(id);
-        match root {
-            None => {
-                println!("path not found")
-            }
-            Some(root) => {
-                let mut i = 0;
-                for fragment in self.fragment_send[session].dati.clone() {
-                    let routing = SourceRoutingHeader { hop_index: 1, hops: root.clone() };
-                    let f = Fragment { fragment_index: i as u64, total_n_fragments: total as u64, length: fragment.1, data: fragment.0 };
-                    let p = Packet { routing_header: routing, session_id: *session, pack_type: PacketType::MsgFragment(f) };
-                    self.send_packet(p);
-                    i += 1;
+                        println!("path not found")
+                    }
+                    Some(root) => {
+                        let mut i = 0;
+                        for fragment in self.fragment_send[session].dati.clone() {
+                            let routing = SourceRoutingHeader { hop_index: 1, hops: root.clone() };
+                            let f = Fragment { fragment_index: i as u64, total_n_fragments: total as u64, length: fragment.1, data: fragment.0 };
+                            let p = Packet { routing_header: routing, session_id: *session, pack_type: PacketType::MsgFragment(f) };
+                            self.send_packet(p);
+                            i += 1;
+                        }
+                    }
                 }
             }
+            Risposta::Media(media) => {
+                let dati = serialize(&media);
+                let total = dati.len();
+                let d_to_send = Data { counter: total as u64, dati, who_ask: id };
+                self.fragment_send.insert(*session, d_to_send);
+                let root = self.routing(id);
+                match root {
+                    None => {
+                        println!("path not found")
+                    }
+                    Some(root) => {
+                        let mut i = 0;
+                        for fragment in self.fragment_send[session].dati.clone() {
+                            let routing = SourceRoutingHeader { hop_index: 1, hops: root.clone() };
+                            let f = Fragment { fragment_index: i as u64, total_n_fragments: total as u64, length: fragment.1, data: fragment.0 };
+                            let p = Packet { routing_header: routing, session_id: *session, pack_type: PacketType::MsgFragment(f) };
+                            self.send_packet(p);
+                            i += 1;
+                        }
+                    }
+                }
+            }
+            _ => {}
         }
     }
+    fn load_files_from_directory(&mut self, file_path: &Path) {
+        let file = match File::open(&file_path) {
+            Ok(f) => f,
+            Err(e) => {
+                eprintln!("Errore nell'aprire il file '{}': {}", file_path.display(), e);
+                return;
+            }
+        };
+
+
+        let reader = BufReader::new(file);
+
+
+        for line in reader.lines() {
+            match line {
+                Ok(path_str) => {
+                    let path = Path::new(&path_str);
+                    if !path.exists() {
+                        eprintln!("Path non trovato: {}", path_str);
+                        continue;
+                    }
+
+
+                    match path.extension().and_then(|ext| ext.to_str()).map(|s| s.to_lowercase()) {
+                        Some(ext) if ext == "txt" => {
+                            if let Some(file_name) = path.file_name().and_then(|n| n.to_str()) {
+                                self.file_list.push((file_name.to_string(), path_str.clone()));
+                            }
+                        }
+                        Some(ext) if ext == "jpg" || ext == "jpeg" => {
+                            if let Some(file_name) = path.file_name().and_then(|n| n.to_str()) {
+                                self.media_list.push((file_name.to_string(), path_str.clone()));
+                            }
+                        }
+                        _ => {
+                            // Estensione non supportata
+                        }
+                    }
+                }
+                Err(e) => {
+                    eprintln!("Errore nella lettura di una riga: {}", e);
+                }
+            }
+        }
+    }
+    fn get_list(&self) -> Vec<String> {
+        let mut list = Vec::new();
+        for i in self.file_list.clone() {
+            list.push(i.0.clone());
+        }
+        for i in self.media_list.clone() {
+            list.push(i.0.clone());
+        }
+        for i in self.media_others.clone() {
+            for k in i.1.clone() {
+                list.push(k);
+            }
+        }
+        list
+    }
+    fn find_position_media(&self, media_id: MediaId) -> Result<NodeId, String> {
+        for i in self.media_list.clone() {
+            if i.0 == media_id {
+                return Ok(self.server_id);
+            } else {
+                continue;
+            }
+        }
+        for i in self.media_others.clone() {
+            for k in i.1.clone() {
+                if k == media_id {
+                    return Ok(i.0);
+                } else {
+                    continue;
+                }
+            }
+        }
+        Err(String::from(format!("Media {} not found anywhere", media_id)))
+    }
+    fn get_text_from_file(&self, text_id: TextId) -> Result<String, String> {
+        if let Some((_, file_path)) = self.file_list.iter().find(|(id, _)| *id == text_id) {
+            let reading = read_file(Path::new(file_path));
+            match reading {
+                Ok(contenuto) => Ok(contenuto),
+                Err(_) => {
+                    eprintln!("Errore nell'aprire il file '{}'", file_path);
+                    Err(format!("File '{}' not found", file_path))
+                }
+            }
+        } else {
+            Err(format!("File con ID {:?} non trovato", text_id))
+        }
+    }
+    fn get_media(&self, media_id: MediaId) -> Result<String, String> {
+        if let Some((_, file_path)) = self.file_list.iter().find(|(id, _)| *id == media_id) {
+            match fs::read(Path::new(file_path)) {
+                Ok(bytes) => {
+                    let encoded = BASE64.encode(&bytes);
+                    Ok(encoded)
+                }
+                Err(_) => {
+                    eprintln!("Errore nell'aprire il file '{}'", file_path);
+                    Err(format!("File '{}' not found", file_path))
+                }
+            }
+        } else {
+            Err(format!("File con ID {:?} non trovato", media_id))
+        }
+    }
+
 }
+
+fn read_file<P: AsRef<Path>>(path: P) -> Result<String, io::Error> {
+    fs::read_to_string(path)
+}
+
+
+
+
+
 
 pub(crate) fn main() -> () {
     // ID del server
     let server_id: NodeId = 0;
+
 
     // Simuliamo una rete connessa: ad esempio, il server è collegato direttamente ai nodi 2 e 3
     let direct_neighbors = vec![1, 4, 7];
@@ -391,8 +652,16 @@ pub(crate) fn main() -> () {
 
 
 
+
+
+
+
     // Canali per ricezione pacchetti del server
     let (packet_send_server, packet_recv_server) = unbounded();
+
+
+
+
 
 
 
@@ -404,10 +673,18 @@ pub(crate) fn main() -> () {
 
 
 
+
+
+
+
     // Creiamo i canali per i nodi vicini e simuliamo i loro thread di ricezione
     for &neighbor in &direct_neighbors {
         let (tx, rx) = unbounded();
         packet_send_map.insert(neighbor, tx);
+
+
+
+
 
 
 
@@ -423,8 +700,15 @@ pub(crate) fn main() -> () {
 
 
 
+    let path = String::from(r"C:\Users\Massimo\RustroverProjects\Rolling_Drone\src\multimedia\paths\0.txt");
+
+
     // Creiamo il server con la topologia di rete (mappa completa)
-    let mut server = Server::new(server_id, packet_recv_server, packet_send_map);
+    let mut server = Server::new(server_id, packet_recv_server, packet_send_map, path);
+
+
+
+
 
 
 
@@ -447,6 +731,9 @@ pub(crate) fn main() -> () {
 
 
 
+
+
+
     let flood0 = FloodResponse{flood_id:0, path_trace:v0};
     let flood1 = FloodResponse{ flood_id: 1, path_trace: v1 };
     let flood2 = FloodResponse{ flood_id: 1, path_trace: v2 };
@@ -462,6 +749,9 @@ pub(crate) fn main() -> () {
 
 
 
+
+
+
     let p0 = Packet{routing_header: Default::default(), session_id: 0, pack_type: PacketType::FloodResponse(flood0)};
     let p1 = Packet{ routing_header: Default::default(), session_id: 0, pack_type: PacketType::FloodResponse(flood1)};
     let p2 = Packet{ routing_header: Default::default(), session_id: 0, pack_type: PacketType::FloodResponse(flood2)};
@@ -474,6 +764,9 @@ pub(crate) fn main() -> () {
     let p9 = Packet{ routing_header: Default::default(), session_id: 0, pack_type: PacketType::FloodResponse(flood9)};
     let p10 = Packet{ routing_header: Default::default(), session_id: 0, pack_type: PacketType::FloodResponse(flood10)};
     let p11 = Packet{ routing_header: Default::default(), session_id: 0, pack_type: PacketType::FloodResponse(flood11)};
+
+
+
 
 
 
@@ -493,7 +786,15 @@ pub(crate) fn main() -> () {
 
 
 
+
+
+
+
     println!("{:?}", server.nodes_map);
+
+
+
+
 
 
 
@@ -505,7 +806,13 @@ pub(crate) fn main() -> () {
         println!("no route");
     }
 
+
      */
+
+
+
+
+
 
 
 
@@ -522,7 +829,13 @@ pub(crate) fn main() -> () {
 
 
 
+
+
+
+
      */
+
+
 
 
     //--------------------test handle_paket
@@ -531,6 +844,10 @@ pub(crate) fn main() -> () {
     let serialized = serialize_text_response(&e);
     let data = serialized[0].0;
     let len = serialized[0].1;
+
+
+
+
 
 
 
@@ -545,6 +862,10 @@ pub(crate) fn main() -> () {
 
 
 
+
+
+
+
     let p = Packet{
         routing_header: SourceRoutingHeader{ hop_index: 0, hops: vec![1, 2, 3, 0] },
         session_id: 0,
@@ -552,6 +873,10 @@ pub(crate) fn main() -> () {
     };
     server.handle_packet(p);
     println!("{:?}", server.fragment_recv);
+
+
+
+
 
 
 
@@ -570,6 +895,10 @@ pub(crate) fn main() -> () {
 
 
 
+
+
+
+
     let nack = Nack{ fragment_index: 0, nack_type: NackType::Dropped };
     let pac = Packet{
         routing_header: Default::default(),
@@ -577,6 +906,10 @@ pub(crate) fn main() -> () {
         pack_type: PacketType::Nack(nack),
     };
     server.handle_packet(pac);
+
+
+
+
 
 
 
@@ -596,6 +929,10 @@ pub(crate) fn main() -> () {
 
 
 
+
+
+
+
     let resp = FloodResponse{ flood_id: 0, path_trace: vec![] };
     let packe = Packet{
         routing_header: Default::default(),
@@ -607,7 +944,13 @@ pub(crate) fn main() -> () {
 
 
 
+
+
+
+
      */
+
+
 
 
     //--------------------test handle message
@@ -620,12 +963,20 @@ pub(crate) fn main() -> () {
 
 
 
+
+
+
+
     let fragment = Fragment{
         fragment_index: 0,
         total_n_fragments: 1,
         length: len,
         data: data,
     };
+
+
+
+
 
 
 
@@ -638,7 +989,11 @@ pub(crate) fn main() -> () {
     server.handle_packet(p);
 
 
+
+
      */
+
+
 
 
     //--------------------test handle ack
@@ -651,12 +1006,20 @@ pub(crate) fn main() -> () {
 
 
 
+
+
+
+
     let fragment = Fragment{
         fragment_index: 0,
         total_n_fragments: 1,
         length: len,
         data: data,
     };
+
+
+
+
 
 
 
@@ -668,6 +1031,8 @@ pub(crate) fn main() -> () {
     };
     server.handle_packet(p);
     println!("fragment_ send  {:?}", server.fragment_send);
+
+
 
 
     let ack = Ack{fragment_index: 0};
@@ -692,18 +1057,31 @@ pub(crate) fn main() -> () {
     server.handle_packet(pa);
 
 
+
+
     println!("{:?}", server.fragment_send)
+
+
 
 
      */
 
 
+
+
     //--------------------test handle nack
+
+
+
 
     let v1:Vec<(NodeId, NodeType)> = vec![(1, NodeType::Drone)];
     let v3:Vec<(NodeId, NodeType)> = vec![(1, NodeType::Drone), (2, NodeType::Drone), (6, NodeType::Server)];
     let v6:Vec<(NodeId, NodeType)> = vec![(1, NodeType::Drone), (3, NodeType::Drone), (5, NodeType::Drone), (6, NodeType::Server)];
     let v11:Vec<(NodeId, NodeType)> = vec![(4, NodeType::Drone), (3, NodeType::Drone), (5, NodeType::Drone), (6, NodeType::Server)];
+
+
+
+
 
 
 
@@ -716,24 +1094,41 @@ pub(crate) fn main() -> () {
 
 
 
+
+
+
+
     let p1 = Packet{ routing_header: Default::default(), session_id: 0, pack_type: PacketType::FloodResponse(flood1)};
+
 
     let p3 = Packet{ routing_header: Default::default(), session_id: 0, pack_type: PacketType::FloodResponse(flood3)};
 
+
     let p6 = Packet{ routing_header: Default::default(), session_id: 0, pack_type: PacketType::FloodResponse(flood6)};
+
 
     let p11 = Packet{ routing_header: Default::default(), session_id: 0, pack_type: PacketType::FloodResponse(flood11)};
 
 
 
 
+
+
+
+
     server.handle_flood_response(p1);
+
 
     server.handle_flood_response(p3);
 
+
     server.handle_flood_response(p6);
 
+
     server.handle_flood_response(p11);
+
+
+    server.run();
 
 
 
@@ -741,6 +1136,10 @@ pub(crate) fn main() -> () {
     println!("{:?}", server.nodes_map);
 
 
+    println!("{:#?}", server.file_list);
+
+
+    /*
 
 
     let route = server.routing(6);
@@ -749,10 +1148,14 @@ pub(crate) fn main() -> () {
     }else{
         println!("no route");
     }
-    let e = RequestWeb::TextFile("file1.txt".to_string());
-    let serialized = serialize_text_r(&e);
+    let e = WebBrowser::GetText("file1.txt".to_string());
+    let serialized = serialize(&e);
     let data = serialized[0].0;
     let len = serialized[0].1;
+
+
+
+
 
 
 
@@ -767,12 +1170,20 @@ pub(crate) fn main() -> () {
 
 
 
+
+
+
+
     let p = Packet{
         routing_header: SourceRoutingHeader{ hop_index: 0, hops: vec![6, 2, 1, 0] },
         session_id: 0,
         pack_type: PacketType::MsgFragment(fragment),
     };
     server.handle_packet(p);
+
+
+
+
 
 
 
@@ -789,10 +1200,23 @@ pub(crate) fn main() -> () {
     server.handle_packet(pac);
 
 
+
+
     println!("{:?}", server.nodes_map);
+
+
+
+
+     */
+
+
+
 
 
 
 
 
 }
+
+
+

@@ -8,6 +8,7 @@ use wg_2024::network::{NodeId, SourceRoutingHeader};
 use wg_2024::packet::{Ack, FloodRequest, Fragment, Nack, NackType, NodeType, Packet, PacketType};
 use bevy::utils::HashSet;
 
+
 pub struct Server{
     server_id: NodeId,
     server_type: ServerType,
@@ -42,15 +43,15 @@ impl Server {
         self.floading();
         loop {
             select_biased! {
-                     recv(self.packet_recv) -> packet => {
-                         if let Ok(packet) = packet {
-                             self.handle_packet(packet);
-                         }
-                         else{
-                             break
-                         }
-                     },
-                 }
+                    recv(self.packet_recv) -> packet => {
+                        if let Ok(packet) = packet {
+                            self.handle_packet(packet);
+                        }
+                        else{
+                            break
+                        }
+                    },
+                }
         }
     }
     fn handle_packet(&mut self, packet: Packet) {
@@ -189,10 +190,12 @@ impl Server {
                 return; // Se la traccia è troppo corta, non ci sono connessioni da aggiungere
             }
 
+
             for i in 0..len {
                 let (current_node, current_type) = flood_response.path_trace[i];
                 let prev_node = if i > 0 { Some(flood_response.path_trace[i - 1].0) } else { None };
                 let next_node = if i < len - 1 { Some(flood_response.path_trace[i + 1].0) } else { None };
+
 
                 // Trova o aggiunge il nodo corrente con il suo tipo
                 if let Some(k) = self.nodes_map.iter_mut().find(|(id, _, _)| *id == current_node) {
@@ -200,6 +203,7 @@ impl Server {
                     if k.1 != current_type {
                         k.1 = current_type;
                     }
+
 
                     // Aggiunge i collegamenti se non già presenti
                     if let Some(prev) = prev_node {
@@ -256,6 +260,7 @@ impl Server {
         // Inseriamo il nodo sorgente nella coda
         queue.push(State { node: self.server_id, cost: 0 });
 
+
         while let Some(State { node, cost }) = queue.pop() {
             // Se abbiamo trovato la destinazione, possiamo ricostruire il percorso
             if node == destination {
@@ -270,10 +275,12 @@ impl Server {
                 return Some(path);
             }
 
+
             // Se il costo attuale è maggiore di quello già registrato, saltiamo
             if cost > table.get(&node)?.0 {
                 continue;
             }
+
 
             // Iteriamo sui vicini
             if let Some((_, _, neighbors)) = self.nodes_map.iter().find(|(id, _, _)| *id == node) {
@@ -287,6 +294,7 @@ impl Server {
                         }
                     }
 
+
                     let new_cost = cost + 1; // Supponiamo un costo uniforme di 1 per ogni collegamento
                     if new_cost < table.get(&neighbor).unwrap_or(&(i64::MAX, None)).0 {
                         table.insert(neighbor, (new_cost, Some(node)));
@@ -295,6 +303,7 @@ impl Server {
                 }
             }
         }
+
 
         // Se il ciclo termina senza trovare la destinazione, non esiste un percorso valido
         None
@@ -321,47 +330,58 @@ impl Server {
     fn handle_command(&mut self, session: &u64) {
         let data = self.fragment_recv.get(session).unwrap();
         let d = data.dati.clone();
-        let id_client = data.who_ask.clone();
-        let command: ChatRequest = deserialize_chat_request(d);
-        match command {
-            ChatRequest::ServerType => {
-                let response = ChatResponse::ServerType(self.server_type.clone());
-                self.send_response(id_client, response, session)
-            }
-            ChatRequest::RegisterClient(client_id) => {
-                self.registered_clients.push(client_id);
-                let response = ChatResponse::RegisterClient(true);
-                self.send_response(id_client, response, session);
-            }
-            ChatRequest::GetListClients => {
-                let response = ChatResponse::RegisteredClients(self.registered_clients.clone());
-                self.send_response(id_client, response, session);
-            }
-            ChatRequest::SendMessage(message, id) => {
-                let sender = message.from_id;
-                let receiver = message.to_id;
-                let present = self.is_present(receiver, sender);
-                match present {
-                    Ok(string) => {
-                        let r1 = ChatResponse::SendMessage(Ok(string));
-                        let r2 = ChatResponse::ForwardMessage(message.clone());
-                        self.send_response(sender, r1, session);
-                        self.send_response(receiver, r2, session);
+        let command: ComandoChat = deserialize_comando_chat(d);
+        let id_client = data.who_ask;
+        match command{
+            ComandoChat::Client(reuquest) => {
+                match reuquest{
+                    ChatRequest::ServerType => {
+                        let response = Risposta::Chat(ChatResponse::ServerType(self.server_type.clone()));
+                        self.send_response(id_client, response, session)
                     }
-                    Err(string) => {
-                        let r1 = ChatResponse::SendMessage(Err(string));
-                        self.send_response(sender, r1, session);
+                    ChatRequest::RegisterClient(client_id) => {
+                        self.registered_clients.push(client_id);
+                        let response = Risposta::Chat(ChatResponse::RegisterClient(true));
+                        self.send_response(id_client, response, session);
+                    }
+                    ChatRequest::GetListClients => {
+                        let response = Risposta::Chat(ChatResponse::RegisteredClients(self.registered_clients.clone()));
+                        self.send_response(id_client, response, session);
+                    }
+                    ChatRequest::SendMessage(message, id) => {
+                        let sender = message.from_id;
+                        let receiver = message.to_id;
+                        let present = self.is_present(receiver, sender);
+                        match present {
+                            Ok(string) => {
+                                let r1 = Risposta::Chat(ChatResponse::SendMessage(Ok(string)));
+                                let r2 = Risposta::Chat(ChatResponse::ForwardMessage(message.clone()));
+                                self.send_response(sender, r1, session);
+                                self.send_response(receiver, r2, session);
+                            }
+                            Err(string) => {
+                                let r1 = Risposta::Chat(ChatResponse::SendMessage(Err(string)));
+                                self.send_response(sender, r1, session);
+                            }
+                        }
+                    }
+                    ChatRequest::EndChat(id) => {
+                        self.registered_clients.retain(|&x| x != id);
+                        let response = Risposta::Chat(ChatResponse::EndChat(true));
+                        self.send_response(id_client, response, session);
                     }
                 }
             }
-            ChatRequest::EndChat(id) => {
-                self.registered_clients.retain(|&x| x != id);
-                let response = ChatResponse::EndChat(true);
-                self.send_response(id_client, response, session);
+            ComandoChat::Text(text) => {
+                match text{
+                    TextServer::ServerTypeReq => {
+                        let response = Risposta::Chat(ChatResponse::ServerType(self.server_type.clone()));
+                        self.send_response(id_client, response, session);
+                    }
+                    _ => {unreachable!()}
+                }
             }
         }
-
-
     }
     fn is_present(&self, receiver: NodeId, sender: NodeId) -> Result<String, String> {
         if self.registered_clients.contains(&sender) && self.registered_clients.contains(&receiver) {
@@ -370,26 +390,34 @@ impl Server {
             Err("Error with the registration of the two involved clients".to_string())
         }
     }
-    fn send_response(&mut self, id: NodeId, response: ChatResponse, session: &u64) {
-        let dati = serialize_chat_response(&response);
-        let total = dati.len();
-        let d_to_send = Data { counter: total as u64, dati, who_ask: id };
-        self.fragment_send.insert(*session, d_to_send);
-        let root = self.routing(id);
-        match root {
-            None => {
-                println!("path not found")
-            }
-            Some(root) => {
-                let mut i = 0;
-                for fragment in self.fragment_send[session].dati.clone() {
-                    let routing = SourceRoutingHeader { hop_index: 1, hops: root.clone() };
-                    let f = Fragment { fragment_index: i as u64, total_n_fragments: total as u64, length: fragment.1, data: fragment.0 };
-                    let p = Packet { routing_header: routing, session_id: *session, pack_type: PacketType::MsgFragment(f) };
-                    self.send_packet(p);
-                    i += 1;
+    fn send_response(&mut self, id: NodeId, response: Risposta, session: &u64) {
+        match response {
+            Risposta::Chat(chat) => {
+                let dati = serialize(&chat);
+                let total = dati.len();
+                let d_to_send = Data { counter: total as u64, dati, who_ask: id };
+                self.fragment_send.insert(*session, d_to_send);
+                let root = self.routing(id);
+                match root {
+                    None => {
+                        println!("path not found")
+                    }
+                    Some(root) => {
+                        let mut i = 0;
+                        for fragment in self.fragment_send[session].dati.clone() {
+                            let routing = SourceRoutingHeader { hop_index: 1, hops: root.clone() };
+                            let f = Fragment { fragment_index: i as u64, total_n_fragments: total as u64, length: fragment.1, data: fragment.0 };
+                            let p = Packet { routing_header: routing, session_id: *session, pack_type: PacketType::MsgFragment(f) };
+                            self.send_packet(p);
+                            i += 1;
+                        }
+                    }
                 }
             }
+            _ => {}
         }
     }
 }
+
+
+

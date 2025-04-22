@@ -33,6 +33,7 @@ dependencies = [
  "Krusty_Club",
  "LeDron_James",
  "bagel_bomber",
+ "base64 0.21.7",
  "bevy",
  "bevy_egui",
  "bevy_framepace",
