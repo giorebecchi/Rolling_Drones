@@ -1,10 +1,13 @@
 use bevy::prelude::*;
-use crate::GUI::login_window::{NodeConfig, NodeType};
+use crate::GUI::login_window::{NodeConfig, NodeType,AddedDrone};
 use crate::network_initializer::network_initializer::parse_config;
 
-pub fn spawn_double_chain() -> Vec<NodeConfig> {
+pub fn spawn_double_chain(added_drone: Option<AddedDrone>) -> Vec<NodeConfig> {
     let config = parse_config("assets/configurations/double_chain.toml");
-    let node_count = config.client.len() + config.server.len() + config.drone.len();
+    let mut node_count = config.client.len() + config.server.len() + config.drone.len();
+    if let Some(_)=added_drone{
+        node_count+=1;
+    }
 
     // Calculate how many nodes go in each row
     let nodes_in_first_line = node_count / 2;
@@ -22,6 +25,11 @@ pub fn spawn_double_chain() -> Vec<NodeConfig> {
     // Add drones
     for drone in &config.drone {
         all_nodes.push((NodeType::Drone, drone.id, &drone.connected_node_ids));
+    }
+    let mut links=Vec::new();
+    if let Some(added_drone)=added_drone{
+        links=added_drone.drone.0.clone();
+        all_nodes.push((NodeType::Drone, added_drone.drone.1, &links));
     }
 
     // Add clients

@@ -1,14 +1,17 @@
 use bevy::prelude::*;
 use crate::network_initializer::network_initializer::*;
-use crate::GUI::login_window::{NodeConfig,NodeType};
+use crate::GUI::login_window::{AddedDrone, NodeConfig, NodeType};
 
 
-pub fn spawn_star_decagram() -> Vec<NodeConfig> {
+pub fn spawn_star_decagram(added_drone: Option<AddedDrone>) -> Vec<NodeConfig> {
     let config = parse_config("assets/configurations/double_chain.toml");
     let radius = 200.0;
     let mut nodes = Vec::new();
 
-    let node_count = config.drone.len() + config.client.len() + config.server.len();
+    let mut node_count = config.drone.len() + config.client.len() + config.server.len();
+    if let Some(_)=added_drone{
+        node_count+=1;
+    }
 
     let calculate_position = |index: usize| -> Vec2 {
         let angle = index as f32 * std::f32::consts::TAU / node_count as f32;
@@ -28,6 +31,16 @@ pub fn spawn_star_decagram() -> Vec<NodeConfig> {
             drone.connected_node_ids.clone()
         ));
         current_index += 1;
+    }
+    if let Some(added_drone)=added_drone{
+        let position=calculate_position(current_index);
+        nodes.push(NodeConfig::new(
+            NodeType::Drone,
+            added_drone.drone.1,
+            position,
+            added_drone.drone.0.clone()
+        ));
+        current_index+=1;
     }
 
     for client in &config.client {

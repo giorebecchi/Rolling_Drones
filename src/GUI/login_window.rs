@@ -10,17 +10,14 @@ use wg_2024::network::{NodeId};
 use crate::GUI::star_decagram::spawn_star_decagram;
 use crate::GUI::double_chain::spawn_double_chain;
 use crate::GUI::butterfly::spawn_butterfly;
-use crate::GUI::tree::spawn_tree;
 use crate::simulation_control::simulation_control::*;
 use egui::widgets::TextEdit;
 use wg_2024::controller::{DroneCommand, DroneEvent};
 use wg_2024::packet::Packet;
 use crate::common_things::common::{ChatClientEvent, CommandChat};
 use bevy_framepace::{FramepacePlugin, FramepaceSettings, Limiter};
-use once_cell::sync::Lazy;
-use std::sync::{Arc, RwLock};
+use std::sync::{Arc};
 use crate::GUI::chat_windows::ChatSystemPlugin;
-use crate::GUI::chat_windows::ChatState;
 use crate::GUI::shared_info_plugin::BackendBridgePlugin;
 
 
@@ -66,7 +63,7 @@ pub struct SharedSimState{
 pub struct SimState{
     pub state: Arc<Mutex<SharedSimState>>
 }
-#[derive(Resource, Default)]
+#[derive(Resource, Default, Debug)]
 struct NodeEntities(pub Vec<Entity>);
 
 #[derive(Default,Debug,Clone,PartialEq)]
@@ -77,7 +74,13 @@ pub enum NodeType{
     Client,
 }
 #[derive(Event)]
-struct NewDroneSpawned;
+pub struct NewDroneSpawned{
+    pub drone: (Vec<NodeId>, NodeId)
+}
+#[derive(Resource,Clone,Default)]
+pub struct AddedDrone{
+    pub drone: (Vec<NodeId>,NodeId)
+}
 #[derive(Clone,Resource)]
 pub struct SimulationController {
     pub drones: HashMap<NodeId, Sender<DroneCommand>>,
@@ -123,7 +126,7 @@ pub fn main() {
     App::new()
         .insert_resource(WinitSettings::desktop_app())
         .add_plugins(DefaultPlugins.set(LogPlugin {
-            level: bevy::log::Level::INFO,
+            level: bevy::log::Level::ERROR,
             filter: "".to_string(),
             ..default()
         }))
@@ -135,6 +138,7 @@ pub fn main() {
         })
         .add_plugins(EguiPlugin)
         .init_resource::<OccupiedScreenSpace>()
+        .init_resource::<AddedDrone>()
         .init_resource::<UserConfig>()
         .init_resource::<NodesConfig>()
         .init_resource::<UiCommands>()
@@ -151,6 +155,7 @@ pub fn main() {
         .add_systems(Update, ui_settings)
         .add_systems(Startup, setup_camera)
         .add_systems(OnEnter(AppState::InGame), (start_simulation,setup_network))
+        .add_systems(Update, recompute_network.run_if(in_state(AppState::InGame)))
         .add_systems(Update , (draw_connections,set_up_bundle).run_if(in_state(AppState::InGame)))
 
 
@@ -187,23 +192,20 @@ fn setup_network(
 
     match (*user_config).0.as_str(){
         "star"=>{
-            let nodes= spawn_star_decagram();
+            let nodes= spawn_star_decagram(None);
+            println!("Nodes {:?}",nodes);
             (*nodes_config).0=nodes;
         },
         "double_chain"=>{
-            let nodes=spawn_double_chain();
+            let nodes=spawn_double_chain(None);
             (*nodes_config).0=nodes;
         },
         "butterfly"=>{
-            let nodes= spawn_butterfly();
-            (*nodes_config).0=nodes;
-        },
-        "tree"=>{
-            let nodes= spawn_tree();
+            let nodes= spawn_butterfly(None);
             (*nodes_config).0=nodes;
         },
         _=> {
-            let nodes = spawn_star_decagram();
+            let nodes = spawn_star_decagram(None);
             (*nodes_config).0=nodes;
 
         },
@@ -213,28 +215,27 @@ fn setup_network(
 fn recompute_network(
     mut event_reader: EventReader<NewDroneSpawned>,
     user_config : Res<UserConfig>,
-    mut nodes_config: ResMut<NodesConfig>
+    mut nodes_config: ResMut<NodesConfig>,
+    mut added_drone: ResMut<AddedDrone>
 ){
-    for _ in event_reader.read(){
+    for new_drone in event_reader.read(){
+        added_drone.drone=new_drone.drone.clone();
         match user_config.0.as_str(){
             "star"=>{
-                let nodes= spawn_star_decagram();
+                let nodes= spawn_star_decagram(Some(added_drone.clone()));
+                println!("Nodes {:?}",nodes);
                 (*nodes_config).0=nodes;
             },
             "double_chain"=>{
-                let nodes=spawn_double_chain();
+                let nodes=spawn_double_chain(Some(added_drone.clone()));
                 (*nodes_config).0=nodes;
             },
             "butterfly"=>{
-                let nodes= spawn_butterfly();
-                (*nodes_config).0=nodes;
-            },
-            "tree"=>{
-                let nodes= spawn_tree();
+                let nodes= spawn_butterfly(Some(added_drone.clone()));
                 (*nodes_config).0=nodes;
             },
             _=> {
-                let nodes = spawn_star_decagram();
+                let nodes = spawn_star_decagram(Some(added_drone.clone()));
                 (*nodes_config).0=nodes;
 
             }
@@ -353,9 +354,6 @@ fn ui_settings(
                             next_state.set(AppState::InGame);
                         }else if ui.button("Double chain").clicked(){
                             topology.0="double_chain".to_string();
-                            next_state.set(AppState::InGame);
-                        }else if ui.button("Tree").clicked(){
-                            topology.0="tree".to_string();
                             next_state.set(AppState::InGame);
                         }else if ui.button("Butterfly").clicked(){
                             topology.0="butterfly".to_string();
@@ -585,8 +583,11 @@ fn ui_settings(
                                     for entity in node_entities.0.clone(){
                                         commands.entity(entity).despawn_recursive();
                                     }
-                                    sim.spawn_new_drone(links, new_id);
-                                    event_writer.send(NewDroneSpawned);
+                                    node_entities.0.clear();
+                                    sim.spawn_new_drone(links.clone(), new_id);
+                                    event_writer.send(NewDroneSpawned{
+                                        drone: (links,new_id)
+                                    });
 
                                 }
                                 if ui.button("Exit")

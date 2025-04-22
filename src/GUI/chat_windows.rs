@@ -255,11 +255,12 @@ fn display_windows(
                         && !input_text.is_empty()
                     {
 
+
                         sim.send_message(
                             input_text.clone(),
                             window_id,
                             partner_id,
-                            // server_id
+                            server_id
                         );
                         if let Some(messages)=chat_state.chat_messages.get_mut(&(server_id,(window_id,partner_id))){
                             messages.push(input_text.clone());

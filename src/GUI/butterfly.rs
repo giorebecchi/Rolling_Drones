@@ -1,8 +1,8 @@
 use bevy::prelude::*;
-use crate::GUI::login_window::{NodeConfig, NodeType};
+use crate::GUI::login_window::{NodeConfig, NodeType,AddedDrone};
 use crate::network_initializer::network_initializer::parse_config;
 
-pub fn spawn_butterfly() -> Vec<NodeConfig> {
+pub fn spawn_butterfly(added_drone: Option<AddedDrone>) -> Vec<NodeConfig> {
     let config = parse_config("assets/configurations/double_chain.toml");
     let horizontal_spacing = 100.0;
     let vertical_spacing = 60.0;
@@ -10,6 +10,9 @@ pub fn spawn_butterfly() -> Vec<NodeConfig> {
     let mut all_nodes = Vec::new();
     for drone in config.drone {
         all_nodes.push((NodeType::Drone, drone.id, drone.connected_node_ids));
+    }
+    if let Some(added_drone)=added_drone{
+        all_nodes.push((NodeType::Drone, added_drone.drone.1, added_drone.drone.0.clone()));
     }
     for client in config.client {
         all_nodes.push((NodeType::Client, client.id, client.connected_drone_ids));
