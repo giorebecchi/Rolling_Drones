@@ -91,15 +91,6 @@ pub enum WebResponse{
     Error(String),
 }
 
-#[derive(Serialize, Deserialize, Debug)]
-pub enum CommandText{ //questi vengono mandati al client dal simulation control
-    ServerType(NodeId), //node id del server
-    GetFiles(NodeId), //node id del server a cui chiedere
-    File(NodeId, String), //node id del server, titolo del file da richiedere, se vogliamo il media o no [possiamo anche separare i comandi]
-    Media(NodeId), //se vogliamo separare le richieste
-    MediaList(NodeId),
-    Crash
-}
 
 //NEW DRAFT
 pub type MediaId = String;
@@ -147,4 +138,8 @@ pub enum ContentCommands{
     GetServerType(NodeId), //sent to client, node id of the server needed,
     GetText(NodeId, TextId), //sent to client, text id of the text file needed
     Crash
+}
+
+pub enum WebBrowserEvents{
+    TypeClient(ClientType, NodeId)
 }
