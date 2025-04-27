@@ -1,9 +1,12 @@
+use base64::engine::general_purpose::STANDARD as BASE64;
 use std::collections::{HashMap, HashSet};
+use std::fs;
 use petgraph::graph::{Graph, NodeIndex};
 use petgraph::algo::{astar, dijkstra};
 use std::fs::File;
 use std::io::{self, BufRead};
 use std::path::Path;
+use base64::Engine;
 use crossbeam_channel::{select_biased, Receiver, Sender};
 use petgraph::data::Build;
 use serde::Serialize;
@@ -124,24 +127,18 @@ impl Server{
 
     fn send_image(&mut self, path:&str, id:NodeId, nt:NodeType){
         let pos = path.rfind('.').unwrap();
+        let mut filebytes = "".to_string();
+        match fs::read(Path::new(path)){
+            Ok(fb) => {filebytes = BASE64.encode(&fb);},
+            Err(_) => {println!("could not read file");}
+        }
         let fmd = FileMetaData{
             title: path[..pos].to_string(),
             extension:path[pos+1..].to_string(),
-            s_id: self.session_id.clone() + 1,
+            content: filebytes,
         };
         if let Some(srh)=self.get_route(id,nt){
             if let Ok(vec) = TextServer::Text(fmd).serialize_data(srh.clone(),self.session_id){
-                let mut fragments_send = Vec::new();
-                for i in vec.iter(){
-                    if let PacketType::MsgFragment(fragment) = i.clone().pack_type{
-                        fragments_send.push(fragment);
-                    }
-                    self.forward_packet(i.clone());
-                }
-                self.fragments_send.insert(self.session_id.clone(), (id,nt,fragments_send));
-                self.session_id+=1;
-            }
-            if let Ok(vec) = Vec::<u8>::serialize_file_from_path(path, srh, self.session_id){
                 let mut fragments_send = Vec::new();
                 for i in vec.iter(){
                     if let PacketType::MsgFragment(fragment) = i.clone().pack_type{
