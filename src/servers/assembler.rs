@@ -48,56 +48,56 @@ impl Fragmentation for TextServer{}
 impl Fragmentation for MediaServer{}
 impl Fragmentation for WebBrowserCommands{}
 
-pub trait FileFragmentation {
-    fn serialize_file_from_path(path: &str, routing_header: SourceRoutingHeader, session_id: u64)
-                                -> Result<Vec<Packet>, Box<dyn Error>>;
-
-    fn deserialize_file_to_bytes(fragments: &mut Vec<Fragment>) -> Result<Vec<u8>, String>;
-}
-
-impl FileFragmentation for Vec<u8> {
-    fn serialize_file_from_path(path: &str,routing_header: SourceRoutingHeader,session_id: u64,) -> Result<Vec<Packet>, Box<dyn Error>> {
-        let file_data = fs::read(path)?; // Read file as bytes
-        let total_size = file_data.len();
-        let total_fragments = ((total_size + FRAGMENT_DSIZE - 1) / FRAGMENT_DSIZE) as u64;
-        let mut packets = Vec::new();
-
-        for i in 0..total_fragments {
-            let start = i as usize * FRAGMENT_DSIZE;
-            let end = usize::min(start + FRAGMENT_DSIZE, total_size);
-            let chunk = &file_data[start..end];
-
-            // Copy to fixed-size array
-            let mut fixed_data = [0u8; FRAGMENT_DSIZE];
-            fixed_data[..chunk.len()].copy_from_slice(chunk);
-
-            let fragment = Fragment {
-                fragment_index: i,
-                total_n_fragments: total_fragments,
-                length: chunk.len() as u8,
-                data: fixed_data,
-            };
-
-            let packet = Packet {
-                routing_header: routing_header.clone(),
-                session_id,
-                pack_type: MsgFragment(fragment),
-            };
-
-            packets.push(packet);
-        }
-
-        Ok(packets)
-    }
-
-    fn deserialize_file_to_bytes(fragments: &mut Vec<Fragment>) -> Result<Vec<u8>, String> {
-        fragments.sort_by_key(|f| f.fragment_index);
-
-        let mut output = Vec::new();
-        for frag in fragments.iter() {
-            output.extend_from_slice(&frag.data[..frag.length as usize]);
-        }
-
-        Ok(output)
-    }
-}
+// pub trait FileFragmentation {
+//     fn serialize_file_from_path(path: &str, routing_header: SourceRoutingHeader, session_id: u64)
+//                                 -> Result<Vec<Packet>, Box<dyn Error>>;
+// 
+//     fn deserialize_file_to_bytes(fragments: &mut Vec<Fragment>) -> Result<Vec<u8>, String>;
+// }
+// 
+// impl FileFragmentation for Vec<u8> {
+//     fn serialize_file_from_path(path: &str,routing_header: SourceRoutingHeader,session_id: u64,) -> Result<Vec<Packet>, Box<dyn Error>> {
+//         let file_data = fs::read(path)?; // Read file as bytes
+//         let total_size = file_data.len();
+//         let total_fragments = ((total_size + FRAGMENT_DSIZE - 1) / FRAGMENT_DSIZE) as u64;
+//         let mut packets = Vec::new();
+// 
+//         for i in 0..total_fragments {
+//             let start = i as usize * FRAGMENT_DSIZE;
+//             let end = usize::min(start + FRAGMENT_DSIZE, total_size);
+//             let chunk = &file_data[start..end];
+// 
+//             // Copy to fixed-size array
+//             let mut fixed_data = [0u8; FRAGMENT_DSIZE];
+//             fixed_data[..chunk.len()].copy_from_slice(chunk);
+// 
+//             let fragment = Fragment {
+//                 fragment_index: i,
+//                 total_n_fragments: total_fragments,
+//                 length: chunk.len() as u8,
+//                 data: fixed_data,
+//             };
+// 
+//             let packet = Packet {
+//                 routing_header: routing_header.clone(),
+//                 session_id,
+//                 pack_type: MsgFragment(fragment),
+//             };
+// 
+//             packets.push(packet);
+//         }
+// 
+//         Ok(packets)
+//     }
+// 
+//     fn deserialize_file_to_bytes(fragments: &mut Vec<Fragment>) -> Result<Vec<u8>, String> {
+//         fragments.sort_by_key(|f| f.fragment_index);
+// 
+//         let mut output = Vec::new();
+//         for frag in fragments.iter() {
+//             output.extend_from_slice(&frag.data[..frag.length as usize]);
+//         }
+// 
+//         Ok(output)
+//     }
+// }
