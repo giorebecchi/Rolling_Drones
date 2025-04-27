@@ -108,7 +108,7 @@ pub type TextId = String;
 pub struct FileMetaData{
     pub(crate) title: String, 
     pub(crate) extension: String,
-    pub(crate) s_id: u64,
+    pub(crate) content: String,
 }
 #[derive(Serialize, Deserialize, Debug)]
 pub enum WebBrowserCommands{

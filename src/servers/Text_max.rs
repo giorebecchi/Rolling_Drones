@@ -7,7 +7,7 @@ use crossbeam_channel::{select_biased, unbounded, Receiver, Sender};
 use std::collections::{BinaryHeap, HashMap};
 use std::{fs, io, thread};
 use std::fs::File;
-use std::io::{BufRead, BufReader, Error};
+use std::io::{BufRead, BufReader};
 use std::path::Path;
 use wg_2024::network::{NodeId, SourceRoutingHeader};
 use wg_2024::packet::{Ack, FloodRequest, FloodResponse, Fragment, Nack, NackType, NodeType, Packet, PacketType};
@@ -388,9 +388,7 @@ impl Server {
                     MediaServer::SendPath(v) => {
                         if self.media_others.contains_key(&id_client) {
                             self.media_others.insert(id_client, v);
-                        } else {
-                            unreachable!()
-                        }
+                        } else {}
                     }
                     MediaServer::SendMedia(_) => {
                         unreachable!()
@@ -436,29 +434,27 @@ impl Server {
                                 let response = Risposta::Text(TextServer::PositionMedia(id_server));
                                 self.send_response(id_client, response, session);
                             }
-
-
                             _ => {} // chiedi per la gestione degli errori
                         }
-
-
                     }
                     WebBrowserCommands::GetMedia(media_name) => {
                         let media = self.get_media(media_name.clone());
+                        let name = title_and_extension(media_name);
                         let file = FileMetaData{
-                            title: media_name,
-                            extension: media.unwrap(),
-                            s_id: session.clone(),
+                            title: name.0,
+                            extension: name.1,
+                            content : media.unwrap(),
                         };
                         let response = Risposta::Media(MediaServer::SendMedia(file));
                         self.send_response(id_client, response, session);
                     }
                     WebBrowserCommands::GetText(text_name) => {
                         let text = self.get_text_from_file(text_name.clone());
+                        let name = title_and_extension(text_name);
                         let file = FileMetaData{
-                            title: text_name,
-                            extension: text.unwrap(),
-                            s_id: session.clone(),
+                            title: name.0,
+                            extension: name.1,
+                            content: text.unwrap(),
                         };
                         let response = Risposta::Text(TextServer::Text(file));
                         self.send_response(id_client, response, session);
@@ -630,6 +626,12 @@ impl Server {
         }
     }
 
+}
+
+fn title_and_extension(name: String) -> (String, String) {
+    let s2 = name[name.len()-3..].to_string();
+    let s1 = name[0..name.len()-4].to_string();
+    (s1, s2)
 }
 
 fn read_file<P: AsRef<Path>>(path: P) -> Result<String, io::Error> {
@@ -1217,6 +1219,3 @@ pub(crate) fn main() -> () {
 
 
 }
-
-
-
