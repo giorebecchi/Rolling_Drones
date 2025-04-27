@@ -86,31 +86,8 @@ impl ChatClient {
     }
 
     pub fn send_type_client(& mut self){
-        if let Err(_) = self.event_send.send(OtherClientType(self.client_type.clone(),self.config.id)){
+        if let Err(_) = self.event_send.send(OtherClientType(self.client_type.clone(),self.config.id.clone())){
             println!("Error sending client type");
-        }
-    }
-
-    pub fn get_chat_servers(& mut self){
-        println!("Discovered servers: {:?}", self.servers);
-        for server in self.servers.clone(){
-            let request_to_send = ChatRequest::ServerType;
-            self.fragments_sent = ChatRequest::fragment_message(&request_to_send);
-
-            match self.find_route(&server) {
-                Ok(route) => {
-                    println!("route: {:?}", route);
-                    let packets_to_send = ChatRequest::create_packet(&self.fragments_sent, route.clone(), &mut self.session_id_packet);
-                    for packet in packets_to_send {
-                        if let Some(next_hop) = route.get(1){
-                            self.send_packet(next_hop, packet);
-                        }else { println!("No next hop found") }
-                    }
-                    println!("Sent request to get the server type to server: {}", server);
-
-                }
-                Err(_) => {println!("No route found for the destination server")}
-            }
         }
     }
 
@@ -234,7 +211,6 @@ impl ChatClient {
 
         let request = ChatRequest::SendMessage(message, id_server);
         self.fragments_sent = ChatRequest::fragment_message(&request);
-
 
         match self.find_route(&id_server){
             Ok(route) => {
@@ -435,7 +411,6 @@ impl ChatClient {
             }
         }
 
-
     }
 
     pub fn handle_flood_req(& mut self, packet: Packet){
@@ -475,7 +450,7 @@ impl ChatClient {
        }
     }
 
-    pub fn build_topology(& mut self ){
+    pub fn build_topology(& mut self){
         self.topology.clear();
 
         for resp in &self.flood{

@@ -47,7 +47,6 @@ pub enum ChatResponse{
     ForwardMessage(MessageChat)
 }
 
-
 #[derive(Serialize,Deserialize,Debug, Clone)]
 pub struct MessageChat{ //which needs to be fragmented
     //pub general: Packet,
@@ -69,39 +68,8 @@ pub enum ClientType{
     WebBrowser
 }
 
-// text/media server and client
 
-#[derive(Serialize, Deserialize, Debug)]
-pub enum RequestWeb {
-    ServerType,
-    TextList, //to retrieve text file list
-    TextFile (String), //title file
-    MediaList,
-    Media (String)
-}
-
-// server to client
-#[derive(Serialize, Deserialize, Debug)]
-pub enum WebResponse{
-    ServerType(ServerType),
-    FileList(Vec<String>),
-    File(String), // la stringa con tutto il file di testo
-    MediaList(Vec<String>),
-    Media (String),
-    Error(String),
-}
-
-#[derive(Serialize, Deserialize, Debug)]
-pub enum CommandText{ //questi vengono mandati al client dal simulation control
-    ServerType(NodeId), //node id del server
-    GetFiles(NodeId), //node id del server a cui chiedere
-    File(NodeId, String), //node id del server, titolo del file da richiedere, se vogliamo il media o no [possiamo anche separare i comandi]
-    Media(NodeId), //se vogliamo separare le richieste
-    MediaList(NodeId),
-    Crash
-}
-
-//NEW DRAFT
+//COMMANDS TEXT, MEDIA SERVERS AND WEB BROWSER
 pub type MediaId = String;
 pub type TextId = String;
 #[derive(Serialize, Deserialize, Debug)]
@@ -131,7 +99,7 @@ pub enum TextServer{
 
 #[derive(Serialize, Deserialize, Debug)]
 pub enum MediaServer{
-    ServerType(ServerType), //probably needed
+    ServerType(ServerType),
     SendPath(Vec<MediaId>), //send paths to the text server
     SendMedia(FileMetaData) //send correct media to the client who asked
 }
@@ -147,4 +115,8 @@ pub enum ContentCommands{
     GetServerType(NodeId), //sent to client, node id of the server needed,
     GetText(NodeId, TextId), //sent to client, text id of the text file needed
     Crash
+}
+
+pub enum WebBrowserEvents{ //not complete
+    TypeClient(ClientType, NodeId)
 }

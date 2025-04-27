@@ -11,10 +11,12 @@ use wg_2024::config::Client;
 use wg_2024::network::{NodeId, SourceRoutingHeader};
 use wg_2024::packet::{FloodRequest, FloodResponse, Fragment, NodeType, Packet, PacketType};
 use crate::clients::assembler::Fragmentation;
-use crate::common_things::common::{ChatRequest, CommandText, ContentCommands, MediaId, WebBrowserCommands};
+use crate::common_things::common::{ChatRequest, ClientType, ContentCommands, MediaId, WebBrowserCommands, WebBrowserEvents};
+use crate::common_things::common::WebBrowserEvents::TypeClient;
 
 pub struct WebBrowser {
     pub config: Client,
+    pub client_type: ClientType,
     pub receiver_msg: Receiver<Packet>,
     pub receiver_commands: Receiver<ContentCommands>, //command received by the simulation control
     pub send_packets: HashMap<NodeId, Sender<Packet>>,
@@ -26,13 +28,20 @@ pub struct WebBrowser {
     pub incoming_fragments: HashMap<(u64, NodeId ), HashMap<u64, Fragment>>,
     pub fragments_sent: HashMap<u64, Fragment>, //used for sending the correct fragment if was lost in the process
     pub problematic_nodes: Vec<NodeId>,
-    pub topology: DiGraphMap<NodeId, u32>
+    pub topology: DiGraphMap<NodeId, u32>,
+    pub send_event: Sender<WebBrowserEvents>
 }
 
 impl WebBrowser {
-    pub fn new(id: NodeId, receiver_msg: Receiver<Packet>, receiver_commands: Receiver<ContentCommands>, send_packets: HashMap<NodeId, Sender<Packet>>) -> WebBrowser {
+    pub fn new(
+        id: NodeId, receiver_msg: Receiver<Packet>,
+        receiver_commands: Receiver<ContentCommands>,
+        send_packets: HashMap<NodeId, Sender<Packet>>,
+        send_event: Sender<WebBrowserEvents>
+    ) -> Self {
         Self{
             config: Client{id, connected_drone_ids:Vec::new()},
+            client_type: ClientType::WebBrowser,
             receiver_msg,
             receiver_commands,
             send_packets,
@@ -44,20 +53,25 @@ impl WebBrowser {
             incoming_fragments: HashMap::new(),
             fragments_sent: HashMap::new(),
             problematic_nodes: Vec::new(),
-            topology: DiGraphMap::new()
+            topology: DiGraphMap::new(),
+            send_event,
         }
     }
     pub fn run(& mut self) {
         self.flooding();
+        self.send_type_sim();
+
         loop{
             select_biased! {
                 recv(self.receiver_commands) -> command =>{
                     if let Ok(command) = command {
+                        self.build_topology();
                         self.handle_commands(command);
                     }
                 }
                 recv(self.receiver_msg) -> message =>{
                     if let Ok(message) = message {
+                        self.build_topology();
                         self.handle_messages(message)
                     }
                 }
@@ -67,8 +81,12 @@ impl WebBrowser {
 
     fn handle_commands(&mut self, command: ContentCommands) {
         match command {
-            ContentCommands::GetServerType(id_server) => {self.ask_type(id_server)},
-            ContentCommands::GetTextList(id_server) => {self.get_list(id_server)},
+            ContentCommands::GetServerType(id_server) => {
+                self.ask_type(id_server)
+            },
+            ContentCommands::GetTextList(id_server) => {
+                self.get_list(id_server)
+            },
             ContentCommands::GetMediaPosition(id_server, id_media) => {
                 self.get_position(id_server, id_media)
             },
@@ -84,11 +102,17 @@ impl WebBrowser {
 
     fn handle_messages(& mut self, message: Packet){
         match message.pack_type{
-            PacketType::MsgFragment(_) => {},
-            PacketType::Ack(_) => {},
-            PacketType::Nack(_) => {},
+            PacketType::MsgFragment(_) => {self.handle_fragments(message)},
+            PacketType::Ack(_) => {self.handle_acks(message)},
+            PacketType::Nack(_) => {self.handle_nacks(message)},
             PacketType::FloodResponse(_) => {self.handle_flood_response(message)},
             PacketType::FloodRequest(_) => {self.handle_flood_request(message)},
+        }
+    }
+
+    pub fn send_type_sim(& mut self){
+        if let Err(_) = self.send_event.send(TypeClient(self.client_type.clone(), self.config.id.clone())){
+            println!("Error sending client type to simulation control")
         }
     }
 
@@ -114,10 +138,6 @@ impl WebBrowser {
             Err(_) => { println!("No route found for the destination server") }
         }
     }
-
-
-
-
 
     pub fn get_list(& mut self, id_server: NodeId) {
         if !self.servers.contains(&id_server) {
@@ -210,6 +230,19 @@ impl WebBrowser {
 
     }
 
+    // incoming messages
+    pub fn handle_fragments(& mut self, packet: Packet){
+
+    }
+
+    pub fn handle_nacks(& mut self, packet: Packet){}
+
+    pub fn handle_acks(& mut self, packet: Packet){
+        if let PacketType::Ack(ack) = packet.pack_type{
+            self.fragments_sent.retain(|index, _| *index != ack.fragment_index); //this filters the hashmap, removing the ones with that index
+        }
+    }
+
 
     pub fn flooding(& mut self){
         let mut flood_id = self.unique_flood_id;
@@ -240,7 +273,6 @@ impl WebBrowser {
                         self.servers.push(*node_id); //no duplicates
                     }
                 }
-
                 self.flood.push(flood_response); //storing all the flood responses to then access the path traces and find the quickest one
             }
 
@@ -290,6 +322,19 @@ impl WebBrowser {
         }else { println!("Flood request not found") }
     }
 
+    pub fn build_topology(& mut self){
+        self.topology.clear();
+
+        for resp in &self.flood{
+            let path = &resp.path_trace;
+            for pair in path.windows(2) {
+                let (src, _) = pair[0];
+                let (dst, _) = pair[1];
+                self.topology.add_edge(src.clone(), dst.clone(), 1); // use 1 as weight (hop), could me modified for the nack
+            }
+        }
+    }
+
     pub fn find_path(& mut self, destination_id : &NodeId)-> Result<Vec<NodeId>, String>{
         let source = self.config.id.clone();
         let result = dijkstra(&self.topology, source.clone(), Some(destination_id.clone()), |_| 1);
@@ -337,6 +382,20 @@ impl WebBrowser {
         }else { println!("no sender") } //have to send back nack
     }
 
+    pub fn create_ack(& mut self, packet: &Packet)-> Packet{
+        let mut fragment_index = 0;
+        if let PacketType::MsgFragment(fragment) = packet.clone().pack_type {
+            fragment_index = fragment.fragment_index;
+        }
+        let mut hops = Vec::new();
+        for h in packet.routing_header.hops.iter().rev(){
+            hops.push(*h);
+        }
+        let source_routing_header = SourceRoutingHeader::new(hops, 0);
+
+        let ack_packet = Packet::new_ack(source_routing_header, packet.session_id, fragment_index );
+        ack_packet
+    }
 
 
 }
