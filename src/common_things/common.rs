@@ -114,9 +114,16 @@ pub enum ContentCommands{
     GetMedia(NodeId, MediaId), //sent to client with id of media, node id of the media server, probably better automated if possible
     GetServerType(NodeId), //sent to client, node id of the server needed,
     GetText(NodeId, TextId), //sent to client, text id of the text file needed
+    SearchTypeServers,
     Crash
 }
 
+//from client to SC
 pub enum WebBrowserEvents{ //not complete
-    TypeClient(ClientType, NodeId)
+    TypeClient(ClientType, NodeId), //type and id client, sent to sc at the start
+    MediaServers(NodeId, Vec<NodeId>), //node id client, list of media servers found after the SearchTypeServers command is sent
+    TextServers(NodeId, Vec<NodeId>), //node id client, list of test servers found after the SearchTypeServers command is sent
+    ListFiles(NodeId, Vec<String>), //node id client, list of all the available files
+    MediaPosition(NodeId, NodeId) //node id of client and the node id of the media server where the media is located
+
 }

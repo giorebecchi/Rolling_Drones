@@ -8,7 +8,7 @@ use serde::de::DeserializeOwned;
 use serde::de::Unexpected::Str;
 use wg_2024::network::{NodeId, SourceRoutingHeader};
 use wg_2024::packet::{Fragment, NodeType, Packet, FRAGMENT_DSIZE};
-use crate::common_things::common::{ChatRequest, ChatResponse, ServerType, WebBrowserCommands};
+use crate::common_things::common::{ChatRequest, ChatResponse, MediaServer, ServerType, TextServer, WebBrowserCommands};
 use crate::common_things::common::MessageChat;
 
 pub trait Serialization{
@@ -82,6 +82,13 @@ impl Fragmentation for ChatResponse{}
 
 impl Serialization for WebBrowserCommands {}
 impl Fragmentation for WebBrowserCommands {}
+
+impl Serialization for TextServer{}
+impl Fragmentation for TextServer{}
+
+impl Serialization for MediaServer{}
+impl Fragmentation for MediaServer{}
+
 
 
 pub fn main(){
