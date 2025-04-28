@@ -2,167 +2,141 @@ use std::cmp::Ordering;
 use std::fs;
 use std::path::Path;
 use bincode;
+use serde::de::DeserializeOwned;
 use wg_2024::network::{NodeId, SourceRoutingHeader};
 use wg_2024::packet::{Ack, Packet, PacketType};
-use crate::common_things::common::{ChatRequest, ChatResponse, RequestWeb, WebResponse};
-
-
-pub fn serialize_web_response(response: &WebResponse) -> Box<[([u8; 128], u8)]> {
-    let serialized_data = serde_json::to_string(response).expect("Errore nella serializzazione");
-
-    // Calcoliamo il numero di blocchi necessari
-    let num_blocks = (serialized_data.len() + 127) / 128;
-    let mut boxed_array: Vec<([u8; 128], u8)> = Vec::with_capacity(num_blocks);
-
-    // Dividiamo i dati in blocchi da 128 byte
-    for chunk in serialized_data.as_bytes().chunks(128) {
-        let mut block = [0u8; 128]; // Inizializziamo un blocco pieno di zeri
-        block[..chunk.len()].copy_from_slice(chunk); // Copiamo solo i byte utili
-        boxed_array.push((block, chunk.len() as u8)); // Aggiungiamo la tupla (dati, lunghezza)
-    }
-
-    boxed_array.into_boxed_slice()
-}
-pub fn serialize_chat_response(response: &ChatResponse) -> Box<[([u8; 128], u8)]> {
-    let serialized_data = serde_json::to_string(response).expect("Errore nella serializzazione");
+use crate::common_things::*;
 
 
 
 
-    // Calcoliamo il numero di blocchi necessari
+use serde::Serialize;
+use crate::common_things::common::{ChatRequest, ChatResponse, MediaServer, TextServer, WebBrowserCommands};
+
+
+pub fn serialize<T>(response: &T) -> Box<[([u8; 128], u8)]>
+where
+    T: Serialize,
+{
+    let serialized_data = serde_json::to_string(response)
+        .expect("Errore nella serializzazione");
+
+
     let num_blocks = (serialized_data.len() + 127) / 128;
     let mut boxed_array: Vec<([u8; 128], u8)> = Vec::with_capacity(num_blocks);
 
 
-
-
-    // Dividiamo i dati in blocchi da 128 byte
     for chunk in serialized_data.as_bytes().chunks(128) {
-        let mut block = [0u8; 128]; // Inizializziamo un blocco pieno di zeri
-        block[..chunk.len()].copy_from_slice(chunk); // Copiamo solo i byte utili
-        boxed_array.push((block, chunk.len() as u8)); // Aggiungiamo la tupla (dati, lunghezza)
+        let mut block = [0u8; 128];
+        block[..chunk.len()].copy_from_slice(chunk);
+        boxed_array.push((block, chunk.len() as u8));
     }
-
-
 
 
     boxed_array.into_boxed_slice()
 }
-pub fn deserialize_web_request(input: Box<[([u8; 128], u8)]>) -> RequestWeb {
-    // Creiamo un buffer abbastanza grande per contenere tutti i byte utili
+
+
+pub fn deserialize_comando_text(input: Box<[([u8; 128], u8)]>) -> ComandoText {
     let total_length: usize = input.iter().map(|(_, len)| *len as usize).sum();
     let mut all_bytes = Vec::with_capacity(total_length);
 
 
-
-
-    // Concatenare tutti i byte validi
     for (chunk, len) in input.iter() {
         all_bytes.extend_from_slice(&chunk[..*len as usize]);
     }
 
 
-
-
-    // Convertire in stringa UTF-8
     let serialized_string = match String::from_utf8(all_bytes) {
         Ok(s) => s,
         Err(e) => panic!("Errore nella conversione da UTF-8: {}", e),
     };
 
 
-
-
     println!("JSON ricevuto: {}", serialized_string);
 
 
-
-
-    // 4️⃣ Deserializzare in `TextRequest`
-    match serde_json::from_str::<RequestWeb>(&serialized_string) {
-        Ok(request) => request,
-        Err(e) => panic!("Errore nella deserializzazione: {}", e),
+    // Prova in ordine: MediaServer -> TextServer -> ChatResponse
+    if let Ok(media) = serde_json::from_str::<MediaServer>(&serialized_string) {
+        return ComandoText::Media(media);
     }
+
+
+    if let Ok(text) = serde_json::from_str::<TextServer>(&serialized_string) {
+        return ComandoText::Text(text);
+    }
+
+
+    if let Ok(chat) = serde_json::from_str::<ChatResponse>(&serialized_string) {
+        return ComandoText::Chat(chat);
+    }
+
+
+    if let Ok(client) = serde_json::from_str::<WebBrowserCommands>(&serialized_string) {
+        return ComandoText::Client(client);
+    }
+
+
+    panic!("Errore: Nessuna delle deserializzazioni ha avuto successo per ComandoText.");
 }
-pub fn deserialize_chat_request(input: Box<[([u8; 128], u8)]>) -> ChatRequest {
-    // Creiamo un buffer abbastanza grande per contenere tutti i byte utili
+pub fn deserialize_comando_chat(input: Box<[([u8; 128], u8)]>) -> ComandoChat {
     let total_length: usize = input.iter().map(|(_, len)| *len as usize).sum();
     let mut all_bytes = Vec::with_capacity(total_length);
 
 
-
-
-    // Concatenare tutti i byte validi
     for (chunk, len) in input.iter() {
         all_bytes.extend_from_slice(&chunk[..*len as usize]);
     }
 
 
-
-
-    // Convertire in stringa UTF-8
     let serialized_string = match String::from_utf8(all_bytes) {
         Ok(s) => s,
         Err(e) => panic!("Errore nella conversione da UTF-8: {}", e),
     };
 
 
-
-
     println!("JSON ricevuto: {}", serialized_string);
 
 
-
-
-    // 4️⃣ Deserializzare in `TextRequest`
-    match serde_json::from_str::<ChatRequest>(&serialized_string) {
-        Ok(request) => request,
-        Err(e) => panic!("Errore nella deserializzazione: {}", e),
+    // Prova in ordine: MediaServer -> TextServer -> ChatResponse
+    if let Ok(text) = serde_json::from_str::<TextServer>(&serialized_string) {
+        return ComandoChat::Text(text);
     }
+
+
+
+
+    if let Ok(client ) = serde_json::from_str::<ChatRequest>(&serialized_string) {
+        return ComandoChat::Client(client);
+    }
+
+
+    panic!("Errore: Nessuna delle deserializzazioni ha avuto successo per ComandoText.");
 }
-pub fn deserialize_text_r(input: Box<[([u8; 128], u8)]>) -> WebResponse {
-    // Creiamo un buffer abbastanza grande per contenere tutti i byte utili
-    let total_length: usize = input.iter().map(|(_, len)| *len as usize).sum();
-    let mut all_bytes = Vec::with_capacity(total_length);
 
-    // Concatenare tutti i byte validi
-    for (chunk, len) in input.iter() {
-        all_bytes.extend_from_slice(&chunk[..*len as usize]);
-    }
 
-    // Convertire in stringa UTF-8
-    let serialized_string = match String::from_utf8(all_bytes) {
-        Ok(s) => s,
-        Err(e) => panic!("Errore nella conversione da UTF-8: {}", e),
-    };
 
-    println!("JSON ricevuto: {}", serialized_string);
-    // 4️⃣ Deserializzare in `TextRequest`
-    match serde_json::from_str::<WebResponse>(&serialized_string) {
-        Ok(request) => request,
-        Err(e) => panic!("Errore nella deserializzazione: {}", e),
-    }
-}
-pub fn serialize_text_r(response: &RequestWeb) -> Box<[([u8; 128], u8)]> {
-    let serialized_data = serde_json::to_string(response).expect("Errore nella serializzazione");
 
-    // Calcoliamo il numero di blocchi necessari
-    let num_blocks = (serialized_data.len() + 127) / 128;
-    let mut boxed_array: Vec<([u8; 128], u8)> = Vec::with_capacity(num_blocks);
-
-    // Dividiamo i dati in blocchi da 128 byte
-    for chunk in serialized_data.as_bytes().chunks(128) {
-        let mut block = [0u8; 128]; // Inizializziamo un blocco pieno di zeri
-        block[..chunk.len()].copy_from_slice(chunk); // Copiamo solo i byte utili
-        boxed_array.push((block, chunk.len() as u8)); // Aggiungiamo la tupla (dati, lunghezza)
-    }
-
-    boxed_array.into_boxed_slice()
-}
 
 
 //----------------------------------------------------------------------------------------------------
 
+
+pub enum ComandoChat{
+    Client(ChatRequest),
+    Text(TextServer),
+}
+pub enum Risposta{
+    Text(TextServer),
+    Media(MediaServer),
+    Chat(ChatResponse)
+}
+pub enum ComandoText{
+    Media(MediaServer),
+    Text(TextServer),
+    Chat(ChatResponse),
+    Client(WebBrowserCommands)
+}
 #[derive(Eq, PartialEq)]
 pub(crate) struct State {
     pub node: NodeId,
@@ -217,6 +191,14 @@ pub(crate) fn create_ack(packet: Packet) ->Packet {
     };
     pack
 }
+
+
+
+
+
+
+
+
 
 
 

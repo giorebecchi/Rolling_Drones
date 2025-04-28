@@ -1,4 +1,5 @@
 use std::collections::HashMap;
+use std::error::Error;
 use std::string::String;
 use wg_2024::packet;
 use wg_2024::controller;
@@ -37,7 +38,6 @@ pub trait Fragmentation: Serialization{
     fn reassemble_msg(fragments: &HashMap<u64, Fragment>)-> Result<Self, String> where Self:Sized + DeserializeOwned{
         let mut ordered_frag: Vec<(&u64, &Fragment)> = fragments.iter().collect();
         ordered_frag.sort_by_key(|&(k, _)| k);
-        // println!("{:?}", ordered_frag);
 
         let mut reassembled_frag = Vec::new();
         for (_, frag) in ordered_frag{
@@ -69,8 +69,6 @@ impl MessageChat{
         MessageChat{ content, from_id, to_id }
     }
 }
-
-
 
 impl Serialization for MessageChat{}
 impl Fragmentation for MessageChat{}
