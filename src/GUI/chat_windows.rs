@@ -2,7 +2,7 @@ use std::collections::HashMap;
 use bevy::prelude::*;
 use bevy::window::PrimaryWindow;
 use bevy_egui::{egui, EguiContexts};
-use crate::GUI::login_window::{NodeConfig, NodeType, SimulationController};
+use crate::GUI::login_window::SimulationController;
 use crate::GUI::login_window::NodesConfig;
 use wg_2024::network::NodeId;
 use crate::GUI::login_window::Clickable;
@@ -39,7 +39,7 @@ struct OpenWindows {
     windows: Vec<NodeId>,
     click_count: usize
 }
-fn handle_clicks(
+pub fn handle_clicks(
     windows: Query<&Window, With<PrimaryWindow>>,
     buttons: Res<ButtonInput<MouseButton>>,
     camera_q: Query<(&Camera, &GlobalTransform)>,
@@ -255,11 +255,12 @@ fn display_windows(
                         && !input_text.is_empty()
                     {
 
+
                         sim.send_message(
                             input_text.clone(),
                             window_id,
                             partner_id,
-                            // server_id
+                            server_id
                         );
                         if let Some(messages)=chat_state.chat_messages.get_mut(&(server_id,(window_id,partner_id))){
                             messages.push(input_text.clone());

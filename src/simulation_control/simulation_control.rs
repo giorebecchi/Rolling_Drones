@@ -1,7 +1,7 @@
-use std::cell::RefCell;
+
 use crossbeam_channel::{select_biased, unbounded, Receiver, Sender};
 use std::collections::{HashMap, HashSet};
-use std::rc::Rc;
+
 use std::thread;
 use std::sync::{Arc,Mutex};
 use std::time::Duration;
@@ -12,7 +12,6 @@ use wg_2024::packet::{Fragment, Packet, PacketType};
 use bevy::prelude::{Res, ResMut};
 use bagel_bomber::BagelBomber;
 use fungi_drone::FungiDrone;
-use Krusty_Club::Krusty_C;
 use skylink::SkyLinkDrone;
 use LeDron_James::Drone as Le_Drone;
 use lockheedrustin_drone::LockheedRustin;
@@ -67,13 +66,7 @@ impl SimulationController {
                     if let Ok(chat_event) = event {
                         match chat_event {
                             ChatClientEvent::IncomingMessage((id_client,id_server,id_from),message)=>{
-                                //if let Some(mut messages) = self.incoming_message.get_mut(&(id_client, id_server)){
-                                //    messages.push(message)
-                                //}else{
-                                //    let mut messages=Vec::new();
-                                //    messages.push(message);
-                                //    self.incoming_message.insert((id_client,id_server), messages);
-                                //}
+
                                 if let Ok(mut state)=SHARED_STATE.write(){
                                     if let Some(mut messages) = state.responses.get_mut(&(id_server,(id_from,id_client))){
                                         messages.push(message.clone());
@@ -88,12 +81,6 @@ impl SimulationController {
                             },
                             ChatClientEvent::ClientList((id_client,id_server), mut registered_clients)=>{
 
-                                //if let Some(mut current_clients) = self.client_list.get_mut(&(id_client, id_server)){
-                                //    current_clients=&mut registered_clients;
-                                //}else{
-                                //    self.client_list.insert((id_client,id_server),registered_clients);
-                                //}
-                                //println!("SC_client_list: {:?}",self.client_list);
                                 if let Ok(mut state)=SHARED_STATE.write(){
                                     if let Some( current_clients) = state.client_list.get_mut(&(id_client,id_server)) {
                                         let _=std::mem::replace(current_clients, registered_clients);
@@ -322,8 +309,8 @@ impl SimulationController {
             }
         });
     }
-    pub fn send_message(&mut self, message: String, client_id: NodeId, destination_client: NodeId){
-        self.client.get(&client_id).unwrap().send(CommandChat::SendMessage(destination_client, 12, message)).unwrap()
+    pub fn send_message(&mut self, message: String, client_id: NodeId, destination_client: NodeId, chat_server: NodeId){
+        self.client.get(&client_id).unwrap().send(CommandChat::SendMessage(destination_client, chat_server, message)).unwrap()
     }
     pub fn register_client(&mut self, client_id: NodeId, server_id: NodeId){
         self.client.get(&client_id).unwrap().send(CommandChat::RegisterClient(server_id)).unwrap();
@@ -463,17 +450,6 @@ pub fn start_simulation(
         controller.run();
     });
 
-
-    //  thread::sleep(Duration::from_millis(200)); //questo da scommentare sempre se vuoi testare
-    // simulation_controller.client.get(&11).unwrap()
-    //     .send(CommandChat::SearchChatServers).unwrap()
-    // simulation_controller.client.get(&0).unwrap()
-    //    .send(CommandChat::SendMessage(11, 12, "ciao".to_string()))
-    //    .unwrap();
-    // simulation_controller.client.get(&11).unwrap() //scommenta questo che abbiamo i print
-    //     .send(CommandChat::ServerType(12)).unwrap()
-    // simulation_controller.client.get(&11).unwrap()
-    //     .send(CommandChat::GetListClients(12)).unwrap()
 }
 
 fn create_drone(
