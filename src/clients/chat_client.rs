@@ -142,7 +142,7 @@ impl ChatClient {
         let request_to_send = ChatRequest::ServerType;
         self.fragments_sent = ChatRequest::fragment_message(&request_to_send);
 
-        match self.find_route(&id_server) {
+        match self.find_route(&id_server, None) {
             Ok(route) => {
                 println!("route: {:?}", route);
                 let packets_to_send = ChatRequest::create_packet(&self.fragments_sent, route.clone(), &mut self.session_id_packet);
@@ -165,7 +165,7 @@ impl ChatClient {
         let request = ChatRequest::RegisterClient(self.config.id.clone());
         self.fragments_sent = ChatRequest::fragment_message(&request);
 
-        match self.find_route(&id_server) {
+        match self.find_route(&id_server, None) {
             Ok(route) => {
                 println!("route: {:?}", route);
                 self.packet_sent = (id_server, ChatRequest::create_packet(&self.fragments_sent, route.clone(),  & mut self.session_id_packet));
@@ -189,7 +189,7 @@ impl ChatClient {
         let request = ChatRequest::GetListClients;
         self.fragments_sent = ChatRequest::fragment_message(&request);
 
-        match self.find_route(&id_server) {
+        match self.find_route(&id_server, None) {
             Ok(route) => {
                 let packets_to_send = ChatRequest::create_packet(&self.fragments_sent, route.clone(), & mut self.session_id_packet);
                 for packet in packets_to_send {
@@ -212,7 +212,7 @@ impl ChatClient {
         let request = ChatRequest::SendMessage(message, id_server);
         self.fragments_sent = ChatRequest::fragment_message(&request);
 
-        match self.find_route(&id_server){
+        match self.find_route(&id_server, None){
             Ok(route) => {
                 let packets_to_send = ChatRequest::create_packet(&self.fragments_sent, route.clone(), & mut self.session_id_packet);
                 for packet in packets_to_send {
@@ -237,7 +237,7 @@ impl ChatClient {
         let request = ChatRequest::EndChat(self.config.id.clone());
         self.fragments_sent = ChatRequest::fragment_message(&request);
 
-        match self.find_route(&id_server) {
+        match self.find_route(&id_server, None) {
             Ok(route) => {
                 let packets_to_send = ChatRequest::create_packet(&self.fragments_sent, route.clone(),  & mut self.session_id_packet);
                 for packet in packets_to_send {
@@ -252,8 +252,8 @@ impl ChatClient {
     }
 
     //incoming messages
-    pub fn handle_fragments(& mut self, mut packet: Packet){ //doesn't perfectly respect the protocol
-        // println!("received packet by client: {}", packet);
+    pub fn handle_fragments(& mut self, mut packet: Packet){ //doesn't perfectly respect the protocol [uses hashmap instead of the vector]
+        // println!("received packet by server: {}", packet);
         let src_id = packet.routing_header.hops.first().unwrap();
         let check = (packet.session_id, *src_id);
 
@@ -345,38 +345,51 @@ impl ChatClient {
                 }
                 NackType::Dropped => {
                     //resend packets dropped, which should be the one dropped by the drone and the packet remaining inside the hashmap
-                    let failed_path = packet.routing_header.clone();
-                    println!("failed path (from nack): {}", failed_path);
+
                     let failed_src = packet.routing_header.hops[packet.routing_header.hop_index];
                     let failed_node = packet.routing_header.hops[0];
+
+                    if !self.problematic_nodes.contains(&failed_node){
+                        self.problematic_nodes.push(failed_node);
+                    }
+
                     println!("failed src: {}", failed_src);
                     println!("failed node: {}", failed_node);
 
+                    let mut copy_topology = self.topology.clone();
+
+                    copy_topology.remove_node(failed_node);
+
                     // if let Some(edge) = self.topology.edges_directed(failed_node, Direction::Outgoing){}
 
-                    if let Some(fragment_lost) = self.fragments_sent.get(&nack.fragment_index){
-                        println!("fragment lost: {}", fragment_lost);
-                    }
+                    let fragment_to_resend = if let Some(fragment_lost) = self.fragments_sent.get(&nack.fragment_index){
+                        println!("fragment lost: {:?}", fragment_lost);
+                        fragment_lost.clone()
+                    }else {
+                        println!("no fragment lost");
+                        return
+                    };
+
                     let destination_id = self.packet_sent.0;
                     println!("destination id: {}", destination_id);
 
-                    // for edge in self.topology.edges_directed(failed_src, Direction::Outgoing) {
-                    //     if edge.target() == failed_node {
-                    //
-                    //         self.topology.add_edge(failed_src, failed_node, 100);
-                    //     }
-                    // }
-
-
-                    match self.find_route(&destination_id){
+                    match self.find_route(&destination_id, Some(&self.problematic_nodes.clone())){
                         Ok(route) => {
-                            println!("new route: {:?}", route);
+                            println!("found new route! {:?}", route);
+                            let new_packet = Packet::new_fragment(SourceRoutingHeader::new(route.clone(), 0), packet.session_id, fragment_to_resend);
+                            // println!("routing header fragment created: {:?}", new_packet.routing_header );
+                            // println!("{:?}", new_packet.routing_header.hop_index);
+                            // println!("fragment inside the packet: {:?}", new_packet.pack_type);
+
+                            if let Some(next_hop) = route.get(1){
+                                println!("next hop: {}", next_hop);
+                                self.send_packet(next_hop, new_packet);
+                            }else { println!("No next hop found") }
                         }
-                        Err(str) => {println!("no new route found ")}
+                        Err(_) => {
+                            println!("failed to find new route!");
+                        }
                     }
-
-
-
 
                 }
                 _ => {}
@@ -479,43 +492,26 @@ impl ChatClient {
         }
     }
 
-    pub fn find_route(& mut self, destination_id : &NodeId)-> Result<Vec<NodeId>, String>{
-        // let mut shortest_route: Option<Vec<NodeId>> = None;
-        // for flood_resp in &self.flood{
-        //     if flood_resp.path_trace.contains(&(*destination_id, NodeType::Server))&& !flood_resp.path_trace.iter().any(|(id, _)| self.problematic_nodes.contains(id)){
-        //         let length = flood_resp.path_trace.len();
-        //         if shortest_route.is_none() || length < shortest_route.as_ref().unwrap().len(){
-        //             shortest_route = Some(flood_resp.path_trace.iter().map(|(id,_ )| *id).collect());
-        //         }
-        //     }
-        // }
-        // for flood_resp in &self.flood {
-        //     if flood_resp.path_trace.contains(&(*destination_id, NodeType::Server)) {
-        //         let route: Vec<NodeId> = flood_resp.path_trace.iter().map(|(id, _)| *id).collect();
-        //
-        //         if route.iter().any(|id| self.problematic_nodes.contains(id)) {
-        //             continue; // Skip this route and look for another one
-        //         }
-        //
-        //         let length = route.len();
-        //         if shortest_route.as_ref().map_or(true, |r| length < r.len()) {
-        //             shortest_route = Some(route);
-        //         }
-        //     }
-        // }
-        // if let Some(best_route) = shortest_route{
-        //     Ok(best_route)
-        // }else { Err(String::from("route not found")) }
+    pub fn find_route(& mut self, destination_id : &NodeId, avoid_node: Option<&Vec<NodeId>>)-> Result<Vec<NodeId>, String>{
         let source = self.config.id.clone();
-        let result = dijkstra(&self.topology, source.clone(), Some(destination_id.clone()), |_| 1);
+
+        let topology = if let Some(nodes_to_avoid) = avoid_node{
+            let mut modified_topology = self.topology.clone();
+            for node in nodes_to_avoid{
+                modified_topology.remove_node(*node);
+            }
+            modified_topology
+        } else {
+            self.topology.clone()
+        };
+
+        let result = dijkstra(&topology, source.clone(), Some(destination_id.clone()), |_| 1);
 
         if let Some(_) = result.get(destination_id) {
             let mut path = vec![destination_id.clone()];
             let mut current = destination_id.clone();
 
             while current != source {
-                // Look for a predecessor node 'prev' with:
-                // result[prev] + weight == result[current]
                 let mut found = false;
                 for edge in self.topology.edges_directed(current.clone(), Direction::Incoming) {
                     let prev = edge.source();

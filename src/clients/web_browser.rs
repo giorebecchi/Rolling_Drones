@@ -1,4 +1,6 @@
 use std::collections::{HashMap, HashSet};
+use bevy::ui::Node;
+use bevy_egui::egui::debug_text::print;
 use crossbeam_channel::{select_biased, Receiver, Sender};
 use petgraph::algo::dijkstra;
 use petgraph::Direction;
@@ -11,7 +13,7 @@ use wg_2024::config::Client;
 use wg_2024::network::{NodeId, SourceRoutingHeader};
 use wg_2024::packet::{FloodRequest, FloodResponse, Fragment, NodeType, Packet, PacketType};
 use crate::clients::assembler::Fragmentation;
-use crate::common_things::common::{ChatRequest, ClientType, ContentCommands, MediaId, WebBrowserCommands, WebBrowserEvents};
+use crate::common_things::common::{ChatRequest, ClientType, ContentCommands, MediaId, MediaServer, ServerType, TextServer, WebBrowserCommands, WebBrowserEvents};
 use crate::common_things::common::WebBrowserEvents::TypeClient;
 
 pub struct WebBrowser {
@@ -29,7 +31,11 @@ pub struct WebBrowser {
     pub fragments_sent: HashMap<u64, Fragment>, //used for sending the correct fragment if was lost in the process
     pub problematic_nodes: Vec<NodeId>,
     pub topology: DiGraphMap<NodeId, u32>,
-    pub send_event: Sender<WebBrowserEvents>
+    pub send_event: Sender<WebBrowserEvents>,
+    pub media_servers: Vec<NodeId>,
+    pub text_servers: Vec<NodeId>,
+    pub waiting_response: usize
+
 }
 
 impl WebBrowser {
@@ -55,6 +61,9 @@ impl WebBrowser {
             problematic_nodes: Vec::new(),
             topology: DiGraphMap::new(),
             send_event,
+            media_servers: Vec::new(),
+            text_servers: Vec::new(),
+            waiting_response: 0
         }
     }
     pub fn run(& mut self) {
@@ -96,6 +105,10 @@ impl WebBrowser {
             ContentCommands::GetText(id_server, text_id) => {
                 self.get_text(id_server, text_id);
             }
+            ContentCommands::SearchTypeServers => {
+                self.search_type_servers();
+            }
+
             _ => {}
         }
     }
@@ -113,6 +126,13 @@ impl WebBrowser {
     pub fn send_type_sim(& mut self){
         if let Err(_) = self.send_event.send(TypeClient(self.client_type.clone(), self.config.id.clone())){
             println!("Error sending client type to simulation control")
+        }
+    }
+
+    pub fn search_type_servers(& mut self) {
+        self.waiting_response = self.servers.len();
+        for server in self.servers.clone() {
+            self.ask_type(server);
         }
     }
 
@@ -232,7 +252,86 @@ impl WebBrowser {
 
     // incoming messages
     pub fn handle_fragments(& mut self, packet: Packet){
+        let src_id = packet.routing_header.hops.first().unwrap();
+        let check = (packet.session_id, *src_id);
 
+        let ack = self.create_ack(&packet);
+        let prev = packet.routing_header.hops[packet.routing_header.hop_index-1];
+        self.send_messages(&prev, ack);
+
+        if let PacketType::MsgFragment(fragment) = packet.pack_type{
+            if !self.incoming_fragments.contains_key(&check){
+                self.incoming_fragments.insert(check, HashMap::new());
+            }
+            self.incoming_fragments
+                .get_mut(&check)
+                .unwrap()
+                .insert(fragment.fragment_index, fragment.clone());
+
+            if let Some(fragments) = self.incoming_fragments.get_mut(&check){
+                if fragments.len() as u64 == fragment.total_n_fragments{
+                    if let Ok(message) = TextServer::reassemble_msg(fragments){
+                        match message{
+                            TextServer::ServerType(server_type) => {
+                                println!("server found is of type: {:?}", server_type);
+
+                                if server_type == ServerType::TextServer{
+                                    self.text_servers.push(src_id.clone());
+                                }
+                                self.waiting_response -= 1;
+
+                                if self.waiting_response == 0{
+                                    if let Err(_) = self.send_event.send(WebBrowserEvents::TextServers(self.config.id.clone(), self.text_servers.clone())){
+                                        println!("failed to send list of text servers to simulation control")
+                                    }
+                                }
+                            }
+                            TextServer::SendFileList(list) => {
+                                //do i need to save it?
+                                println!("list of files available: {:?}", list);
+
+                                if let Err(_) = self.send_event.send(WebBrowserEvents::ListFiles(self.config.id.clone(), list.clone())){
+                                    println!("failed to send list of files to simulation control")
+                                }
+                            }
+                            TextServer::PositionMedia(media_server_id) => {
+                                //could try to automate this by saving this so that we don't need the command later for asking the actual media
+                                println!("the wanted media is located at: {}", media_server_id);
+                                if let Err(_) = self.send_event.send(WebBrowserEvents::MediaPosition(self.config.id.clone(), media_server_id.clone())){
+                                    println!("failed to send media position to simulation control")
+                                }
+                            }
+                            TextServer::Text(text) => {}
+
+                            _ => {}
+                        }
+
+                    }else {
+                        if let Ok(message) = MediaServer::reassemble_msg(fragments){
+                            match message{
+                                MediaServer::ServerType(server_type) => {
+                                    println!("server found is of type: {:?}", server_type);
+
+                                    if server_type == ServerType::MediaServer{
+                                        self.media_servers.push(src_id.clone());
+                                    }
+                                    self.waiting_response -= 1;
+
+                                    if self.waiting_response == 0{
+                                        if let Err(_) = self.send_event.send(WebBrowserEvents::MediaServers(self.config.id.clone(), self.media_servers.clone())){
+                                            println!("failed to send list of text servers to simulation control")
+                                        }
+                                    }
+                                }
+                                MediaServer::SendMedia(media) => {}
+
+                                _ => {}
+                            }
+                        }
+                    }
+                }
+            }
+        }
     }
 
     pub fn handle_nacks(& mut self, packet: Packet){}
