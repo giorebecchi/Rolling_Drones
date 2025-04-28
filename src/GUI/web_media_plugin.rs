@@ -13,9 +13,9 @@ pub struct WebMediaPlugin;
 
 impl Plugin for WebMediaPlugin{
     fn build(&self, app: &mut App){
-        app
-            .init_resource::<>()
-            .add_systems(Update, (handle_clicks,window_format).run_if(in_state(AppState::InGame)));
+        //app
+           // .init_resource::<>()
+            // .add_systems(Update, (handle_clicks,window_format).run_if(in_state(AppState::InGame)));
 
     }
 }
