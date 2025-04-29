@@ -26,6 +26,7 @@ use crate::network_initializer::network_initializer::parse_config;
 use crate::GUI::shared_info_plugin::SHARED_STATE;
 use crate::servers::ChatServer::Server;
 use crate::clients::chat_client::ChatClient;
+use crate::clients::web_browser::WebBrowser;
 use crate::common_things::common::{ChatClientEvent, ChatRequest, ChatResponse, ClientType, CommandChat, ServerType};
 use crate::common_things::common::ServerType::CommunicationServer;
 use crate::servers::Text_max::Server as ServerMax;
@@ -37,6 +38,7 @@ impl Default for SimulationController{
     fn default() -> Self {
         let (sender, receiver) = unbounded();
         let (_, chat_recv)=unbounded();
+        let (_, web_recv)=unbounded();
         Self {
             node_event_send: sender,
             node_event_recv: receiver,
@@ -44,10 +46,12 @@ impl Default for SimulationController{
             packet_channel: HashMap::new(),
             neighbours: HashMap::new(),
             client:  HashMap::new(),
+            web_client: HashMap::new(),
             log : Arc::new(Mutex::new(SharedSimState::default())),
             seen_floods: HashSet::new(),
             client_list: HashMap::new(),
             chat_event: chat_recv,
+            web_event: web_recv,
             messages: HashMap::new(),
             incoming_message: HashMap::new(),
             register_success : HashMap::new()
@@ -334,8 +338,10 @@ pub fn start_simulation(
 
     let mut packet_channels = HashMap::new();
     let mut command_chat_channel = HashMap::new();
+    let mut command_web_channel = HashMap::new();
 
     let (chat_event_send, chat_event_recv)=unbounded();
+    let (web_event_send, web_event_recv)=unbounded();
     for node_id in config.drone.iter().map(|d| d.id)
         .chain(config.client.iter().map(|c| c.id))
         .chain(config.server.iter().map(|s| s.id)) {
@@ -344,6 +350,7 @@ pub fn start_simulation(
 
     for client in &config.client {
         command_chat_channel.insert(client.id, unbounded());
+        command_web_channel.insert(client.id, unbounded());
     }
 
     let mut neighbours = HashMap::new();
@@ -357,6 +364,7 @@ pub fn start_simulation(
     let node_event_recv = simulation_controller.node_event_recv.clone();
     let log = simulation_controller.log.clone();
     let mut client = simulation_controller.client.clone();
+    let mut web_client = simulation_controller.web_client.clone();
 
 
     for cfg_drone in config.drone.into_iter() {
@@ -392,7 +400,7 @@ pub fn start_simulation(
             .map(|nid| (*nid, packet_channels[nid].0.clone()))
             .collect::<HashMap<_,_>>();
 
-        let server_baia = Arc::new(Mutex::new(Server::new(cfg_server.id, rcv, packet_send)));
+        let mut server_baia = Arc::new(Mutex::new(Server::new(cfg_server.id, rcv, packet_send)));
         // let mut server_max = ServerMax::new(cfg_server.id,rcv.clone(),packet_send);
 
         thread::spawn(move || {
@@ -401,27 +409,63 @@ pub fn start_simulation(
         });
     }
 
-    for cfg_client in config.client {
-        let rcv_packet = packet_channels[&cfg_client.id].1.clone();
-        let rcv_command = command_chat_channel[&cfg_client.id].1.clone();
-        client.insert(cfg_client.id, command_chat_channel[&cfg_client.id].0.clone());
+    for (i,cfg_client) in config.client.clone().into_iter().enumerate() {
+        if i < 2 {
+            let rcv_packet = packet_channels[&cfg_client.id].1.clone();
+            let rcv_command = command_chat_channel[&cfg_client.id].1.clone();
+            client.insert(cfg_client.id, command_chat_channel[&cfg_client.id].0.clone());
 
-        let packet_send: HashMap<NodeId, Sender<Packet>> = cfg_client.connected_drone_ids.iter()
-            .map(|nid| (*nid, packet_channels[nid].0.clone()))
-            .collect();
+            let packet_send: HashMap<NodeId, Sender<Packet>> = cfg_client.connected_drone_ids.iter()
+                .map(|nid| (*nid, packet_channels[nid].0.clone()))
+                .collect();
 
-        let client_instance = Arc::new(Mutex::new(ChatClient::new(
-            cfg_client.id,
-            rcv_packet,
-            packet_send.clone(),
-            rcv_command,
-            chat_event_send.clone()
-        )));
 
-        thread::spawn(move || {
-            client_instance.lock().unwrap().run();
-        });
+            let mut client_instance = Arc::new(Mutex::new(ChatClient::new(
+                cfg_client.id,
+                rcv_packet,
+                packet_send.clone(),
+                rcv_command,
+                chat_event_send.clone()
+            )));
+
+            thread::spawn(move || {
+                client_instance.lock().unwrap().run();
+            });
+            if let Ok(mut state)=SHARED_STATE.write(){
+                state.n_clients=config.client.len();
+                state.client_types.push((ClientType::ChatClient,cfg_client.id));
+                state.is_updated=true;
+                println!("correctly notified ThreadInfo");
+            }
+        }else{
+            let rcv_packet=packet_channels[&cfg_client.id].1.clone();
+            let rcv_command = command_web_channel[&cfg_client.id].1.clone();
+            web_client.insert(cfg_client.id, command_web_channel[&cfg_client.id].0.clone());
+            let packet_send: HashMap<NodeId, Sender<Packet>> = cfg_client.connected_drone_ids.iter()
+                .map(|nid| (*nid, packet_channels[nid].0.clone()))
+                .collect();
+            let mut web_browser = Arc::new(Mutex::new(WebBrowser::new(
+                cfg_client.id,
+                rcv_packet,
+                rcv_command,
+                packet_send.clone(),
+                web_event_send.clone()
+            )));
+            thread::spawn(move || {
+                web_browser.lock().unwrap().run();
+            });
+            if let Ok(mut state)=SHARED_STATE.write(){
+                state.n_clients=config.client.len();
+                state.client_types.push((ClientType::WebBrowser,cfg_client.id));
+                state.is_updated=true;
+                println!("correctly notified ThreadInfo");
+            }
+        }
+
+
     }
+
+
 
     simulation_controller.node_event_send = node_event_send.clone();
     simulation_controller.drones = controller_drones;
@@ -437,10 +481,12 @@ pub fn start_simulation(
         neighbours: simulation_controller.neighbours.clone(),
         packet_channel: simulation_controller.packet_channel.clone(),
         client: simulation_controller.client.clone(),
+        web_client: simulation_controller.web_client.clone(),
         log,
         seen_floods: HashSet::new(),
         client_list: HashMap::new(),
         chat_event: chat_event_recv,
+        web_event: web_event_recv,
         incoming_message: HashMap::new(),
         messages: HashMap::new(),
         register_success: HashMap::new()
