@@ -440,7 +440,7 @@ impl ChatClient {
                        if let Err(e) = sender.send(flood_request.generate_response(packet.session_id)){
                            println!("Error sending the flood response: {}", e)
                        }
-                   }else { println!("No sender found for client added {}", client_added.0) }
+                   }else { println!("client: {}: No sender found for client added {}", self.config.id,client_added.0) }
 
                }else { println!("can't find the client last added") }
            }else { //if we have not already received the request
