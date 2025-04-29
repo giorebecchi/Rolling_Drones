@@ -124,6 +124,7 @@ pub enum WebBrowserEvents{ //not complete
     MediaServers(NodeId, Vec<NodeId>), //node id client, list of media servers found after the SearchTypeServers command is sent
     TextServers(NodeId, Vec<NodeId>), //node id client, list of test servers found after the SearchTypeServers command is sent
     ListFiles(NodeId, Vec<String>), //node id client, list of all the available files
-    MediaPosition(NodeId, NodeId) //node id of client and the node id of the media server where the media is located
-
+    MediaPosition(NodeId, NodeId), //node id of client and the node id of the media server where the media is located
+    SavedTextFile(NodeId, String), //node id client, path to file saved in SC folder in multimedia
+    SavedMedia(NodeId, String) //node id client, path to correct file save in SC folder in multimedia
 }
