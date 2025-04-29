@@ -139,6 +139,7 @@ impl ChatClient {
             println!("server not found ");
             return;
         }
+        println!("servers: {:?}",self.servers);
         let request_to_send = ChatRequest::ServerType;
         self.fragments_sent = ChatRequest::fragment_message(&request_to_send);
 

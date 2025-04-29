@@ -199,7 +199,6 @@ fn setup_network(
     match (*user_config).0.as_str(){
         "star"=>{
             let nodes= spawn_star_decagram(None,&mut seen_clients);
-            println!("clients seen from setup_metwork: {:?}",seen_clients.clients);
             (*nodes_config).0=nodes;
         },
         "double_chain"=>{
@@ -230,7 +229,6 @@ fn recompute_network(
         match user_config.0.as_str(){
             "star"=>{
                 let nodes= spawn_star_decagram(Some(added_drone.clone()),&mut seen_clients);
-                println!("Nodes {:?}",nodes);
                 (*nodes_config).0=nodes;
             },
             "double_chain"=>{
@@ -389,7 +387,6 @@ fn ui_settings(
                         if ui.button("Star").clicked() {
                             topology.0="star".to_string();
                             next_state.set(AppState::SetUp);
-                            println!("the next state is set");
                         }else if ui.button("Double chain").clicked(){
                             topology.0="double_chain".to_string();
                             next_state.set(AppState::SetUp);
