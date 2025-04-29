@@ -59,7 +59,7 @@ fn sync_before_setup(
 
                 seen_clients.clients=state.client_types.clone();
                 seen_clients.len=state.n_clients;
-                println!("clients: {:?}, len: {}",seen_clients.clients, seen_clients.len);
+
 
             }
 

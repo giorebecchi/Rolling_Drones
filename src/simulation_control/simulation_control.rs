@@ -458,7 +458,6 @@ pub fn start_simulation(
                 state.n_clients=config.client.len();
                 state.client_types.push((ClientType::ChatClient,cfg_client.id));
                 state.is_updated=true;
-                println!("correctly notified ThreadInfo");
             }
        }else{
            let rcv_packet=packet_channels[&cfg_client.id].1.clone();
@@ -481,7 +480,6 @@ pub fn start_simulation(
                state.n_clients=config.client.len();
                state.client_types.push((ClientType::WebBrowser,cfg_client.id));
                state.is_updated=true;
-               println!("correctly notified ThreadInfo");
            }
        }
 
