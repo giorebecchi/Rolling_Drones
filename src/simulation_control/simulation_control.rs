@@ -3,6 +3,8 @@ use crossbeam_channel::{select_biased, unbounded, Receiver, Sender};
 use std::collections::{HashMap, HashSet};
 
 use std::thread;
+use crate::servers::TextServerFillo::Server as TextServerBaia;
+use crate::servers::MediaServerFillo::Server as MediaServerBaia;
 use std::sync::{Arc,Mutex};
 use std::time::Duration;
 use wg_2024::controller::{DroneCommand,DroneEvent};
@@ -394,19 +396,40 @@ pub fn start_simulation(
         });
     }
 
-    for cfg_server in config.server {
+    for (i,cfg_server) in config.server.into_iter().enumerate() {
         let rcv = packet_channels[&cfg_server.id].1.clone();
         let packet_send = cfg_server.connected_drone_ids.iter()
             .map(|nid| (*nid, packet_channels[nid].0.clone()))
             .collect::<HashMap<_,_>>();
 
-        let mut server_baia = Arc::new(Mutex::new(Server::new(cfg_server.id, rcv, packet_send)));
-        // let mut server_max = ServerMax::new(cfg_server.id,rcv.clone(),packet_send);
+        if i == 0 {
+            let mut server_baia = Arc::new(Mutex::new(Server::new(cfg_server.id, rcv, packet_send)));
+            thread::spawn(move || {
+                // server_max.run();
+                server_baia.lock().unwrap().run();
+            });
+            //let mut server_max = ServerMax::new(cfg_server.id,rcv.clone(),packet_send);
+        }else if i ==1{
+            let text_server_baia = Arc::new(Mutex::new(TextServerBaia::new(cfg_server.id, rcv, packet_send,"src/multimedia/paths/text_server1.txt")));
+            thread::spawn(move || {
+                // server_max.run();
+                text_server_baia.lock().unwrap().run();
+            });
+        }else if i==2{
+            let media_server_baia = Arc::new(Mutex::new(MediaServerBaia::new(cfg_server.id, rcv, packet_send,"src/multimedia/paths/media_server1.txt")));
+            thread::spawn(move || {
+                // server_max.run();
+                media_server_baia.lock().unwrap().run();
+            });
+        }else{
+            let media_server_baia = Arc::new(Mutex::new(MediaServerBaia::new(cfg_server.id, rcv, packet_send,"src/multimedia/paths/media_serverr2.txt")));
+            thread::spawn(move || {
+                // server_max.run();
+                media_server_baia.lock().unwrap().run();
+            });
+        }
+//
 
-        thread::spawn(move || {
-            // server_max.run();
-            server_baia.lock().unwrap().run();
-        });
     }
 
     for (i,cfg_client) in config.client.clone().into_iter().enumerate() {
@@ -437,30 +460,30 @@ pub fn start_simulation(
                 state.is_updated=true;
                 println!("correctly notified ThreadInfo");
             }
-        }else{
-            let rcv_packet=packet_channels[&cfg_client.id].1.clone();
-            let rcv_command = command_web_channel[&cfg_client.id].1.clone();
-            web_client.insert(cfg_client.id, command_web_channel[&cfg_client.id].0.clone());
-            let packet_send: HashMap<NodeId, Sender<Packet>> = cfg_client.connected_drone_ids.iter()
-                .map(|nid| (*nid, packet_channels[nid].0.clone()))
-                .collect();
-            let mut web_browser = Arc::new(Mutex::new(WebBrowser::new(
-                cfg_client.id,
-                rcv_packet,
-                rcv_command,
-                packet_send.clone(),
-                web_event_send.clone()
-            )));
-            thread::spawn(move || {
-                web_browser.lock().unwrap().run();
-            });
-            if let Ok(mut state)=SHARED_STATE.write(){
-                state.n_clients=config.client.len();
-                state.client_types.push((ClientType::WebBrowser,cfg_client.id));
-                state.is_updated=true;
-                println!("correctly notified ThreadInfo");
-            }
-        }
+       }else{
+           let rcv_packet=packet_channels[&cfg_client.id].1.clone();
+           let rcv_command = command_web_channel[&cfg_client.id].1.clone();
+           web_client.insert(cfg_client.id, command_web_channel[&cfg_client.id].0.clone());
+           let packet_send: HashMap<NodeId, Sender<Packet>> = cfg_client.connected_drone_ids.iter()
+               .map(|nid| (*nid, packet_channels[nid].0.clone()))
+               .collect();
+           let mut web_browser = Arc::new(Mutex::new(WebBrowser::new(
+               cfg_client.id,
+               rcv_packet,
+               rcv_command,
+               packet_send.clone(),
+               web_event_send.clone()
+           )));
+           thread::spawn(move || {
+               web_browser.lock().unwrap().run();
+           });
+           if let Ok(mut state)=SHARED_STATE.write(){
+               state.n_clients=config.client.len();
+               state.client_types.push((ClientType::WebBrowser,cfg_client.id));
+               state.is_updated=true;
+               println!("correctly notified ThreadInfo");
+           }
+       }
 
 
     }
