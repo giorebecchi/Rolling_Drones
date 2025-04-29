@@ -5,7 +5,7 @@ use bevy_egui::{egui, EguiContexts};
 use crate::GUI::login_window::SimulationController;
 use crate::GUI::login_window::NodesConfig;
 use wg_2024::network::NodeId;
-use crate::GUI::chat_windows::handle_clicks;
+use crate::GUI::chat_windows::{handle_clicks, ChatState};
 use crate::GUI::login_window::Clickable;
 use crate::GUI::login_window::AppState;
 
@@ -21,11 +21,15 @@ impl Plugin for WebMediaPlugin{
 }
 #[derive(Resource,Default)]
 pub struct WebState{
+    pub web_browsers: Vec<NodeId>,
     received_medias: HashMap<NodeId, String>,
 
 }
 fn window_format(
-
+    mut contexts: EguiContexts,
+    mut sim: ResMut<SimulationController>,
+    nodes: Res<NodesConfig>,
+    mut chat_state: ResMut<WebState>
 )
 {
 

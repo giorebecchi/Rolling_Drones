@@ -1,10 +1,13 @@
 use std::collections::HashMap;
 use std::sync::{Arc, RwLock};
 use bevy::app::{App, Plugin, Update};
-use bevy::prelude::{ResMut, Resource};
+use bevy::prelude::{in_state, IntoSystemConfigs, NextState, ResMut, Resource};
 use once_cell::sync::Lazy;
 use wg_2024::network::NodeId;
+use crate::common_things::common::ClientType;
 use crate::GUI::chat_windows::ChatState;
+use crate::GUI::login_window::{AppState, NodeConfig, NodeType, NodesConfig};
+use crate::GUI::web_media_plugin::WebState;
 
 pub static SHARED_STATE: Lazy<Arc<RwLock<ThreadInfo>>> = Lazy::new(|| {
     Arc::new(RwLock::new(ThreadInfo::default()))
@@ -13,6 +16,8 @@ pub static SHARED_STATE: Lazy<Arc<RwLock<ThreadInfo>>> = Lazy::new(|| {
 
 #[derive(Default)]
 pub struct ThreadInfo {
+    pub n_clients: usize,
+    pub client_types: Vec<(ClientType, NodeId)>,
     pub responses: HashMap<(NodeId,(NodeId,NodeId)),Vec<String>>,
     pub client_list: HashMap<(NodeId,NodeId), Vec<NodeId>>,
     pub chat_servers: HashMap<NodeId, Vec<NodeId>>,
@@ -20,6 +25,7 @@ pub struct ThreadInfo {
     pub chat_clients: Vec<NodeId>,
     pub web_clients: Vec<NodeId>,
     pub is_updated: bool,
+    pub ready_setup: bool,
 
 }
 
@@ -32,9 +38,39 @@ pub struct BackendBridgePlugin;
 
 impl Plugin for BackendBridgePlugin {
     fn build(&self, app: &mut App) {
-        app.init_resource::<StateBridge>()
-            .add_systems(Update, sync_backend_to_frontend);
+        app
+            .init_resource::<StateBridge>()
+            .init_resource::<SeenClients>()
+            .add_systems(Update, (sync_before_setup,evaluate_state).run_if(in_state(AppState::SetUp)))
+            .add_systems(Update, sync_backend_to_frontend.run_if(in_state(AppState::InGame)));
     }
+}
+#[derive(Resource,Default)]
+pub struct SeenClients{
+    pub clients : Vec<(ClientType,NodeId)>,
+    len: usize,
+}
+
+fn sync_before_setup(
+    mut seen_clients: ResMut<SeenClients>
+){
+    if let Ok(state) = SHARED_STATE.try_read() {
+        if state.is_updated{
+
+                seen_clients.clients=state.client_types.clone();
+                seen_clients.len=state.n_clients;
+                println!("clients: {:?}, len: {}",seen_clients.clients, seen_clients.len);
+
+            }
+
+            drop(state);
+
+            if let Ok(mut state) = SHARED_STATE.try_write() {
+                state.is_updated = false;
+            }
+        }
+
+
 }
 
 
@@ -58,4 +94,13 @@ fn sync_backend_to_frontend(
             }
         }
     }
+}
+fn evaluate_state(
+    mut seen_clients: ResMut<SeenClients>,
+    mut next_state: ResMut<NextState<AppState>>
+){
+    if seen_clients.len==seen_clients.clients.len(){
+        next_state.set(AppState::InGame);
+    }
+
 }
