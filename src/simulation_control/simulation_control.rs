@@ -433,14 +433,14 @@ pub fn start_simulation(
     }
 
     for (i,cfg_client) in config.client.clone().into_iter().enumerate() {
+        let packet_send: HashMap<NodeId, Sender<Packet>> = cfg_client.connected_drone_ids.iter()
+            .map(|nid| (*nid, packet_channels[nid].0.clone()))
+            .collect();
+        let rcv_packet = packet_channels[&cfg_client.id].1.clone();
         if i < 2 {
-            let rcv_packet = packet_channels[&cfg_client.id].1.clone();
+
             let rcv_command = command_chat_channel[&cfg_client.id].1.clone();
             client.insert(cfg_client.id, command_chat_channel[&cfg_client.id].0.clone());
-
-            let packet_send: HashMap<NodeId, Sender<Packet>> = cfg_client.connected_drone_ids.iter()
-                .map(|nid| (*nid, packet_channels[nid].0.clone()))
-                .collect();
 
 
             let mut client_instance = Arc::new(Mutex::new(ChatClient::new(
@@ -460,12 +460,10 @@ pub fn start_simulation(
                 state.is_updated=true;
             }
        }else{
-           let rcv_packet=packet_channels[&cfg_client.id].1.clone();
+
            let rcv_command = command_web_channel[&cfg_client.id].1.clone();
            web_client.insert(cfg_client.id, command_web_channel[&cfg_client.id].0.clone());
-           let packet_send: HashMap<NodeId, Sender<Packet>> = cfg_client.connected_drone_ids.iter()
-               .map(|nid| (*nid, packet_channels[nid].0.clone()))
-               .collect();
+
            let mut web_browser = Arc::new(Mutex::new(WebBrowser::new(
                cfg_client.id,
                rcv_packet,
