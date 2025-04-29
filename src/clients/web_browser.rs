@@ -1,4 +1,6 @@
 use std::collections::{HashMap, HashSet};
+use std::fs;
+use base64::Engine;
 use bevy::ui::Node;
 use bevy_egui::egui::debug_text::print;
 use crossbeam_channel::{select_biased, Receiver, Sender};
@@ -13,8 +15,9 @@ use wg_2024::config::Client;
 use wg_2024::network::{NodeId, SourceRoutingHeader};
 use wg_2024::packet::{FloodRequest, FloodResponse, Fragment, NodeType, Packet, PacketType};
 use crate::clients::assembler::Fragmentation;
-use crate::common_things::common::{ChatRequest, ClientType, ContentCommands, MediaId, MediaServer, ServerType, TextServer, WebBrowserCommands, WebBrowserEvents};
+use crate::common_things::common::{ChatRequest, ClientType, ContentCommands, FileMetaData, MediaId, MediaServer, ServerType, TextServer, WebBrowserCommands, WebBrowserEvents};
 use crate::common_things::common::WebBrowserEvents::TypeClient;
+use base64::engine::general_purpose::STANDARD as BASE64;
 
 pub struct WebBrowser {
     pub config: Client,
@@ -286,22 +289,34 @@ impl WebBrowser {
                                     }
                                 }
                             }
+
                             TextServer::SendFileList(list) => {
-                                //do i need to save it?
                                 println!("list of files available: {:?}", list);
 
                                 if let Err(_) = self.send_event.send(WebBrowserEvents::ListFiles(self.config.id.clone(), list.clone())){
                                     println!("failed to send list of files to simulation control")
                                 }
                             }
+
                             TextServer::PositionMedia(media_server_id) => {
-                                //could try to automate this by saving this so that we don't need the command later for asking the actual media
                                 println!("the wanted media is located at: {}", media_server_id);
                                 if let Err(_) = self.send_event.send(WebBrowserEvents::MediaPosition(self.config.id.clone(), media_server_id.clone())){
                                     println!("failed to send media position to simulation control")
                                 }
                             }
-                            TextServer::Text(text) => {}
+
+                            TextServer::Text(text) => {
+                                println!("the text file was received by the web browser");
+                                let path_folder = "src/multimedia/SC".to_string();
+                                match self.save_file(&path_folder, text){
+                                    Ok(path) => {
+                                        if let Err(_) = self.send_event.send(WebBrowserEvents::SavedTextFile(self.config.id.clone(), path.clone())){
+                                            println!("failed to send path to text file to simulation control")
+                                        }
+                                    }
+                                    Err(str) => {println!("{}", str)}
+                                }
+                            }
 
                             _ => {}
                         }
@@ -323,7 +338,20 @@ impl WebBrowser {
                                         }
                                     }
                                 }
-                                MediaServer::SendMedia(media) => {}
+
+                                MediaServer::SendMedia(media) => {
+                                    println!("the media was received by the web browser");
+                                    let path_folder = "src/multimedia/SC".to_string();
+                                    match self.save_file(&path_folder, media){
+                                        Ok(path) => {
+                                            if let Err(_) = self.send_event.send(WebBrowserEvents::SavedMedia(self.config.id.clone(), path.clone())){
+                                                println!("failed to send path to media to simulation control")
+                                            }
+                                        }
+                                        Err(str) => {println!("{}", str)}
+                                    }
+
+                                }
 
                                 _ => {}
                             }
@@ -443,8 +471,6 @@ impl WebBrowser {
             let mut current = destination_id.clone();
 
             while current != source {
-                // Look for a predecessor node 'prev' with:
-                // result[prev] + weight == result[current]
                 let mut found = false;
                 for edge in self.topology.edges_directed(current.clone(), Direction::Incoming) {
                     let prev = edge.source();
@@ -494,6 +520,21 @@ impl WebBrowser {
 
         let ack_packet = Packet::new_ack(source_routing_header, packet.session_id, fragment_index );
         ack_packet
+    }
+
+    fn save_file(& mut self, path_folder: &str, fmd: FileMetaData)-> Result<String, String>{
+        let full_path = format!("{}/{}.{}", path_folder, fmd.title, fmd.extension);
+
+        let decode = match BASE64.decode(fmd.content){
+            Ok(decode) => decode,
+            Err(_) => return Err("Failed to decode the file".to_string()),
+        };
+
+        fs::write(&full_path, decode)
+            .map_err(|e| format!("Failed to save the file: {}", e))?;
+
+        println!("saved the file to {}", full_path);
+        Ok(full_path)
     }
 
 
