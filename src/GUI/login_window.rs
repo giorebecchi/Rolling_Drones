@@ -19,7 +19,7 @@ use bevy_framepace::{FramepacePlugin, FramepaceSettings, Limiter};
 use std::sync::{Arc};
 use crate::GUI::chat_windows::ChatSystemPlugin;
 use crate::GUI::shared_info_plugin::{BackendBridgePlugin, SeenClients};
-
+use crate::GUI::web_media_plugin::WebMediaPlugin;
 
 #[derive(Component)]
 struct InputText;
@@ -139,6 +139,7 @@ pub fn main() {
         .insert_resource(FramepaceSettings {
             limiter: Limiter::Auto,
         })
+        .add_plugins(WebMediaPlugin)
         .add_plugins(EguiPlugin)
         .init_resource::<OccupiedScreenSpace>()
         .init_resource::<AddedDrone>()

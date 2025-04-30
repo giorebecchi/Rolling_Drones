@@ -286,6 +286,8 @@ impl WebBrowser {
                                 if self.waiting_response == 0{
                                     if let Err(_) = self.send_event.send(WebBrowserEvents::TextServers(self.config.id.clone(), self.text_servers.clone())){
                                         println!("failed to send list of text servers to simulation control")
+                                    }else{
+                                        println!("client {} sent text_servers {:?}", self.config.id, self.text_servers);
                                     }
                                 }
                             }

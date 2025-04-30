@@ -24,6 +24,8 @@ pub struct ThreadInfo {
     pub registered_clients: HashMap<(NodeId,NodeId), bool>,
     pub chat_clients: Vec<NodeId>,
     pub web_clients: Vec<NodeId>,
+    pub text_servers: HashMap<NodeId, Vec<NodeId>>,
+    pub media_servers: HashMap<NodeId, Vec<NodeId>>,
     pub is_updated: bool,
     pub ready_setup: bool,
 
@@ -39,6 +41,7 @@ pub struct BackendBridgePlugin;
 impl Plugin for BackendBridgePlugin {
     fn build(&self, app: &mut App) {
         app
+
             .init_resource::<StateBridge>()
             .init_resource::<SeenClients>()
             .add_systems(Update, (sync_before_setup,evaluate_state).run_if(in_state(AppState::SetUp)))
@@ -52,7 +55,8 @@ pub struct SeenClients{
 }
 
 fn sync_before_setup(
-    mut seen_clients: ResMut<SeenClients>
+    mut seen_clients: ResMut<SeenClients>,
+
 ){
     if let Ok(state) = SHARED_STATE.try_read() {
         if state.is_updated{
@@ -76,6 +80,7 @@ fn sync_before_setup(
 
 fn sync_backend_to_frontend(
     mut chat_state: ResMut<ChatState>,
+    mut web_state: ResMut<WebState>,
 ) {
 
     if let Ok(state) = SHARED_STATE.try_read() {
@@ -86,6 +91,10 @@ fn sync_backend_to_frontend(
             chat_state.registered_clients = state.registered_clients.clone();
             chat_state.chat_servers = state.chat_servers.clone();
             chat_state.chat_clients=state.chat_clients.clone();
+            web_state.text_servers=state.text_servers.clone();
+            println!("text_servers: {:?}", web_state.text_servers);
+            web_state.media_servers=state.media_servers.clone();
+            println!("media_servers: {:?}", web_state.media_servers);
 
             drop(state);
 
