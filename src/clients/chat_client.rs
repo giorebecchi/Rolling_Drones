@@ -284,6 +284,7 @@ impl ChatClient {
                             self.waiting_response -= 1;
 
                             if self.waiting_response == 0 {
+                                println!("chat servers here: {:?}", self.chat_servers);
                                 println!("sending to sc");
                                 if let Err(err) = self.event_send.send(ChatClientEvent::ChatServers(self.config.id.clone(), self.chat_servers.clone())) {
                                     println!("Failed to notify SC about server list: {}", err);
@@ -431,31 +432,35 @@ impl ChatClient {
        if let PacketType::FloodRequest(mut flood_request) = packet.clone().pack_type{
             //check if the pair (flood_id, initiator id) has already been received -> self.visited_nodes
            if self.visited_nodes.contains(&(flood_request.flood_id, flood_request.initiator_id)){
-               flood_request.path_trace.push((self.config.id, NodeType::Client)); //client pushes itself in the path trace
-               println!("path_trace here: {:?}", flood_request.path_trace);
-               if let Some(client_added) = flood_request.path_trace.last_mut() {
+               if self.visited_nodes.contains(&(flood_request.flood_id, flood_request.initiator_id)){
+                   flood_request.path_trace.push((self.config.id, NodeType::Client)); //client pushes itself in the path trace
+                   if let Some(prev_hop) = flood_request.path_trace.iter().rev().nth(1) {
 
-                   if let Some(sender) = self.send_packets.get(&client_added.0) {
-                       println!("flood response sent: {}", flood_request.generate_response(packet.session_id));
-                       if let Err(e) = sender.send(flood_request.generate_response(packet.session_id)){
-                           println!("Error sending the flood response: {}", e)
+                       // if let Some(sender) = self.send_packets.get(&client_added.0) {
+                       //     println!("flood response sent: {}", flood_request.generate_response(packet.session_id));
+                       //     if let Err(e) = sender.send(flood_request.generate_response(packet.session_id)){
+                       //         println!("Error sending the flood response: {}", e)
+                       //     }
+                       // }else { println!("client: {}: No sender found for client added {}", self.config.id,client_added.0) }
+                       println!("path_trace here: {:?}", flood_request.path_trace);
+                       println!("flood_request to send: {:?}", flood_request.generate_response(packet.session_id));
+                       self.send_packet(&prev_hop.0, flood_request.generate_response(packet.session_id));
+
+                   }else { println!("can't find the client last added") }
+               }else { //if we have not already received the request
+                   flood_request.path_trace.push((self.config.id, NodeType::Client)); //added to the path trace the client
+                   self.visited_nodes.insert((flood_request.flood_id, flood_request.initiator_id)); //we have now visited it
+                   if self.send_packets.len() == 1 { //if it has no neighbour
+                       if let Some(sender_flood_req) = flood_request.path_trace.iter().rev().nth(1) { //second to last in the path trace should be the one who sent me the flood request
+                           self.send_packet(&sender_flood_req.clone().0, flood_request.generate_response(packet.session_id)); //send a response to the one who sent the request
                        }
-                   }else { println!("client: {}: No sender found for client added {}", self.config.id,client_added.0) }
-
-               }else { println!("can't find the client last added") }
-           }else { //if we have not already received the request
-               flood_request.path_trace.push((self.config.id, NodeType::Client)); //added to the path trace the client
-               self.visited_nodes.insert((flood_request.flood_id, flood_request.initiator_id)); //we have now visited it
-               if self.send_packets.len() == 1 { //if it has no neighbour
-                   if let Some(sender_flood_req) = flood_request.path_trace.iter().rev().nth(1) { //second to last in the path trace should be the one who sent me the flood request
-                       self.send_packet(&sender_flood_req.clone().0, flood_request.generate_response(packet.session_id)); //send a response to the one who sent the request
-                   }
-               } else {
-                   let new_packet = Packet::new_flood_request(packet.routing_header, packet.session_id, flood_request.clone()); //create the packet of the flood request that needs to be forwarded
-                   for (neighbour, sender) in &self.send_packets {
-                       if let Some(sender_flood_req) = flood_request.path_trace.iter().rev().nth(1) {
-                           if *neighbour != sender_flood_req.0 {
-                               sender.send(new_packet.clone()).unwrap()
+                   } else {
+                       let new_packet = Packet::new_flood_request(packet.routing_header, packet.session_id, flood_request.clone()); //create the packet of the flood request that needs to be forwarded
+                       for (neighbour, sender) in &self.send_packets {
+                           if let Some(sender_flood_req) = flood_request.path_trace.iter().rev().nth(1) {
+                               if *neighbour != sender_flood_req.0 {
+                                   sender.send(new_packet.clone()).unwrap()
+                               }
                            }
                        }
                    }
@@ -496,6 +501,7 @@ impl ChatClient {
     pub fn find_route(& mut self, destination_id : &NodeId, avoid_node: Option<&Vec<NodeId>>)-> Result<Vec<NodeId>, String>{
         let source = self.config.id.clone();
 
+        //da rivedere per handle_nack
         let topology = if let Some(nodes_to_avoid) = avoid_node{
             let mut modified_topology = self.topology.clone();
             for node in nodes_to_avoid{

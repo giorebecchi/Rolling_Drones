@@ -410,39 +410,34 @@ impl WebBrowser {
 
     pub fn handle_flood_request(& mut self, packet: Packet){
         if let PacketType::FloodRequest(mut flood_request) = packet.clone().pack_type {
-            if self.visited_nodes.contains(&(flood_request.flood_id, flood_request.initiator_id)) { //case if client has already received the request
-                if let Some(first_hop) = Some(flood_request.path_trace[1].0) {
-                    if let Some(sender) = self.send_packets.get(&first_hop) {
-                        if let Err(e) = sender.send(flood_request.generate_response(packet.session_id)){
-                            println!("Error sending the flood flood request: {}", e)
-                        }
-                    }else { println!("No sender found for first hop {}", first_hop) }
-                }else { println!("No next hop found") }
-                return;
-            }
+            if self.visited_nodes.contains(&(flood_request.flood_id, flood_request.initiator_id)){
+                flood_request.path_trace.push((self.config.id, NodeType::Client)); //client pushes itself in the path trace
+                println!("path_trace here: {:?}", flood_request.path_trace);
+                if let Some(prev_hop) = flood_request.path_trace.iter().rev().nth(1) { //i need to send back the generated flood response so i need the previous hop from my client, just added
 
-            self.visited_nodes.insert((flood_request.flood_id, flood_request.initiator_id)); //mark as visited
+                    // if let Some(sender) = self.send_packets.get(&client_added.0) {
+                    //     println!("flood response sent: {}", flood_request.generate_response(packet.session_id));
+                    //     if let Err(e) = sender.send(flood_request.generate_response(packet.session_id)){
+                    //         println!("Error sending the flood response: {}", e)
+                    //     }
+                    // }else { println!("client: {}: No sender found for client added {}", self.config.id,client_added.0) }
+                    self.send_messages(&prev_hop.0, flood_request.generate_response(packet.session_id));
 
-
-            if self.send_packets.len() == 1{ //check if the client has only one node connected to it
-                if let Some(first_hop) = Some(flood_request.path_trace[1].0 ) {
-                    if let Some(sender) = self.send_packets.get(&first_hop){
-                        if let Err(e) = sender.send(flood_request.generate_response(packet.session_id)){
-                            println!("Error sending the flood request: {}", e)
-                        }
-                    }else { println!("This is not an error message: \n'No sender found in the case of the client having only 1 connection'") }
-                }else { println!("No next hop found") }
-                return;
-            }
-
-            if let Some(_) = flood_request.path_trace.get(1){ //normal case when the client forwards it to the every neighbor
-                println!("forwarding to all direct neighbours");
-                for (neighbor, sender) in &self.send_packets{
-                    if *neighbor != flood_request.path_trace[1].0 { //forward to everyone that's not the one sending the request
-                        let mut forward_packet = packet.clone();
-                        forward_packet.pack_type = PacketType::FloodRequest(flood_request.clone());
-                        if let Err(e) = sender.send(forward_packet){
-                            println!("error forwarding the flood request to every neighbor: {}", e)
+                }else { println!("can't find the destination for the the generated flood response") }
+            }else { //if we have not already received the request
+                flood_request.path_trace.push((self.config.id, NodeType::Client)); //added to the path trace the client
+                self.visited_nodes.insert((flood_request.flood_id, flood_request.initiator_id)); //we have now visited it
+                if self.send_packets.len() == 1 { //if it has no neighbour
+                    if let Some(sender_flood_req) = flood_request.path_trace.iter().rev().nth(1) { //second to last in the path trace should be the one who sent me the flood request
+                        self.send_messages(&sender_flood_req.clone().0, flood_request.generate_response(packet.session_id)); //send a response to the one who sent the request
+                    }
+                } else {
+                    let new_packet = Packet::new_flood_request(packet.routing_header, packet.session_id, flood_request.clone()); //create the packet of the flood request that needs to be forwarded
+                    for (neighbour, sender) in &self.send_packets {
+                        if let Some(sender_flood_req) = flood_request.path_trace.iter().rev().nth(1) {
+                            if *neighbour != sender_flood_req.0 {
+                                sender.send(new_packet.clone()).unwrap()
+                            }
                         }
                     }
                 }
