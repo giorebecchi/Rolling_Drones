@@ -1,5 +1,7 @@
+use std::cmp::Ordering;
 use base64::engine::general_purpose::STANDARD as BASE64;
-use std::collections::{HashMap, HashSet};
+use std::collections::{BinaryHeap, HashMap, HashSet};
+use std::fmt::Debug;
 use std::fs;
 use petgraph::graph::{Graph, NodeIndex};
 use petgraph::algo::{astar, dijkstra};
@@ -9,12 +11,20 @@ use std::path::Path;
 use base64::Engine;
 use crossbeam_channel::{select_biased, Receiver, Sender};
 use petgraph::data::Build;
+use petgraph::Incoming;
+use petgraph::prelude::EdgeRef;
 use serde::Serialize;
 use wg_2024::network::{NodeId, SourceRoutingHeader};
 use wg_2024::packet;
 use wg_2024::packet::{Ack, FloodRequest, FloodResponse, Fragment, Nack, NackType, NodeType, Packet, PacketType};
 use crate::common_things::common::*;
 use crate::servers::assembler::*;
+
+#[derive(Serialize, Clone, Debug)]
+pub struct drops{
+    dropped : u64,
+    forwarded : u64,
+}
 
 #[derive(Clone)]
 pub struct Server{
@@ -24,7 +34,8 @@ pub struct Server{
     paths: HashMap<String,String>,
     texts_ids: Vec<TextId>,
     flooding: Vec<FloodResponse>,
-    neigh_map: Graph<(NodeId,NodeType), u32, petgraph::Directed>,
+    neigh_map: Graph<(NodeId,NodeType), f64, petgraph::Directed>,
+    stats: HashMap<NodeIndex, drops>,
     media_servers: Vec<NodeId>,
     media_info: HashMap<NodeId, Vec<MediaId>>,
     packet_recv: Receiver<Packet>,
@@ -62,6 +73,7 @@ impl Server{
             texts_ids:texts_ids,
             flooding: Vec::new(),
             neigh_map: Graph::new(),
+            stats: HashMap::new(),
             media_servers: Vec::new(),
             media_info: HashMap::new(),
             packet_recv:packet_recv,
@@ -117,10 +129,10 @@ impl Server{
     }
 
 
-    fn send_packet<T>(&mut self, p:T, id:NodeId, nt:NodeType)where T : Fragmentation+Serialize{
+    fn send_packet<T>(&mut self, p:T, id:NodeId, nt:NodeType)where T : Fragmentation+Serialize+Debug{
         // println!("flooding : {:?}", self.flooding); //fa vedere tutte le flood response salvaate nel server
-        // println!("graph : {:?}", self.neigh_map); //fa vedere il grafo (tutti i nodi e tutti gli edges)
-        if let Some(srh) = self.get_route(id,nt){
+        println!("graph del textserver {:?}: {:?}",self.server_id ,self.neigh_map); //fa vedere il grafo (tutti i nodi e tutti gli edges)
+        if let Some(srh) = self.best_path_custom_cost(id,nt){
             println!("srh : {:?}",srh);
             if let Ok(vec) = p.serialize_data(srh,self.session_id){
                 let mut fragments_send = Vec::new();
@@ -135,7 +147,7 @@ impl Server{
                 //aggiungere un field nella struct server per salvare tutti i vari pacchetti nel caso in cui fossero droppati ecc.
             }
         }else {
-            println!("no route found for {:?} {:?}!",nt,id);
+            println!("sono il textserver {:?} no route found for sending packet {:?} to {:?} {:?}!",self.server_id,p,nt,id);
         }
     }
 
@@ -151,7 +163,7 @@ impl Server{
             extension:path[pos+1..].to_string(),
             content: filebytes,
         };
-        if let Some(srh)=self.get_route(id,nt){
+        if let Some(srh)=self.best_path_custom_cost(id,nt){
             if let Ok(vec) = TextServer::Text(fmd).serialize_data(srh.clone(),self.session_id){
                 let mut fragments_send = Vec::new();
                 for i in vec.iter(){
@@ -164,7 +176,7 @@ impl Server{
                 self.session_id+=1;
             }
         }else { 
-            println!("no route found for {:?} {:?}!",nt,path);
+            println!("Sono il textserver {:?} no route found for sending the text to {:?} {:?}!",self.server_id,nt,path);
         }
     }
 
@@ -259,6 +271,26 @@ impl Server{
             self.fragments_send.get_mut(&s_id).unwrap().2.retain(|x| x.fragment_index!=ack.fragment_index);
         }
         //forse da sistemare perchè c'è un unwrap, anche se in teoria gli ack che arrivano al mio server hanno un session id corretto
+        for i in packet.routing_header.hops.iter().skip(1){
+            let ni = self.find_node(*i, NodeType::Drone);
+            match  ni{
+                Some(n) => {
+                    self.stats.get_mut(&n).unwrap().forwarded+=1;
+                    let mut edges = Vec::new();
+                    for edge_idx in self.neigh_map.edges_directed(n, Incoming).map(|e| e.id()){
+                        edges.push(edge_idx);
+                    }
+                    for e in edges{
+                        if let Some(weight) = self.neigh_map.edge_weight_mut(e) {
+                            let drops = self.stats.get(&n).unwrap();
+                            *weight =  drops.dropped as f64/(drops.forwarded+drops.dropped) as f64;
+                        }
+                    }
+                }
+                None => {}
+            }
+        }
+    
     }
 
     fn packet_recover(&mut self, s_id: u64, lost_fragment_index: u64){
@@ -266,7 +298,7 @@ impl Server{
             let info = self.fragments_send.get(&s_id).unwrap();
             for i in info.2.clone().iter(){
                 if i.fragment_index==lost_fragment_index{
-                    if let Some(srh) = self.get_route(info.0.clone(),info.1.clone()){
+                    if let Some(srh) = self.best_path_custom_cost(info.0.clone(),info.1.clone()){
                         let pack = Packet{
                             routing_header: srh,
                             session_id: s_id.clone(),
@@ -300,15 +332,42 @@ impl Server{
                     self.packet_recover(s_id, nack.fragment_index);
                 }
                 NackType::Dropped => {
-                    if let Some(node) = self.find_node(id, NodeType::Drone) {
-                        //non so se il clone di self vada bene, l'ho messo solo perchè dava errore
-                        for neighbor in self.clone().neigh_map.neighbors(node) {
-                            if let Some(edge) = self.neigh_map.find_edge(node, neighbor) {
-                                self.neigh_map[edge] += 1;
+                    // if let Some(node) = self.find_node(id, NodeType::Drone) {
+                    //     //non so se il clone di self vada bene, l'ho messo solo perchè dava errore
+                    //     for neighbor in self.clone().neigh_map.neighbors(node) {
+                    //         if let Some(edge) = self.neigh_map.find_edge(node, neighbor) {
+                    //             self.neigh_map[edge] += 1;
+                    //         }
+                    //     }
+                    // }else {
+                    //     println!("node not found (shouldn't happen)");
+                    // }
+                    let mut first = true;
+                    for i in packet.routing_header.hops.iter(){
+                        let ni = self.find_node(*i, NodeType::Drone);
+                        match  ni{
+                            Some(n) => {
+                                if first == true{
+                                    self.stats.get_mut(&n).unwrap().dropped+=1;
+                                    first = false;
+                                }else {
+                                    self.stats.get_mut(&n).unwrap().forwarded+=1;
+                                }
+                                let mut edges = Vec::new();
+                                for edge_idx in self.neigh_map.edges_directed(n, Incoming).map(|e| e.id()){
+                                    edges.push(edge_idx);
+                                }
+                                for e in edges{
+                                    if let Some(weight) = self.neigh_map.edge_weight_mut(e) {
+                                        let drops = self.stats.get(&n).unwrap();
+                                        *weight =  drops.dropped as f64/(drops.forwarded+drops.dropped) as f64;
+                                    }
+                                }
+                                println!("graph del chatserver {:?}: {:?}",self.server_id, self.neigh_map);
+                                println!("Drone {:?} stats {:?}",i,self.stats.get(&n).unwrap());
                             }
+                            None => {}
                         }
-                    }else {
-                        println!("node not found (shouldn't happen)");
                     }
                     self.packet_recover(s_id, nack.fragment_index);
                 }
@@ -382,8 +441,7 @@ impl Server{
             }
             if safetoadd {
                 self.flooding.push(flood.clone());
-
-                let mut first=true;
+                
                 let mut prev;
                 match self.find_node(self.server_id, NodeType::Server) {
                     None => { prev = self.neigh_map.add_node((self.server_id, NodeType::Server)) }
@@ -391,67 +449,33 @@ impl Server{
                 }
 
                 for &(j, k) in flood.path_trace.iter().skip(1) {
-                    match k.clone() {
-                        NodeType::Server => {self.send_packet(TextServer::ServerTypeReq, j.clone(), k.clone())},
-                        _ => {}
-                    }
                     if let Some(&(prev_id, prev_nt)) = self.neigh_map.node_weight(prev) {
                         if self.node_exists(j.clone(), k.clone()) {
                             let next = self.find_node(j.clone(), k.clone()).unwrap();
-                            if first {
                                 if self.neigh_map.find_edge(prev, next).is_none() {
-                                    self.neigh_map.add_edge(prev, next, 1);
+                                    self.neigh_map.add_edge(prev, next, 0.0);
                                 }
                                 if self.neigh_map.find_edge(next, prev).is_none() {
-                                    self.neigh_map.add_edge(next, prev, 1);
+                                    self.neigh_map.add_edge(next, prev, 0.0);
                                 }
-                                first = false;
-                            } else {
-                                if prev_nt == NodeType::Drone && k == NodeType::Drone {
-                                    if self.neigh_map.find_edge(prev, next).is_none() {
-                                        self.neigh_map.add_edge(prev, next, 1);
-                                    }
-                                    if self.neigh_map.find_edge(next, prev).is_none() {
-                                        self.neigh_map.add_edge(next, prev, 1);
-                                    }
-                                } else {
-                                    if prev_nt == NodeType::Drone {
-                                        if self.neigh_map.find_edge(prev, next).is_none() {
-                                            self.neigh_map.add_edge(prev, next, 1);
-                                        }
-                                    }
-                                    if k == NodeType::Drone {
-                                        if self.neigh_map.find_edge(next, prev).is_none() {
-                                            self.neigh_map.add_edge(next, prev, 1);
-                                        }
-                                    }
-                                }
-                            }
 
                             prev = next;
                         } else {
                             let newnodeid = self.neigh_map.add_node((j.clone(), k.clone()));
-                            if prev_nt == NodeType::Drone && k == NodeType::Drone {
+                                self.stats.insert(newnodeid.clone(), drops {dropped:0, forwarded:1});
                                 if self.neigh_map.find_edge(prev, newnodeid).is_none() {
-                                    self.neigh_map.add_edge(prev, newnodeid, 1);
+                                    self.neigh_map.add_edge(prev, newnodeid, 0.0);
                                 }
                                 if self.neigh_map.find_edge(newnodeid, prev).is_none() {
-                                    self.neigh_map.add_edge(newnodeid, prev, 1);
+                                    self.neigh_map.add_edge(newnodeid, prev, 0.0);
                                 }
-                            } else {
-                                if prev_nt == NodeType::Drone {
-                                    if self.neigh_map.find_edge(prev, newnodeid).is_none() {
-                                        self.neigh_map.add_edge(prev, newnodeid, 1);
-                                    }
-                                }
-                                if k == NodeType::Drone {
-                                    if self.neigh_map.find_edge(newnodeid, prev).is_none() {
-                                        self.neigh_map.add_edge(newnodeid, prev, 1);
-                                    }
-                                }
-                            }
                             prev = newnodeid;
                         }
+                    }
+                    match k.clone() {
+                        NodeType::Server => {
+                            self.send_packet(TextServer::ServerTypeReq, j.clone(), k.clone())},
+                        _ => {}
                     }
                 }
             }else {
@@ -551,20 +575,87 @@ impl Server{
 
 
     //altro metodo che permette di trovare la route più veloce basandosi sul costo dei collegamenti, ma senza bisogno di fare hashmap e robe varie come tocca fare per dijkstra
-    fn get_route(&self, id:NodeId, nt:NodeType) -> Option<(SourceRoutingHeader)> {
-        // Return Vec<NodeId> instead of Vec<NodeIndex>
+    // fn get_route(&self, id:NodeId, nt:NodeType) -> Option<(SourceRoutingHeader)> {
+    //     // Return Vec<NodeId> instead of Vec<NodeIndex>
+    //     let start = self.find_node(self.server_id, NodeType::Server)?;
+    //     let end = self.find_node(id, nt)?;
+    // 
+    //     let path = astar(
+    //         &self.neigh_map,
+    //         start,
+    //         |finish| finish == end,
+    //         |e| {
+    //             let target = e.target();
+    //             let (_, node_type) = self.neigh_map[target];
+    //             // Allow only Routers as intermediate nodes
+    //             if target != start && target != end {
+    //                 match node_type {
+    //                     NodeType::Client | NodeType::Server => return f64::INFINITY, // Block path
+    //                     _ => {}
+    //                 }
+    //             }
+    //             *e.weight() as f64
+    //         },
+    //         |_| 0.0
+    //     ).map(|(cost, path)| {
+    //         (
+    //             cost,
+    //             path.into_iter().map(|idx| self.neigh_map[idx].0).collect::<Vec<NodeId>>()
+    //         )
+    //     });
+    // 
+    //     Some(SourceRoutingHeader {
+    //         hops: path?.1,
+    //         hop_index: 0,
+    //     })
+    // }
+
+    fn best_path_custom_cost(&self, id: NodeId, nt: NodeType) -> Option<SourceRoutingHeader> {
         let start = self.find_node(self.server_id, NodeType::Server)?;
         let end = self.find_node(id,nt)?;
-        let path = astar(
-            &self.neigh_map,
-            start,
-            |finish| finish == end, // Stop when reaching the end node
-            |e| *e.weight(),        // Edge cost
-            |_| 0                   // No heuristic (Dijkstra behavior)
-        ).map(|(cost, path)| (cost, path.into_iter().map(|idx| self.neigh_map[idx].0).collect())); // Convert NodeIndex -> NodeId
-        Some(SourceRoutingHeader{hops:path?.1, hop_index:0})
-    }
+        let mut heap = BinaryHeap::new();
+        let mut best_cost: HashMap<NodeIndex, f64> = HashMap::new();
+        let mut predecessors: HashMap<NodeIndex, NodeIndex> = HashMap::new();
 
+        heap.push((PathCost(0.0), start, vec![start]));
+        best_cost.insert(start, 0.0);
+
+        while let Some((PathCost(cost), node, path)) = heap.pop() {
+            if node == end {
+                let hops = path.into_iter().map(|idx| self.neigh_map[idx].0).collect();
+                let src =  SourceRoutingHeader{
+                    hops:hops,
+                    hop_index:0,
+                };
+                return Some(src);
+            }
+
+            for edge in self.neigh_map.edges(node) {
+                let neighbor = edge.target();
+
+                if neighbor != end && neighbor != start {
+                    let (_, node_type) = self.neigh_map[neighbor];
+                    if node_type == NodeType::Client || node_type == NodeType::Server {
+                        continue;
+                    }
+                }
+
+                let edge_cost = edge.weight();
+
+                let new_cost = 1.0 - (1.0 - cost) * (1.0 - edge_cost);
+
+                if best_cost.get(&neighbor).map_or(true, |&c| new_cost < c) {
+                    best_cost.insert(neighbor, new_cost);
+                    let mut new_path = path.clone();
+                    new_path.push(neighbor);
+                    predecessors.insert(neighbor, node);
+                    heap.push((PathCost(new_cost), neighbor, new_path));
+                }
+            }
+        }
+
+        None
+    }
 
     // fn create_ack(&mut self, packet: Packet) ->Packet{
     //     let ack = Ack{
@@ -637,3 +728,20 @@ fn create_ack(packet: Packet)->Packet{
 //     pack
 // }
 
+#[derive(Debug,PartialEq,Clone,Copy)]
+pub struct PathCost(f64);
+
+impl Eq for PathCost {}
+
+impl PartialOrd for PathCost {
+    fn partial_cmp(&self, other: &Self) -> Option<Ordering> {
+        // Reverse order because BinaryHeap is a max-heap and we want the smallest cost
+        other.0.partial_cmp(&self.0)
+    }
+}
+
+impl Ord for PathCost {
+    fn cmp(&self, other: &Self) -> Ordering {
+        self.partial_cmp(other).unwrap()
+    }
+}

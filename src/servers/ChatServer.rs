@@ -1,5 +1,6 @@
 use std::cmp::Ordering;
 use std::collections::{BinaryHeap, HashMap, HashSet};
+use std::fmt::Debug;
 use petgraph::graph::{Graph, NodeIndex};
 use petgraph::algo::{astar, dijkstra};
 use crossbeam_channel::{select_biased, Receiver, Sender};
@@ -13,7 +14,7 @@ use wg_2024::packet::{Ack, FloodRequest, FloodResponse, Fragment, Nack, NackType
 use crate::common_things::common::*;
 use crate::servers::assembler::*;
 
-#[derive(Serialize, Clone)]
+#[derive(Serialize, Clone, Debug)]
 pub struct drops{
     dropped : u64,
     forwarded : u64,
@@ -89,9 +90,9 @@ impl Server{
     }
 
 
-    fn send_packet<T>(&mut self, p:T, id:NodeId, nt:NodeType)where T : Fragmentation+Serialize{
+    fn send_packet<T>(&mut self, p:T, id:NodeId, nt:NodeType)where T : Fragmentation+Serialize+Debug{
         // println!("flooding : {:?}", self.flooding); //fa vedere tutte le flood response salvaate nel server
-        // println!("graph : {:?}", self.neigh_map); //fa vedere il grafo (tutti i nodi e tutti gli edges)
+         println!("graph del chatserver {:?}: {:?}",self.server_id, self.neigh_map); //fa vedere il grafo (tutti i nodi e tutti gli edges)
         if let Some(srh) = self.best_path_custom_cost(id,nt){
             println!("srh : {:?}",srh);
             if let Ok(vec) = p.serialize_data(srh,self.session_id){
@@ -107,7 +108,7 @@ impl Server{
                 //aggiungere un field nella struct server per salvare tutti i vari pacchetti nel caso in cui fossero droppati ecc.
             }
         }else {
-            println!("no route found for {:?} {:?}!",nt,id);
+            println!("sono il chatserver {:?} no route found for sending packet {:?} to {:?} {:?}!",self.server_id,p,nt,id);
         }
     }
 
@@ -163,7 +164,7 @@ impl Server{
                             match totalmsg {
                                 TextServer::ServerTypeReq => {
                                     println!("Server type request received from server: {:?}!", p.routing_header.hops.clone()[0]);
-                                    self.send_packet(ChatResponse::ServerType(self.clone().server_type), p.routing_header.hops[0], NodeType::Client);
+                                    self.send_packet(ChatResponse::ServerType(self.clone().server_type), p.routing_header.hops[0], NodeType::Server);
                                 }
                                 _ => { println!("I shouldn't receive these commands"); }
                             }
@@ -267,6 +268,8 @@ impl Server{
                                             *weight =  drops.dropped as f64/(drops.forwarded+drops.dropped) as f64;
                                         }
                                     }
+                                    println!("graph del chatserver {:?}: {:?}",self.server_id, self.neigh_map);
+                                    println!("Drone {:?} stats {:?}",i,self.stats.get(&n).unwrap());
                                 }
                                 None => {}
                             }
@@ -343,8 +346,7 @@ impl Server{
             }
             if safetoadd {
                 self.flooding.push(flood.clone());
-
-                let mut first=true;
+                
                 let mut prev;
                 match self.find_node(self.server_id, NodeType::Server) {
                     None => { prev = self.neigh_map.add_node((self.server_id, NodeType::Server))}
@@ -355,40 +357,16 @@ impl Server{
                     if let Some(&(prev_id, prev_nt)) = self.neigh_map.node_weight(prev) {
                         if self.node_exists(j.clone(), k.clone()) {
                             let next = self.find_node(j.clone(), k.clone()).unwrap();
-                            if first {
                                 if self.neigh_map.find_edge(prev, next).is_none() {
                                     self.neigh_map.add_edge(prev, next, 0.0);
                                 }
                                 if self.neigh_map.find_edge(next, prev).is_none() {
                                     self.neigh_map.add_edge(next, prev, 0.0);
                                 }
-                                first = false;
-                            } else {
-                                if prev_nt == NodeType::Drone && k == NodeType::Drone {
-                                    if self.neigh_map.find_edge(prev, next).is_none() {
-                                        self.neigh_map.add_edge(prev, next, 0.0);
-                                    }
-                                    if self.neigh_map.find_edge(next, prev).is_none() {
-                                        self.neigh_map.add_edge(next, prev, 0.0);
-                                    }
-                                } else {
-                                    if prev_nt == NodeType::Drone {
-                                        if self.neigh_map.find_edge(prev, next).is_none() {
-                                            self.neigh_map.add_edge(prev, next, 0.0);
-                                        }
-                                    }
-                                    if k == NodeType::Drone {
-                                        if self.neigh_map.find_edge(next, prev).is_none() {
-                                            self.neigh_map.add_edge(next, prev, 0.0);
-                                        }
-                                    }
-                                }
-                            }
-
+                            
                             prev = next;
                         } else {
                             let newnodeid = self.neigh_map.add_node((j.clone(), k.clone()));
-                                if prev_nt == NodeType::Drone && k == NodeType::Drone {
                                     self.stats.insert(newnodeid.clone(), drops{dropped:0, forwarded:1});
                                     if self.neigh_map.find_edge(prev, newnodeid).is_none() {
                                         self.neigh_map.add_edge(prev, newnodeid, 0.0);
@@ -396,18 +374,6 @@ impl Server{
                                     if self.neigh_map.find_edge(newnodeid, prev).is_none() {
                                         self.neigh_map.add_edge(newnodeid, prev, 0.0);
                                     }
-                                } else {
-                                    if prev_nt == NodeType::Drone {
-                                        if self.neigh_map.find_edge(prev, newnodeid).is_none() {
-                                            self.neigh_map.add_edge(prev, newnodeid, 0.0);
-                                        }
-                                    }
-                                    if k == NodeType::Drone {
-                                        if self.neigh_map.find_edge(newnodeid, prev).is_none() {
-                                            self.neigh_map.add_edge(newnodeid, prev, 0.0);
-                                        }
-                                    }
-                                }
                             prev = newnodeid;
                         }
                     }
@@ -547,6 +513,14 @@ impl Server{
 
             for edge in self.neigh_map.edges(node) {
                 let neighbor = edge.target();
+
+                if neighbor != end && neighbor != start {
+                    let (_, node_type) = self.neigh_map[neighbor];
+                    if node_type == NodeType::Client || node_type == NodeType::Server {
+                        continue;
+                    }
+                }
+                
                 let edge_cost = edge.weight();
 
                 let new_cost = 1.0 - (1.0 - cost) * (1.0 - edge_cost);
