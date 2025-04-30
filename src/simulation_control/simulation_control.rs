@@ -29,7 +29,7 @@ use crate::GUI::shared_info_plugin::SHARED_STATE;
 use crate::servers::ChatServer::Server;
 use crate::clients::chat_client::ChatClient;
 use crate::clients::web_browser::WebBrowser;
-use crate::common_things::common::{ChatClientEvent, ChatRequest, ChatResponse, ClientType, CommandChat, ServerType};
+use crate::common_things::common::{ChatClientEvent, ChatRequest, ChatResponse, ClientType, CommandChat, ContentCommands, ServerType, WebBrowserEvents};
 use crate::common_things::common::ServerType::CommunicationServer;
 use crate::servers::Text_max::Server as ServerMax;
 
@@ -133,6 +133,38 @@ impl SimulationController {
                         }
                     }
                 }
+                recv(self.web_event) -> event =>{
+                    if let Ok(web_event) = event{
+                        match web_event {
+                            WebBrowserEvents::MediaServers(client, media_servers)=>{
+                                if let Ok(mut state)=SHARED_STATE.write(){
+                                    println!("media_servers sim: {:?} from client: {}",media_servers,client);
+                                    if let Some(current_media_servers)=state.media_servers.get_mut(&client){
+                                        let _=std::mem::replace(current_media_servers, media_servers);
+                                    }else{
+                                        state.media_servers.insert(client, media_servers);
+                                    }
+                                    state.is_updated=true;
+                                }
+
+                            }
+                            WebBrowserEvents::TextServers(client, text_servers)=>{
+                                if let Ok(mut state)=SHARED_STATE.write(){
+                                    if let Some(current_media_servers)=state.text_servers.get_mut(&client){
+                                        let _=std::mem::replace(current_media_servers, text_servers);
+                                    }else{
+                                        state.text_servers.insert(client, text_servers);
+                                    }
+                                    state.is_updated=true;
+                                }
+
+                            }
+
+                            _=>{}
+
+                        }
+                    }
+                },
             recv(self.node_event_recv) -> command =>{
                 if let Ok(drone_event) = command {
                      match drone_event{
@@ -329,6 +361,13 @@ impl SimulationController {
             sender.send(CommandChat::SearchChatServers).unwrap();
         }
     }
+    pub fn get_web_servers(&self){
+        for (_,sender) in self.web_client.iter(){
+            println!("sent command searchserver to client");
+            sender.send(ContentCommands::SearchTypeServers).unwrap()
+        }
+    }
+
 }
 
 pub fn start_simulation(
@@ -492,6 +531,7 @@ pub fn start_simulation(
     simulation_controller.neighbours = neighbours;
     simulation_controller.packet_channel = packet_drones;
     simulation_controller.client = client;
+    simulation_controller.web_client = web_client;
 
     let mut controller = SimulationController {
         node_event_send,

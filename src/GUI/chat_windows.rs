@@ -75,22 +75,23 @@ pub fn handle_clicks(
                         open_windows.windows.push((clickable.name.clone(),clickable.window_type.clone()));
                         open_windows.click_count+=1;
                         println!("Clicked on: {}", clickable.name);
-                        ///review this part
-                        if open_windows.click_count==1{
-                            match clickable.window_type{
-                                ClientType::ChatClient=>sim.get_chat_servers(),
-                                ClientType::WebBrowser=>{},//sim...,
 
-                            }
+                        match clickable.window_type{
+                            ClientType::ChatClient=>sim.get_chat_servers(),
+                            ClientType::WebBrowser=> sim.get_web_servers()
 
                         }
 
                     }
+
+
+
                 }
             }
         }
     }
 }
+
 
 fn display_windows(
     mut contexts: EguiContexts,

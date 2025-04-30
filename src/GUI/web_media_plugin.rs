@@ -13,15 +13,16 @@ pub struct WebMediaPlugin;
 
 impl Plugin for WebMediaPlugin{
     fn build(&self, app: &mut App){
-        //app
-           // .init_resource::<>()
-            // .add_systems(Update, (handle_clicks,window_format).run_if(in_state(AppState::InGame)));
+        app
+            .init_resource::<WebState>();
+            //.add_systems(Update, (handle_clicks,window_format).run_if(in_state(AppState::InGame)));
 
     }
 }
 #[derive(Resource,Default)]
 pub struct WebState{
-    pub web_browsers: Vec<NodeId>,
+    pub text_servers: HashMap<NodeId, Vec<NodeId>>,
+    pub media_servers: HashMap<NodeId, Vec<NodeId>>,
     received_medias: HashMap<NodeId, String>,
 
 }
