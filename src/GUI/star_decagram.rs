@@ -1,9 +1,14 @@
 use bevy::prelude::*;
+use crate::common_things::common::ClientType;
 use crate::network_initializer::network_initializer::*;
 use crate::GUI::login_window::{AddedDrone, NodeConfig, NodeType};
+use crate::GUI::shared_info_plugin::SeenClients;
 
-
-pub fn spawn_star_decagram(added_drone: Option<AddedDrone>) -> Vec<NodeConfig> {
+pub fn spawn_star_decagram(
+    added_drone: Option<AddedDrone>,
+    clients: &mut SeenClients
+) -> Vec<NodeConfig>
+{
     let config = parse_config("assets/configurations/double_chain.toml");
     let radius = 200.0;
     let mut nodes = Vec::new();
@@ -44,14 +49,23 @@ pub fn spawn_star_decagram(added_drone: Option<AddedDrone>) -> Vec<NodeConfig> {
     }
 
     for client in &config.client {
-        let position = calculate_position(current_index);
-        nodes.push(NodeConfig::new(
-            NodeType::Client,
-            client.id,
-            position,
-            client.connected_drone_ids.clone()
-        ));
-        current_index += 1;
+
+        for (client_type, id) in &clients.clients {
+            if id.clone() == client.id {
+                let position = calculate_position(current_index);
+                let node_type=match client_type{
+                    ClientType::WebBrowser=>NodeType::WebBrowser,
+                    ClientType::ChatClient=>NodeType::ChatClient,
+                };
+                nodes.push(NodeConfig::new(
+                    node_type,
+                    client.id,
+                    position,
+                    client.connected_drone_ids.clone()
+                ));
+                current_index += 1;
+            }
+        }
     }
 
     for server in &config.server {

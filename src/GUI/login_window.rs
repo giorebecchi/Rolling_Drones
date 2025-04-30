@@ -14,12 +14,12 @@ use crate::simulation_control::simulation_control::*;
 use egui::widgets::TextEdit;
 use wg_2024::controller::{DroneCommand, DroneEvent};
 use wg_2024::packet::Packet;
-use crate::common_things::common::{ChatClientEvent, CommandChat};
+use crate::common_things::common::{ChatClientEvent, ClientType, CommandChat, ContentCommands, WebBrowserEvents};
 use bevy_framepace::{FramepacePlugin, FramepaceSettings, Limiter};
 use std::sync::{Arc};
 use crate::GUI::chat_windows::ChatSystemPlugin;
-use crate::GUI::shared_info_plugin::BackendBridgePlugin;
-
+use crate::GUI::shared_info_plugin::{BackendBridgePlugin, SeenClients};
+use crate::GUI::web_media_plugin::WebMediaPlugin;
 
 #[derive(Component)]
 struct InputText;
@@ -71,7 +71,8 @@ pub enum NodeType{
     #[default]
     Drone,
     Server,
-    Client,
+    WebBrowser,
+    ChatClient
 }
 #[derive(Event)]
 pub struct NewDroneSpawned{
@@ -89,10 +90,12 @@ pub struct SimulationController {
     pub node_event_recv: Receiver<DroneEvent>,
     pub neighbours: HashMap<NodeId, Vec<NodeId>>,
     pub client : HashMap<NodeId, Sender<CommandChat>>,
+    pub web_client : HashMap<NodeId, Sender<ContentCommands>>,
     pub log: Arc<Mutex<SharedSimState>>,
     pub seen_floods: HashSet<(NodeId,u64,NodeId)>,
     pub client_list: HashMap<(NodeId, NodeId), Vec<NodeId>>,
     pub chat_event: Receiver<ChatClientEvent>,
+    pub web_event : Receiver<WebBrowserEvents>,
     pub messages: HashMap<(NodeId,NodeId),Vec<String>>,
     pub incoming_message: HashMap<(NodeId,NodeId,NodeId), Vec<String>>,
     pub register_success: HashMap<(NodeId,NodeId),bool>
@@ -136,6 +139,7 @@ pub fn main() {
         .insert_resource(FramepaceSettings {
             limiter: Limiter::Auto,
         })
+        .add_plugins(WebMediaPlugin)
         .add_plugins(EguiPlugin)
         .init_resource::<OccupiedScreenSpace>()
         .init_resource::<AddedDrone>()
@@ -154,7 +158,8 @@ pub fn main() {
         .add_event::<NewDroneSpawned>()
         .add_systems(Update, ui_settings)
         .add_systems(Startup, setup_camera)
-        .add_systems(OnEnter(AppState::InGame), (start_simulation,setup_network))
+        .add_systems(OnEnter(AppState::SetUp), start_simulation)
+        .add_systems(OnEnter(AppState::InGame), setup_network)
         .add_systems(Update, recompute_network.run_if(in_state(AppState::InGame)))
         .add_systems(Update , (draw_connections,set_up_bundle).run_if(in_state(AppState::InGame)))
 
@@ -166,6 +171,7 @@ pub fn main() {
 pub enum AppState {
     #[default]
     Menu,
+    SetUp,
     InGame,
 }
 
@@ -186,26 +192,26 @@ fn setup_camera(mut commands: Commands){
 
 fn setup_network(
     user_config: Res<UserConfig>,
-    mut nodes_config: ResMut<NodesConfig>
+    mut nodes_config: ResMut<NodesConfig>,
+    mut seen_clients: ResMut<SeenClients>
 
 ) {
 
     match (*user_config).0.as_str(){
         "star"=>{
-            let nodes= spawn_star_decagram(None);
-            println!("Nodes {:?}",nodes);
+            let nodes= spawn_star_decagram(None,&mut seen_clients);
             (*nodes_config).0=nodes;
         },
         "double_chain"=>{
-            let nodes=spawn_double_chain(None);
+            let nodes=spawn_double_chain(None,&mut seen_clients);
             (*nodes_config).0=nodes;
         },
         "butterfly"=>{
-            let nodes= spawn_butterfly(None);
+            let nodes= spawn_butterfly(None, &mut seen_clients);
             (*nodes_config).0=nodes;
         },
         _=> {
-            let nodes = spawn_star_decagram(None);
+            let nodes = spawn_star_decagram(None, &mut seen_clients);
             (*nodes_config).0=nodes;
 
         },
@@ -216,26 +222,26 @@ fn recompute_network(
     mut event_reader: EventReader<NewDroneSpawned>,
     user_config : Res<UserConfig>,
     mut nodes_config: ResMut<NodesConfig>,
-    mut added_drone: ResMut<AddedDrone>
+    mut added_drone: ResMut<AddedDrone>,
+    mut seen_clients: ResMut<SeenClients>
 ){
     for new_drone in event_reader.read(){
         added_drone.drone=new_drone.drone.clone();
         match user_config.0.as_str(){
             "star"=>{
-                let nodes= spawn_star_decagram(Some(added_drone.clone()));
-                println!("Nodes {:?}",nodes);
+                let nodes= spawn_star_decagram(Some(added_drone.clone()),&mut seen_clients);
                 (*nodes_config).0=nodes;
             },
             "double_chain"=>{
-                let nodes=spawn_double_chain(Some(added_drone.clone()));
+                let nodes=spawn_double_chain(Some(added_drone.clone()),&mut seen_clients);
                 (*nodes_config).0=nodes;
             },
             "butterfly"=>{
-                let nodes= spawn_butterfly(Some(added_drone.clone()));
+                let nodes= spawn_butterfly(Some(added_drone.clone()), &mut seen_clients);
                 (*nodes_config).0=nodes;
             },
             _=> {
-                let nodes = spawn_star_decagram(Some(added_drone.clone()));
+                let nodes = spawn_star_decagram(Some(added_drone.clone()),&mut seen_clients);
                 (*nodes_config).0=nodes;
 
             }
@@ -245,6 +251,7 @@ fn recompute_network(
 #[derive(Component)]
 pub struct Clickable {
     pub name: NodeId,
+    pub window_type: ClientType
 }
 pub fn set_up_bundle(
     node_data: Res<NodesConfig>,
@@ -260,7 +267,8 @@ pub fn set_up_bundle(
                 Sprite {
                     image: match node_data.node_type {
                         NodeType::Drone => asset_server.load("images/Rolling_Drone.png"),
-                        NodeType::Client => unreachable!(),
+                        NodeType::ChatClient => unreachable!(),
+                        NodeType::WebBrowser=> unreachable!(),
                         NodeType::Server => asset_server.load("images/server.png")
                     },
                     custom_size: Some(Vec2::new(45., 45.)),
@@ -281,7 +289,7 @@ pub fn set_up_bundle(
             }).id();
             entity_vector.0.push(entity);
         }
-        else{
+        else if node_data.node_type==NodeType::ChatClient{
             let entity=commands.spawn((
                 Sprite {
                     image: asset_server.load("images/client.png"),
@@ -291,6 +299,7 @@ pub fn set_up_bundle(
                 Transform::from_xyz(node_data.position[0], node_data.position[1], 0.),
                 Clickable {
                     name: node_data.id,
+                    window_type: ClientType::ChatClient
                 },
                 )).with_children(|parent|{
                 parent.spawn((
@@ -305,6 +314,33 @@ pub fn set_up_bundle(
                     ));
             }).id();
             entity_vector.0.push(entity);
+        }
+        else{
+            let entity=commands.spawn((
+                Sprite {
+                    image: asset_server.load("images/web_browser.png"),
+                    custom_size: Some(Vec2::new(45., 45.)),
+                    ..default()
+                },
+                Transform::from_xyz(node_data.position[0], node_data.position[1], 0.),
+                Clickable {
+                    name: node_data.id,
+                    window_type: ClientType::WebBrowser
+                },
+            )).with_children(|parent|{
+                parent.spawn((
+                    Text2d::new(format!("{}",node_data.id)),
+                    TextFont {
+                        font: asset_server.load("fonts/FiraSans-Bold.ttf"),
+                        font_size: 12.,
+                        ..default()
+                    },
+                    TextColor(Color::srgb(1.,0.,0.)),
+                    Transform::from_translation(Vec3::new(-30.,-30.,0.))
+                ));
+            }).id();
+            entity_vector.0.push(entity);
+
         }
     }
 
@@ -351,13 +387,13 @@ fn ui_settings(
                     ui.menu_button("Topologies", |ui| {
                         if ui.button("Star").clicked() {
                             topology.0="star".to_string();
-                            next_state.set(AppState::InGame);
+                            next_state.set(AppState::SetUp);
                         }else if ui.button("Double chain").clicked(){
                             topology.0="double_chain".to_string();
-                            next_state.set(AppState::InGame);
+                            next_state.set(AppState::SetUp);
                         }else if ui.button("Butterfly").clicked(){
                             topology.0="butterfly".to_string();
-                            next_state.set(AppState::InGame);
+                            next_state.set(AppState::SetUp);
                         }else if ui.button("Reset").clicked(){
                             nodes.0=Vec::new();
                             for entity in node_entities.0.clone(){

@@ -1,8 +1,14 @@
 use bevy::prelude::*;
-use crate::GUI::login_window::{NodeConfig, NodeType,AddedDrone};
+use crate::common_things::common::ClientType;
+use crate::GUI::login_window::{NodeConfig, NodeType, AddedDrone};
+use crate::GUI::shared_info_plugin::SeenClients;
 use crate::network_initializer::network_initializer::parse_config;
 
-pub fn spawn_double_chain(added_drone: Option<AddedDrone>) -> Vec<NodeConfig> {
+pub fn spawn_double_chain(
+    added_drone: Option<AddedDrone>,
+    clients : &mut SeenClients,
+) -> Vec<NodeConfig>
+{
     let config = parse_config("assets/configurations/double_chain.toml");
     let mut node_count = config.client.len() + config.server.len() + config.drone.len();
     if let Some(_)=added_drone{
@@ -34,7 +40,14 @@ pub fn spawn_double_chain(added_drone: Option<AddedDrone>) -> Vec<NodeConfig> {
 
     // Add clients
     for client in &config.client {
-        all_nodes.push((NodeType::Client, client.id, &client.connected_drone_ids));
+        for (client_type, id) in &clients.clients{
+            if id.clone() == client.id{
+                match client_type{
+                    ClientType::WebBrowser=>all_nodes.push((NodeType::WebBrowser, client.id, &client.connected_drone_ids)),
+                    ClientType::ChatClient=>all_nodes.push((NodeType::ChatClient, client.id, &client.connected_drone_ids)),
+                }
+            }
+        }
     }
 
     // Add servers

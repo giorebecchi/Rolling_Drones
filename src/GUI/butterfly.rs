@@ -1,8 +1,14 @@
 use bevy::prelude::*;
-use crate::GUI::login_window::{NodeConfig, NodeType,AddedDrone};
+use crate::common_things::common::ClientType;
+use crate::GUI::login_window::{NodeConfig, NodeType, AddedDrone};
+use crate::GUI::shared_info_plugin::SeenClients;
 use crate::network_initializer::network_initializer::parse_config;
 
-pub fn spawn_butterfly(added_drone: Option<AddedDrone>) -> Vec<NodeConfig> {
+pub fn spawn_butterfly(
+    added_drone: Option<AddedDrone>,
+    clients: &mut SeenClients,
+) -> Vec<NodeConfig>
+{
     let config = parse_config("assets/configurations/double_chain.toml");
     let horizontal_spacing = 100.0;
     let vertical_spacing = 60.0;
@@ -14,8 +20,15 @@ pub fn spawn_butterfly(added_drone: Option<AddedDrone>) -> Vec<NodeConfig> {
     if let Some(added_drone)=added_drone{
         all_nodes.push((NodeType::Drone, added_drone.drone.1, added_drone.drone.0.clone()));
     }
-    for client in config.client {
-        all_nodes.push((NodeType::Client, client.id, client.connected_drone_ids));
+    for client in &config.client {
+        for (client_type, id) in &clients.clients{
+            if id.clone() == client.id{
+                match client_type{
+                    ClientType::WebBrowser=>all_nodes.push((NodeType::WebBrowser, client.id, client.connected_drone_ids.clone())),
+                    ClientType::ChatClient=>all_nodes.push((NodeType::ChatClient, client.id, client.connected_drone_ids.clone())),
+                }
+            }
+        }
     }
     for server in config.server {
         all_nodes.push((NodeType::Server, server.id, server.connected_drone_ids));
