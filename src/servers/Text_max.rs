@@ -33,9 +33,9 @@ pub struct Server{
 
 
 impl Server {
-    fn new(server_id: NodeId, recv: Receiver<Packet>, send: HashMap<NodeId, Sender<Packet>>, path: String) -> Self {
+    fn new(server_id: NodeId, packet_recv: Receiver<Packet>, packet_send: HashMap<NodeId, Sender<Packet>>, file_path: &str) -> Self {
         let mut links: Vec<NodeId> = Vec::new();
-        for i in send.clone() {
+        for i in packet_send.clone() {
             links.push(i.0.clone());
         }
         let n = NodeType::Server;
@@ -45,9 +45,9 @@ impl Server {
             nodes_map: vec![(server_id, n, links)],
             fragment_recv: HashMap::new(),
             fragment_send: HashMap::new(),
-            packet_recv: recv,
-            packet_send: send,
-            path,
+            packet_recv: packet_recv,
+            packet_send: packet_send,
+            path: file_path.to_string(),
             file_list: Vec::new(),
             media_list: Vec::new(),
             media_others: HashMap::new(),
@@ -414,7 +414,7 @@ impl Server {
             }
             ComandoText::Chat(chat) => {
                 match chat {
-                    ChatResponse::ServerType(chat) => {}
+                    ChatResponse::ServerType(_) => {}
                     _ => {}
                 }
             }
@@ -702,7 +702,7 @@ pub(crate) fn main() -> () {
 
 
 
-    let path = String::from(r"C:\Users\Massimo\RustroverProjects\Rolling_Drone\src\multimedia\paths\0.txt");
+    let path = r"C:\Users\Massimo\RustroverProjects\Rolling_Drone\src\multimedia\paths\0.txt";
 
 
     // Creiamo il server con la topologia di rete (mappa completa)

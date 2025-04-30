@@ -21,20 +21,20 @@ pub struct Server{
     registered_clients: Vec<NodeId>,
 }
 impl Server {
-    fn new(server_id: NodeId, recv: Receiver<Packet>, send: HashMap<NodeId, Sender<Packet>>) -> Self {
+    fn new(id: NodeId, packet_recv: Receiver<Packet>, packet_send: HashMap<NodeId, Sender<Packet>>) -> Self {
         let mut links: Vec<NodeId> = Vec::new();
-        for i in send.clone() {
+        for i in packet_send.clone() {
             links.push(i.0.clone());
         }
         let n = NodeType::Server;
         Server {
-            server_id,
+            server_id: id,
             server_type: ServerType::TextServer,
-            nodes_map: vec![(server_id,n, links)],
+            nodes_map: vec![(id,n, links)],
             fragment_recv: HashMap::new(),
             fragment_send: HashMap::new(),
-            packet_recv: recv,
-            packet_send: send,
+            packet_recv,
+            packet_send,
             already_visited: HashSet::new(),
             registered_clients: Vec::new(),
         }
@@ -348,7 +348,7 @@ impl Server {
                         let response = Risposta::Chat(ChatResponse::RegisteredClients(self.registered_clients.clone()));
                         self.send_response(id_client, response, session);
                     }
-                    ChatRequest::SendMessage(message, id) => {
+                    ChatRequest::SendMessage(message, _) => {
                         let sender = message.from_id;
                         let receiver = message.to_id;
                         let present = self.is_present(receiver, sender);
