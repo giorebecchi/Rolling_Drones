@@ -271,36 +271,35 @@ impl WebBrowser {
                 .unwrap()
                 .insert(fragment.fragment_index, fragment.clone());
 
-            if let Some(fragments) = self.incoming_fragments.get_mut(&check){
+            if let Some(fragments) = self.incoming_fragments.get(&check){
                 if fragments.len() as u64 == fragment.total_n_fragments{
-                    if let Ok(message) = TextServer::reassemble_msg(fragments){
-                        match message{
+                    if let Ok(message) = TextServer::reassemble_msg(fragments) {
+                        match message {
                             TextServer::ServerType(server_type) => {
                                 println!("server found is of type: {:?}", server_type);
 
-                                if server_type == ServerType::TextServer && !self.text_servers.contains(&src_id){
+                                if server_type == ServerType::TextServer && !self.text_servers.contains(&src_id) {
                                     self.text_servers.push(src_id.clone());
                                 }
 
-                                if let Err(_) = self.send_event.send(WebBrowserEvents::TextServers(self.config.id.clone(), self.text_servers.clone())){
+                                if let Err(_) = self.send_event.send(WebBrowserEvents::TextServers(self.config.id.clone(), self.text_servers.clone())) {
                                     println!("failed to send list of text servers to simulation control")
-                                }else{
+                                } else {
                                     println!("client {} sent text_servers {:?}", self.config.id, self.text_servers);
                                 }
-
                             }
 
                             TextServer::SendFileList(list) => {
                                 println!("list of files available: {:?}", list);
 
-                                if let Err(_) = self.send_event.send(WebBrowserEvents::ListFiles(self.config.id.clone(), list.clone())){
+                                if let Err(_) = self.send_event.send(WebBrowserEvents::ListFiles(self.config.id.clone(), list.clone())) {
                                     println!("failed to send list of files to simulation control")
                                 }
                             }
 
                             TextServer::PositionMedia(media_server_id) => {
                                 println!("the wanted media is located at: {}", media_server_id);
-                                if let Err(_) = self.send_event.send(WebBrowserEvents::MediaPosition(self.config.id.clone(), media_server_id.clone())){
+                                if let Err(_) = self.send_event.send(WebBrowserEvents::MediaPosition(self.config.id.clone(), media_server_id.clone())) {
                                     println!("failed to send media position to simulation control")
                                 }
                             }
@@ -308,54 +307,53 @@ impl WebBrowser {
                             TextServer::Text(text) => {
                                 println!("the text file was received by the web browser");
                                 let path_folder = "src/multimedia/SC".to_string();
-                                match self.save_file(&path_folder, text){
+                                match self.save_file(&path_folder, text) {
                                     Ok(path) => {
-                                        if let Err(_) = self.send_event.send(WebBrowserEvents::SavedTextFile(self.config.id.clone(), path.clone())){
+                                        if let Err(_) = self.send_event.send(WebBrowserEvents::SavedTextFile(self.config.id.clone(), path.clone())) {
                                             println!("failed to send path to text file to simulation control")
                                         }
                                     }
-                                    Err(str) => {println!("{}", str)}
+                                    Err(str) => { println!("{}", str) }
                                 }
                             }
 
                             _ => {}
                         }
+                    }
 
-                    }else {
-                        if let Ok(message) = MediaServer::reassemble_msg(fragments){
-                            match message{
-                                MediaServer::ServerType(server_type) => {
-                                    println!("server found is of type: {:?}", server_type);
+                    if let Ok(message) = MediaServer::reassemble_msg(fragments){
+                        match message{
+                            MediaServer::ServerType(server_type) => {
+                                println!("server found is of type: {:?}", server_type);
 
-                                    if server_type == ServerType::MediaServer && !self.media_servers.contains(&src_id){
-                                        self.media_servers.push(src_id.clone());
-                                    }
-
-                                    println!("SENDING");
-                                    if let Err(_) = self.send_event.send(WebBrowserEvents::MediaServers(self.config.id.clone(), self.media_servers.clone())){
-                                        println!("failed to send list of text servers to simulation control")
-                                    }
-
+                                if server_type == ServerType::MediaServer && !self.media_servers.contains(&src_id){
+                                    self.media_servers.push(src_id.clone());
                                 }
 
-                                MediaServer::SendMedia(media) => {
-                                    println!("the media was received by the web browser");
-                                    let path_folder = "src/multimedia/SC".to_string();
-                                    match self.save_file(&path_folder, media){
-                                        Ok(path) => {
-                                            if let Err(_) = self.send_event.send(WebBrowserEvents::SavedMedia(self.config.id.clone(), path.clone())){
-                                                println!("failed to send path to media to simulation control")
-                                            }
-                                        }
-                                        Err(str) => {println!("{}", str)}
-                                    }
-
+                                if let Err(_) = self.send_event.send(WebBrowserEvents::MediaServers(self.config.id.clone(), self.media_servers.clone())){
+                                    println!("failed to send list of text servers to simulation control")
                                 }
 
-                                _ => {}
                             }
+
+                            MediaServer::SendMedia(media) => {
+                                println!("the media was received by the web browser");
+                                let path_folder = "src/multimedia/SC".to_string();
+                                match self.save_file(&path_folder, media){
+                                    Ok(path) => {
+                                        if let Err(_) = self.send_event.send(WebBrowserEvents::SavedMedia(self.config.id.clone(), path.clone())){
+                                            println!("failed to send path to media to simulation control")
+                                        }
+                                    }
+                                    Err(str) => {println!("{}", str)}
+                                }
+
+                            }
+
+                            _ => {}
                         }
                     }
+
                 }
             }
         }
@@ -526,7 +524,7 @@ impl WebBrowser {
         ack_packet
     }
 
-    fn save_file(& mut self, path_folder: &str, fmd: FileMetaData)-> Result<String, String>{
+    fn save_file(& self, path_folder: &str, fmd: FileMetaData)-> Result<String, String>{
         let full_path = format!("{}/{}.{}", path_folder, fmd.title, fmd.extension);
 
         let decode = match BASE64.decode(fmd.content){

@@ -278,9 +278,6 @@ impl ChatClient {
                                 self.chat_servers.push(src_id.clone());
                             }
 
-
-
-                            println!("sending to sc");
                             if let Err(err) = self.event_send.send(ChatClientEvent::ChatServers(self.config.id.clone(), self.chat_servers.clone())) {
                                 println!("Failed to notify SC about server list: {}", err);
                             }
@@ -351,8 +348,8 @@ impl ChatClient {
                         self.problematic_nodes.push(failed_node);
                     }
 
-                    println!("failed src: {}", failed_src);
-                    println!("failed node: {}", failed_node);
+                    // println!("failed src: {}", failed_src);
+                    // println!("failed node: {}", failed_node);
 
                     let mut copy_topology = self.topology.clone();
 
@@ -361,26 +358,26 @@ impl ChatClient {
                     // if let Some(edge) = self.topology.edges_directed(failed_node, Direction::Outgoing){}
 
                     let fragment_to_resend = if let Some(fragment_lost) = self.fragments_sent.get(&nack.fragment_index){
-                        println!("fragment lost: {:?}", fragment_lost);
+                        // println!("fragment lost: {:?}", fragment_lost);
                         fragment_lost.clone()
                     }else {
-                        println!("no fragment lost");
+                        // println!("no fragment lost");
                         return
                     };
 
                     let destination_id = self.packet_sent.0;
-                    println!("destination id: {}", destination_id);
+                    // println!("destination id: {}", destination_id);
 
                     match self.find_route(&destination_id, Some(&self.problematic_nodes.clone())){
                         Ok(route) => {
-                            println!("found new route! {:?}", route);
+                            // println!("found new route! {:?}", route);
                             let new_packet = Packet::new_fragment(SourceRoutingHeader::new(route.clone(), 0), packet.session_id, fragment_to_resend);
                             // println!("routing header fragment created: {:?}", new_packet.routing_header );
                             // println!("{:?}", new_packet.routing_header.hop_index);
                             // println!("fragment inside the packet: {:?}", new_packet.pack_type);
 
                             if let Some(next_hop) = route.get(1){
-                                println!("next hop: {}", next_hop);
+                                // println!("next hop: {}", next_hop);
                                 self.send_packet(next_hop, new_packet);
                             }else { println!("No next hop found") }
                         }
