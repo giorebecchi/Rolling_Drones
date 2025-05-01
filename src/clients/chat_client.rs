@@ -283,12 +283,12 @@ impl ChatClient {
 
                             self.waiting_response -= 1;
 
-                            if self.waiting_response == 0 {
+                            //if self.waiting_response == 0 {
                                 println!("sending to sc");
                                 if let Err(err) = self.event_send.send(ChatClientEvent::ChatServers(self.config.id.clone(), self.chat_servers.clone())) {
                                     println!("Failed to notify SC about server list: {}", err);
                                 }
-                            }
+                            //}
                         },
                         ChatResponse::EndChat(response) =>{
                             if response {

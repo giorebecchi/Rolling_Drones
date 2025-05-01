@@ -54,7 +54,7 @@ impl Server{
 
         Self{
             server_id:id,
-            server_type: ServerType::TextServer,
+            server_type: ServerType::MediaServer,
             session_id:0,
             paths:all_paths,
             images_ids:images_ids,

@@ -36,8 +36,8 @@ pub struct ChatState {
     pub chat_servers: HashMap<NodeId, Vec<NodeId>>
 }
 #[derive(Resource, Default)]
-struct OpenWindows {
-    windows: Vec<(NodeId,ClientType)>,
+pub struct OpenWindows {
+    pub windows: Vec<(NodeId,ClientType)>,
     click_count: usize
 }
 pub fn handle_clicks(
