@@ -41,7 +41,6 @@ dependencies = [
  "crossbeam-channel",
  "egui",
  "fungi_drone",
- "lazy_static",
  "lockheedrustin-drone",
  "once_cell",
  "petgraph 0.7.1",
