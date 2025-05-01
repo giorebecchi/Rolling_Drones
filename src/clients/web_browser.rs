@@ -278,18 +278,16 @@ impl WebBrowser {
                             TextServer::ServerType(server_type) => {
                                 println!("server found is of type: {:?}", server_type);
 
-                                if server_type == ServerType::TextServer{
+                                if server_type == ServerType::TextServer && !self.text_servers.contains(&src_id){
                                     self.text_servers.push(src_id.clone());
                                 }
-                                self.waiting_response -= 1;
 
-                                if self.waiting_response == 0{
-                                    if let Err(_) = self.send_event.send(WebBrowserEvents::TextServers(self.config.id.clone(), self.text_servers.clone())){
-                                        println!("failed to send list of text servers to simulation control")
-                                    }else{
-                                        println!("client {} sent text_servers {:?}", self.config.id, self.text_servers);
-                                    }
+                                if let Err(_) = self.send_event.send(WebBrowserEvents::TextServers(self.config.id.clone(), self.text_servers.clone())){
+                                    println!("failed to send list of text servers to simulation control")
+                                }else{
+                                    println!("client {} sent text_servers {:?}", self.config.id, self.text_servers);
                                 }
+
                             }
 
                             TextServer::SendFileList(list) => {
@@ -329,16 +327,15 @@ impl WebBrowser {
                                 MediaServer::ServerType(server_type) => {
                                     println!("server found is of type: {:?}", server_type);
 
-                                    if server_type == ServerType::MediaServer{
+                                    if server_type == ServerType::MediaServer && !self.media_servers.contains(&src_id){
                                         self.media_servers.push(src_id.clone());
                                     }
-                                    self.waiting_response -= 1;
 
-                                    if self.waiting_response == 0{
-                                        if let Err(_) = self.send_event.send(WebBrowserEvents::MediaServers(self.config.id.clone(), self.media_servers.clone())){
-                                            println!("failed to send list of text servers to simulation control")
-                                        }
+                                    println!("SENDING");
+                                    if let Err(_) = self.send_event.send(WebBrowserEvents::MediaServers(self.config.id.clone(), self.media_servers.clone())){
+                                        println!("failed to send list of text servers to simulation control")
                                     }
+
                                 }
 
                                 MediaServer::SendMedia(media) => {
@@ -411,46 +408,49 @@ impl WebBrowser {
     pub fn handle_flood_request(& mut self, packet: Packet){
         if let PacketType::FloodRequest(mut flood_request) = packet.clone().pack_type {
 
-            //shoudl add
-            if self.visited_nodes.contains(&(flood_request.flood_id, flood_request.initiator_id)) { //case if client has already received the request
-                if let Some(first_hop) = Some(flood_request.path_trace[1].0) {
-                    if let Some(sender) = self.send_packets.get(&first_hop) {
-                        if let Err(e) = sender.send(flood_request.generate_response(packet.session_id)){
-                            println!("Error sending the flood flood request: {}", e)
-                        }
-                    }else { println!("No sender found for first hop {}", first_hop) }
-                }else { println!("No next hop found") }
-                return;
-            }
+            //check if the pair (flood_id, initiator id) has already been received -> self.visited_nodes
+            if self.visited_nodes.contains(&(flood_request.flood_id, flood_request.initiator_id)){
+                flood_request.path_trace.push((self.config.id.clone(), NodeType::Client));
+                // if let Some(next_hop) = flood_request.path_trace.iter().rev().nth(1){
+                //     println!("next hop: {}", next_hop.0);
+                //     self.send_messages(&next_hop.0, flood_request.generate_response(packet.session_id) );
+                // }else { println!("No next hop found") }
+                self.send_flooding_packet( flood_request.generate_response(packet.session_id) );
+            }else {
+                flood_request.path_trace.push((self.config.id.clone(), NodeType::Client));
+                self.visited_nodes.insert((flood_request.flood_id, flood_request.initiator_id));
 
-            self.visited_nodes.insert((flood_request.flood_id, flood_request.initiator_id)); //mark as visited
+                if self.send_packets.len() == 1{
+                    // if let Some(next_hop) = flood_request.path_trace.iter().rev().nth(1){
+                    //     println!("next hop: {}", next_hop.0);
+                    //     self.send_messages(&next_hop.0, flood_request.generate_response(packet.session_id) );
+                    // }else { println!("No next hop found") }
+                    self.send_flooding_packet( flood_request.generate_response(packet.session_id) );
+                }else {
+                    let new_packet = Packet::new_flood_request(packet.routing_header, packet.session_id, flood_request.clone()); //create the packet of the flood request that needs to be forwarded
+                    for (neighbour, sender) in &self.send_packets {
+                        if let Some(sender_flood_req) = flood_request.path_trace.iter().rev().nth(1) {
+                            if *neighbour != sender_flood_req.0 {
+                                sender.send(new_packet.clone()).unwrap()
+                            }
 
-
-            if self.send_packets.len() == 1{ //check if the client has only one node connected to it
-                if let Some(first_hop) = Some(flood_request.path_trace[1].0 ) {
-                    if let Some(sender) = self.send_packets.get(&first_hop){
-                        if let Err(e) = sender.send(flood_request.generate_response(packet.session_id)){
-                            println!("Error sending the flood request: {}", e)
-                        }
-                    }else { println!("This is not an error message: \n'No sender found in the case of the client having only 1 connection'") }
-                }else { println!("No next hop found") }
-                return;
-            }
-
-            if let Some(_) = flood_request.path_trace.get(1){ //normal case when the client forwards it to the every neighbor
-                println!("forwarding to all direct neighbours");
-                for (neighbor, sender) in &self.send_packets{
-                    if *neighbor != flood_request.path_trace[1].0 { //forward to everyone that's not the one sending the request
-                        let mut forward_packet = packet.clone();
-                        forward_packet.pack_type = PacketType::FloodRequest(flood_request.clone());
-                        if let Err(e) = sender.send(forward_packet){
-                            println!("error forwarding the flood request to every neighbor: {}", e)
                         }
                     }
                 }
             }
-
-        }else { println!("Flood request not found") }
+        }
+    }
+    pub fn send_flooding_packet(& mut self, mut packet: Packet){
+        if packet.routing_header.hop_index < packet.routing_header.hops.len() -1 {
+            packet.routing_header.hop_index += 1;
+            let next_hop = packet.routing_header.hops[packet.routing_header.hop_index];
+            if let Some(sender) = self.send_packets.get(&next_hop) {
+                sender.send(packet.clone()).unwrap_or_default();
+            }
+        } else {
+            println!("destination reached!!");
+            return;
+        }
     }
 
     pub fn build_topology(& mut self){
