@@ -29,6 +29,7 @@ pub struct ThreadInfo {
     pub client_medias: HashMap<NodeId, Vec<String>>,
     pub target_media_server: HashMap<NodeId, NodeId>,
     pub actual_media_path: HashMap<NodeId, String>,
+    pub actual_file_path: HashMap<NodeId, String>,
     pub is_updated: bool,
     pub ready_setup: bool,
 
@@ -102,6 +103,7 @@ fn sync_backend_to_frontend(
             web_state.media_paths=state.client_medias.clone();
             web_state.target_media_server=state.target_media_server.clone();
             web_state.actual_media_path=state.actual_media_path.clone();
+            web_state.actual_file_path=state.actual_file_path.clone();
 
             drop(state);
 
