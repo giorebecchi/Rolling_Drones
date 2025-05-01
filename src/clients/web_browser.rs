@@ -533,6 +533,7 @@ impl WebBrowser {
             Ok(decode) => decode,
             Err(_) => return Err("Failed to decode the file".to_string()),
         };
+        println!("full_path: {}",full_path);
 
         fs::write(&full_path, decode)
             .map_err(|e| format!("Failed to save the file: {}", e))?;

@@ -25,6 +25,7 @@ pub struct WebState{
     pub media_paths: HashMap<NodeId, Vec<String>>,
     pub target_media_server: HashMap<NodeId,NodeId>,
     pub actual_media_path: HashMap<NodeId, String>,
+    pub actual_file_path: HashMap<NodeId, String>,
     selected_text_server: HashMap<NodeId, Option<NodeId>>,
     selected_media_server: HashMap<NodeId, Option<NodeId>>,
     received_medias: HashMap<NodeId, Vec<String>>,
@@ -95,11 +96,15 @@ fn window_format(
                     for media_path in paths{
                         if ui.button(format!("{}",media_path)).clicked(){
                             if let Some(selected_text_server)=web_state.selected_text_server.get(&window_id).cloned().flatten() {
-                                ui.label(format!("Searching for media: {}", media_path));
+                                //ui.label(format!("Searching for media: {}", media_path));
                                 if let Some(medias)=web_state.received_medias.get_mut(&window_id){
                                     medias.push(media_path.clone());
                                 }
-                                sim.get_media_position(window_id, selected_text_server, media_path.clone());
+                                if media_path.ends_with(".txt"){
+                                    sim.get_text_file(window_id.clone(), selected_text_server, media_path.clone());
+                                }else {
+                                    sim.get_media_position(window_id, selected_text_server, media_path.clone());
+                                }
                             }else{
                                 ui.label("Searched failed, text server unreachable");
                             }
@@ -119,6 +124,10 @@ fn window_format(
                 }
                 if let Some(path_to_media)=web_state.actual_media_path.get(&window_id){
                     ui.image(path_to_media.clone());
+                }
+                if let Some(path_to_file)=web_state.actual_file_path.get(&window_id){
+                    println!("path_to_file: {}",path_to_file.clone());
+                    ui.image(path_to_file.clone());
                 }
                 ui.separator();
                 if ui.button("Close Window").clicked() {

@@ -193,6 +193,16 @@ impl SimulationController {
                                     state.is_updated=true;
                                 }
                             }
+                            WebBrowserEvents::SavedTextFile(client, actual_file)=>{
+                                if let Ok(mut state)=SHARED_STATE.write(){
+                                    if let Some(current_path)=state.actual_file_path.get_mut(&client){
+                                        let _=std::mem::replace(current_path, actual_file);
+                                    }else{
+                                        state.actual_file_path.insert(client,actual_file);
+                                    }
+                                    state.is_updated=true;
+                                }
+                            }
 
                             _=>{}
 
@@ -404,6 +414,11 @@ impl SimulationController {
     pub fn get_media_list(&self, web_browser: NodeId, text_server: NodeId){
         if let Some(sender)=self.web_client.get(&web_browser){
             sender.send(ContentCommands::GetTextList(text_server)).unwrap();
+        }
+    }
+    pub fn get_text_file(&self, web_browser: NodeId, text_server: NodeId, text_file: String){
+        if let Some(sender)=self.web_client.get(&web_browser){
+            sender.send(ContentCommands::GetText(text_server, text_file)).unwrap();
         }
     }
     pub fn get_media_position(&self, web_browser: NodeId, text_server:NodeId, media_path: String){
