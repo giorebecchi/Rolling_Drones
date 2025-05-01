@@ -1,5 +1,6 @@
 use std::collections::{HashMap, HashSet};
 use std::fs;
+use std::path::Path;
 use base64::Engine;
 use bevy::ui::Node;
 use bevy_egui::egui::debug_text::print;
@@ -525,7 +526,14 @@ impl WebBrowser {
     }
 
     fn save_file(& self, path_folder: &str, fmd: FileMetaData)-> Result<String, String>{
-        let full_path = format!("{}/{}.{}", path_folder, fmd.title, fmd.extension);
+        //if the creation of fmd.title is not modified by the servers
+        let actual_title  = Path::new(&fmd.title)
+            .file_name() // returns Option<OsStr>
+            .unwrap_or_default()
+            .to_string_lossy()
+            .to_string();
+
+        let full_path = format!("{}/{}.{}", path_folder, actual_title, fmd.extension);
 
         let decode = match BASE64.decode(fmd.content){
             Ok(decode) => decode,
