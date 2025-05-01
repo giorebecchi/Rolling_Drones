@@ -26,6 +26,9 @@ pub struct ThreadInfo {
     pub web_clients: Vec<NodeId>,
     pub text_servers: HashMap<NodeId, Vec<NodeId>>,
     pub media_servers: HashMap<NodeId, Vec<NodeId>>,
+    pub client_medias: HashMap<NodeId, Vec<String>>,
+    pub target_media_server: HashMap<NodeId, NodeId>,
+    pub actual_media_path: HashMap<NodeId, String>,
     pub is_updated: bool,
     pub ready_setup: bool,
 
@@ -90,11 +93,15 @@ fn sync_backend_to_frontend(
             // chat_state.client_list= state.client_list.clone();
             chat_state.registered_clients = state.registered_clients.clone();
             chat_state.chat_servers = state.chat_servers.clone();
+            println!("chat_servers: {:?}",chat_state.chat_servers);
             chat_state.chat_clients=state.chat_clients.clone();
             web_state.text_servers=state.text_servers.clone();
             println!("text_servers: {:?}", web_state.text_servers);
             web_state.media_servers=state.media_servers.clone();
             println!("media_servers: {:?}", web_state.media_servers);
+            web_state.media_paths=state.client_medias.clone();
+            web_state.target_media_server=state.target_media_server.clone();
+            web_state.actual_media_path=state.actual_media_path.clone();
 
             drop(state);
 

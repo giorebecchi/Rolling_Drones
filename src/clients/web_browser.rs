@@ -407,6 +407,7 @@ impl WebBrowser {
 
     pub fn handle_flood_request(& mut self, packet: Packet){
         if let PacketType::FloodRequest(mut flood_request) = packet.clone().pack_type {
+
             //check if the pair (flood_id, initiator id) has already been received -> self.visited_nodes
             if self.visited_nodes.contains(&(flood_request.flood_id, flood_request.initiator_id)){
                 flood_request.path_trace.push((self.config.id.clone(), NodeType::Client));
@@ -432,6 +433,7 @@ impl WebBrowser {
                             if *neighbour != sender_flood_req.0 {
                                 sender.send(new_packet.clone()).unwrap()
                             }
+
                         }
                     }
                 }

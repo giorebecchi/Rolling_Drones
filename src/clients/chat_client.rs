@@ -287,6 +287,7 @@ impl ChatClient {
 
                     },
                     ChatResponse::EndChat(response) =>{
+
                             if response {
                                 println!("chat ended");
                             }else { println!("error in the request: end the chat") }
