@@ -526,20 +526,12 @@ impl WebBrowser {
     }
 
     fn save_file(& self, path_folder: &str, fmd: FileMetaData)-> Result<String, String>{
-        //if the creation of fmd.title is not modified by the servers
-        let actual_title  = Path::new(&fmd.title)
-            .file_name() // returns Option<OsStr>
-            .unwrap_or_default()
-            .to_string_lossy()
-            .to_string();
-
-        let full_path = format!("{}/{}.{}", path_folder, actual_title, fmd.extension);
+        let full_path = format!("{}/{}.{}", path_folder, fmd.title, fmd.extension);
 
         let decode = match BASE64.decode(fmd.content){
             Ok(decode) => decode,
             Err(_) => return Err("Failed to decode the file".to_string()),
         };
-        println!("full_path: {}",full_path);
 
         fs::write(&full_path, decode)
             .map_err(|e| format!("Failed to save the file: {}", e))?;
