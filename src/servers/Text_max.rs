@@ -376,7 +376,7 @@ impl Server {
         match command {
             ComandoText::Media(media) => {
                 match media {
-                    MediaServer::ServerType(ServerType) => {
+                    MediaServer::ServerTypeMedia(ServerType) => {
                         if self.media_others.contains_key(&id_client) {} else {
                             if ServerType == ServerType::MediaServer {
                                 self.media_others.insert(id_client, Vec::new());
@@ -398,7 +398,7 @@ impl Server {
             ComandoText::Text(text) => {
                 match text {
                     TextServer::ServerTypeReq => {
-                        let response = Risposta::Media(MediaServer::ServerType(ServerType::MediaServer));
+                        let response = Risposta::Media(MediaServer::ServerTypeMedia(ServerType::MediaServer));
                         self.send_response(id_client, response, session);
                     }
                     TextServer::PathResolution => {
@@ -414,7 +414,7 @@ impl Server {
             }
             ComandoText::Chat(chat) => {
                 match chat {
-                    ChatResponse::ServerType(_) => {}
+                    ChatResponse::ServerTypeChat(_) => {}
                     _ => {}
                 }
             }
@@ -460,7 +460,7 @@ impl Server {
                         self.send_response(id_client, response, session);
                     }
                     WebBrowserCommands::GetServerType => {
-                        let response = Risposta::Text(TextServer::ServerType(self.server_type.clone()));
+                        let response = Risposta::Text(TextServer::ServerTypeText(self.server_type.clone()));
                         self.send_response(id_client, response, session);
                     }
                 }

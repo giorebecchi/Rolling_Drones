@@ -132,7 +132,7 @@ impl Server{
                         match totalmsg{
                             ChatRequest::ServerType => {
                                 println!("Server type request received from client: {:?}!", p.routing_header.hops.clone()[0]);
-                                self.send_packet(ChatResponse::ServerType(self.clone().server_type), p.routing_header.hops[0], NodeType::Client);
+                                self.send_packet(ChatResponse::ServerTypeChat(self.clone().server_type), p.routing_header.hops[0], NodeType::Client);
                             }
                             ChatRequest::RegisterClient(n) => {
                                 println!("Register client request received from client: {:?}!", p.routing_header.hops.clone()[0]);
@@ -164,7 +164,7 @@ impl Server{
                             match totalmsg {
                                 TextServer::ServerTypeReq => {
                                     println!("Server type request received from server: {:?}!", p.routing_header.hops.clone()[0]);
-                                    self.send_packet(ChatResponse::ServerType(self.clone().server_type), p.routing_header.hops[0], NodeType::Server);
+                                    self.send_packet(ChatResponse::ServerTypeChat(self.clone().server_type), p.routing_header.hops[0], NodeType::Server);
                                 }
                                 _ => { println!("I shouldn't receive these commands"); }
                             }

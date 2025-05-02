@@ -214,6 +214,7 @@ impl Server{
                             WebBrowserCommands::GetPosition(media_id) => {
                                 for i in self.media_info.clone(){
                                     if i.1.contains(&media_id){
+                                        println!("il media si trova qui {:?}", i.0);
                                         self.send_packet(TextServer::PositionMedia(i.0),p.routing_header.hops[0],NodeType::Client);
                                     }
                                 }
@@ -226,34 +227,27 @@ impl Server{
                                 }
                             }
                             WebBrowserCommands::GetServerType => {
-                                self.send_packet(TextServer::ServerType(self.clone().server_type), p.routing_header.hops[0], NodeType::Client);
+                                self.send_packet(TextServer::ServerTypeText(self.clone().server_type), p.routing_header.hops[0], NodeType::Client);
                             }
                         }
                     }else {
                         if let Ok(totalmsg) = ChatResponse::deserialize_data(vec) {
                             match totalmsg {
-                                ChatResponse::ServerType(st) => {
-                                    // match st{
-                                    //     ServerType::MediaServer => {self.media_servers.push(p.routing_header.hops[0]);}
-                                    //     _ => {}
-                                    // }
-                                    //questa roba tecnicamente è inutile visto che il server type mi sta arrivando tramite una chat response, ciò significa che il server è di tipo chat
+                                ChatResponse::ServerTypeChat(st) => {
+                                    //println!("sono il text {:?} e ho scoperto che {:?} è un chat per sicurezza {:?}",self.server_id,p.routing_header.hops[0], st)
                                 }
                                 _ => { println!("I shouldn't receive these commands"); }
                             }
                         }else {
                             if let Ok(totalmsg) = MediaServer::deserialize_data(vec){
                                 match totalmsg {
-                                    MediaServer::ServerType(st) => {
-                                        match st{
-                                            ServerType::MediaServer => {
-                                                self.media_servers.push(p.routing_header.hops[0]);
-                                                self.send_packet(TextServer::PathResolution,p.routing_header.hops[0],NodeType::Server);
-                                            }
-                                            _ => {}
-                                        }
+                                    MediaServer::ServerTypeMedia(_) => {
+                                        //println!("sono il text {:?} e ho scoperto che {:?} è un media",self.server_id,p.routing_header.hops[0]);
+                                        self.media_servers.push(p.routing_header.hops[0]);
+                                        self.send_packet(TextServer::PathResolution,p.routing_header.hops[0],NodeType::Server);
                                     }
                                     MediaServer::SendPath(path) => {
+                                        //println!("sono il text {:?} e ho ricevuto la path res di {:?}",self.server_id,p.routing_header.hops[0]);
                                         self.media_info.insert(p.routing_header.hops[0], path);
                                     }
                                     MediaServer::SendMedia(_) => {println!("I shouldn't receive this command");}
@@ -475,6 +469,7 @@ impl Server{
                     }
                     match k.clone() {
                         NodeType::Server => {
+                            // println!("io sono il text {:?} sto chiedendo servertype a {:?}", self.server_id,j.clone());
                             self.send_packet(TextServer::ServerTypeReq, j.clone(), k.clone())},
                         _ => {}
                     }

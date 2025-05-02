@@ -272,7 +272,7 @@ impl ChatClient {
                 if fragments.len() as u64 == fragment.total_n_fragments {
                     let incoming_message = ChatResponse::reassemble_msg(&fragments).unwrap();
                     match incoming_message {
-                        ChatResponse::ServerType(server_type) => {
+                        ChatResponse::ServerTypeChat(server_type) => {
                             println!("server found is of type: {:?}", server_type);
                             if server_type == ServerType::CommunicationServer && !self.chat_servers.contains(&src_id) {
                                 self.chat_servers.push(src_id.clone());

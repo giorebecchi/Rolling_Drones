@@ -196,7 +196,7 @@ impl Server{
                             WebBrowserCommands::GetText(_) => {println!("I shouldn't receive this command");}
                             WebBrowserCommands::GetServerType => {
                                 println!("problems in sending servertype");
-                                self.send_packet(MediaServer::ServerType(self.clone().server_type), p.routing_header.hops[0], NodeType::Client);
+                                self.send_packet(MediaServer::ServerTypeMedia(self.clone().server_type), p.routing_header.hops[0], NodeType::Client);
                             }
                         }
                     }else {
@@ -208,9 +208,11 @@ impl Server{
                             if let Ok(totalmsg) = TextServer::deserialize_data(vec){
                                 match totalmsg {
                                     TextServer::ServerTypeReq => {
-                                        self.send_packet(MediaServer::ServerType(self.clone().server_type), p.routing_header.hops[0], NodeType::Server);
+                                        // println!("sono il media {:?} e sto mandando il mio servertype {:?} al text {:?}",self.server_id,self.server_type,p.routing_header.hops[0]);
+                                        self.send_packet(MediaServer::ServerTypeMedia(self.clone().server_type), p.routing_header.hops[0], NodeType::Server);
                                     }
                                     TextServer::PathResolution => {
+                                        //println!("sono il media {:?} e sto mandando il mio pathres {:?} al text {:?}",self.server_id,self.server_type,p.routing_header.hops[0]);
                                         self.send_packet(MediaServer::SendPath(self.clone().images_ids),p.routing_header.hops[0], NodeType::Server);
                                     }
                                     _ => {println!("I shouldn't receive these commands");}
