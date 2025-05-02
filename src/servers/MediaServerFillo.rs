@@ -117,7 +117,7 @@ impl Server{
 
     fn send_packet<T>(&mut self, p:T, id:NodeId, nt:NodeType)where T : Fragmentation+Serialize+Debug{
         // println!("flooding : {:?}", self.flooding); //fa vedere tutte le flood response salvaate nel server
-        println!("graph del media {:?} : {:?}",self.server_id , self.neigh_map); //fa vedere il grafo (tutti i nodi e tutti gli edges)
+        // println!("graph del media {:?} : {:?}",self.server_id , self.neigh_map); //fa vedere il grafo (tutti i nodi e tutti gli edges)
         if let Some(srh) = self.best_path_custom_cost(id,nt){
             println!("srh : {:?}",srh);
             if let Ok(vec) = p.serialize_data(srh,self.session_id){
@@ -139,13 +139,14 @@ impl Server{
 
     fn send_image(&mut self, path:&str, id:NodeId, nt:NodeType){
         let pos = path.rfind('.').unwrap();
+        let posofslash = path.rfind('/').unwrap();
         let mut filebytes = "".to_string();
         match fs::read(Path::new(path)){
             Ok(fb) => {filebytes = BASE64.encode(&fb);},
             Err(_) => {println!("could not read file");}
         }
         let fmd = FileMetaData{
-            title: path[..pos].to_string(),
+            title: path[posofslash+1..pos].to_string(),
             extension:path[pos+1..].to_string(),
             content: filebytes,
         };
