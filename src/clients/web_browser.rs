@@ -276,7 +276,7 @@ impl WebBrowser {
                 if fragments.len() as u64 == fragment.total_n_fragments{
                     if let Ok(message) = TextServer::reassemble_msg(fragments) {
                         match message {
-                            TextServer::ServerType(server_type) => {
+                            TextServer::ServerTypeText(server_type) => {
                                 println!("server found is of type: {:?}", server_type);
 
                                 if server_type == ServerType::TextServer && !self.text_servers.contains(&src_id) {
@@ -324,7 +324,7 @@ impl WebBrowser {
 
                     if let Ok(message) = MediaServer::reassemble_msg(fragments){
                         match message{
-                            MediaServer::ServerType(server_type) => {
+                            MediaServer::ServerTypeMedia(server_type) => {
                                 println!("server found is of type: {:?}", server_type);
 
                                 if server_type == ServerType::MediaServer && !self.media_servers.contains(&src_id){
