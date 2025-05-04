@@ -336,7 +336,7 @@ impl Server {
             ComandoChat::Client(reuquest) => {
                 match reuquest{
                     ChatRequest::ServerType => {
-                        let response = Risposta::Chat(ChatResponse::ServerType(self.server_type.clone()));
+                        let response = Risposta::Chat(ChatResponse::ServerTypeChat(self.server_type.clone()));
                         self.send_response(id_client, response, session)
                     }
                     ChatRequest::RegisterClient(client_id) => {
@@ -375,7 +375,7 @@ impl Server {
             ComandoChat::Text(text) => {
                 match text{
                     TextServer::ServerTypeReq => {
-                        let response = Risposta::Chat(ChatResponse::ServerType(self.server_type.clone()));
+                        let response = Risposta::Chat(ChatResponse::ServerTypeChat(self.server_type.clone()));
                         self.send_response(id_client, response, session);
                     }
                     _ => {unreachable!()}

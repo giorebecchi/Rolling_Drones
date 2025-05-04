@@ -92,7 +92,7 @@ impl Server{
 
     fn send_packet<T>(&mut self, p:T, id:NodeId, nt:NodeType)where T : Fragmentation+Serialize+Debug{
         // println!("flooding : {:?}", self.flooding); //fa vedere tutte le flood response salvaate nel server
-         println!("graph del chatserver {:?}: {:?}",self.server_id, self.neigh_map); //fa vedere il grafo (tutti i nodi e tutti gli edges)
+        // println!("graph del chatserver {:?}: {:?}",self.server_id, self.neigh_map); //fa vedere il grafo (tutti i nodi e tutti gli edges)
         if let Some(srh) = self.best_path_custom_cost(id,nt){
             println!("srh : {:?}",srh);
             if let Ok(vec) = p.serialize_data(srh,self.session_id){
@@ -132,7 +132,7 @@ impl Server{
                         match totalmsg{
                             ChatRequest::ServerType => {
                                 println!("Server type request received from client: {:?}!", p.routing_header.hops.clone()[0]);
-                                self.send_packet(ChatResponse::ServerType(self.clone().server_type), p.routing_header.hops[0], NodeType::Client);
+                                self.send_packet(ChatResponse::ServerTypeChat(self.clone().server_type), p.routing_header.hops[0], NodeType::Client);
                             }
                             ChatRequest::RegisterClient(n) => {
                                 println!("Register client request received from client: {:?}!", p.routing_header.hops.clone()[0]);
@@ -164,7 +164,7 @@ impl Server{
                             match totalmsg {
                                 TextServer::ServerTypeReq => {
                                     println!("Server type request received from server: {:?}!", p.routing_header.hops.clone()[0]);
-                                    self.send_packet(ChatResponse::ServerType(self.clone().server_type), p.routing_header.hops[0], NodeType::Server);
+                                    self.send_packet(ChatResponse::ServerTypeChat(self.clone().server_type), p.routing_header.hops[0], NodeType::Server);
                                 }
                                 _ => { println!("I shouldn't receive these commands"); }
                             }

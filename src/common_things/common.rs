@@ -39,7 +39,7 @@ pub enum ChatRequest{
 
 #[derive(Serialize, Deserialize, Debug)]
 pub enum ChatResponse{
-    ServerType(ServerType),
+    ServerTypeChat(ServerType),
     RegisterClient(bool),
     RegisteredClients(Vec<NodeId>),
     SendMessage(Result<String, String>),
@@ -90,7 +90,7 @@ pub enum WebBrowserCommands{
 #[derive(Serialize, Deserialize, Debug)]
 pub enum TextServer{
     ServerTypeReq,
-    ServerType(ServerType),
+    ServerTypeText(ServerType),
     PathResolution, //text server asks all media servers which media he has
     SendFileList(Vec<String>), //send the resolved text list to the client
     PositionMedia(NodeId), //send exact position of the media to the client
@@ -99,7 +99,7 @@ pub enum TextServer{
 
 #[derive(Serialize, Deserialize, Debug)]
 pub enum MediaServer{
-    ServerType(ServerType),
+    ServerTypeMedia(ServerType),
     SendPath(Vec<MediaId>), //send paths to the text server
     SendMedia(FileMetaData) //send correct media to the client who asked
 }
