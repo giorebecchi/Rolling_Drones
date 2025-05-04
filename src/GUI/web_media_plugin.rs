@@ -29,7 +29,7 @@ pub struct WebState{
     pub actual_file_path: HashMap<NodeId, String>,
     selected_text_server: HashMap<NodeId, Option<NodeId>>,
     selected_media_server: HashMap<NodeId, Option<NodeId>>,
-    received_medias: HashMap<NodeId, Vec<String>>,
+    received_medias: HashMap<NodeId, String>,
 
 }
 fn window_format(
@@ -98,8 +98,11 @@ fn window_format(
                         if ui.button(format!("{}",media_path)).clicked(){
                             if let Some(selected_text_server)=web_state.selected_text_server.get(&window_id).cloned().flatten() {
                                 //ui.label(format!("Searching for media: {}", media_path));
-                                if let Some(medias)=web_state.received_medias.get_mut(&window_id){
-                                    medias.push(media_path.clone());
+                                if let Some(mut medias)=web_state.received_medias.get_mut(&window_id){
+                                    medias=&mut media_path.clone();
+                                }else{
+
+                                    web_state.received_medias.insert(window_id, media_path.clone());
                                 }
                                 if media_path.ends_with(".txt"){
                                     sim.get_text_file(window_id.clone(), selected_text_server, media_path.clone());
@@ -114,11 +117,12 @@ fn window_format(
                     }
                 }
                 ui.separator();
-                if let Some(media_server)=web_state.target_media_server.get(&window_id){
+                if let Some(media_server)=web_state.target_media_server.clone().get(&window_id){
                     if let Some(medias)=web_state.received_medias.clone().get_mut(&window_id) {
-                        if let Some(req_media)=medias.pop() {
-                            sim.get_media_from(window_id, media_server.clone(), req_media);
-                        }
+                        println!("GUI called get_media_from");
+
+                        sim.get_media_from(window_id, media_server.clone(), medias.clone());
+                        web_state.received_medias.remove(&window_id);
                     }else{
                         ui.label("Failed to locate media");
                     }

@@ -183,6 +183,7 @@ impl SimulationController {
                                 }
                             }
                             WebBrowserEvents::SavedMedia(client, actual_media)=>{
+                                println!("saved_media: {}",actual_media);
                                 if let Ok(mut state)=SHARED_STATE.write(){
                                     if let Some(current_path)=state.actual_media_path.get_mut(&client){
                                         let _=std::mem::replace(current_path, actual_media);
@@ -428,6 +429,7 @@ impl SimulationController {
         }
     }
     pub fn get_media_from(&self, web_browser: NodeId, media_server: NodeId, media_path: String){
+        println!("function get_media_from was called");
         if let Some(sender)= self.web_client.get(&web_browser){
             sender.send(ContentCommands::GetMedia(media_server, media_path)).unwrap();
         }

@@ -102,6 +102,7 @@ fn sync_backend_to_frontend(
             println!("media_servers: {:?}", web_state.media_servers);
             web_state.media_paths=state.client_medias.clone();
             web_state.target_media_server=state.target_media_server.clone();
+            println!("target_media_server: {:?}",web_state.target_media_server);
             web_state.actual_media_path=state.actual_media_path.clone();
             web_state.actual_file_path=state.actual_file_path.clone();
 

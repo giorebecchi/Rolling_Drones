@@ -104,6 +104,7 @@ impl WebBrowser {
                 self.get_position(id_server, id_media)
             },
             ContentCommands::GetMedia(id_media_server, id_media) => {
+                println!("received get media");
                 self.get_media(id_media_server, id_media)
             },
             ContentCommands::GetText(id_server, text_id) => {
