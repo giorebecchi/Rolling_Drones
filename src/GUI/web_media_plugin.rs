@@ -1,4 +1,5 @@
 use std::collections::HashMap;
+use std::fs;
 use bevy::prelude::*;
 use bevy_egui::{egui, EguiContexts};
 use crate::GUI::login_window::SimulationController;
@@ -126,8 +127,13 @@ fn window_format(
                     ui.image(path_to_media.clone());
                 }
                 if let Some(path_to_file)=web_state.actual_file_path.get(&window_id){
-                    println!("path_to_file: {}",path_to_file.clone());
-                    ui.image(path_to_file.clone());
+                    let text=fs::read_to_string(path_to_file);
+                    if let Ok(content)=text{
+                        ui.label(content);
+                    }else{
+                        ui.label(format!("The path to text_file: {} was incorrect",path_to_file));
+
+                    }
                 }
                 ui.separator();
                 if ui.button("Close Window").clicked() {
