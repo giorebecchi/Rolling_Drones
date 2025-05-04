@@ -23,7 +23,7 @@ use rusteze_drone::RustezeDrone;
 use rustafarian_drone::RustafarianDrone;
 use wg_2024::packet::PacketType::FloodRequest;
 use crate::clients::assembler::Fragmentation;
-use crate::GUI::login_window::{ SharedSimState, SimulationController};
+use crate::GUI::login_window::{SharedSimState, SimulationController, SHARED_LOG};
 use crate::network_initializer::network_initializer::parse_config;
 use crate::GUI::shared_info_plugin::SHARED_STATE;
 use crate::servers::ChatServer::Server;
@@ -49,7 +49,6 @@ impl Default for SimulationController{
             neighbours: HashMap::new(),
             client:  HashMap::new(),
             web_client: HashMap::new(),
-            log : Arc::new(Mutex::new(SharedSimState::default())),
             seen_floods: HashSet::new(),
             client_list: HashMap::new(),
             chat_event: chat_recv,
@@ -213,12 +212,14 @@ impl SimulationController {
                 if let Ok(drone_event) = command {
                      match drone_event{
                         DroneEvent::PacketSent(ref packet) => {
-                                let mut state=self.log.lock().unwrap();
                                 match packet.pack_type.clone(){
                                     FloodRequest(flood_req)=>{
                                         if flood_req_hash.insert((flood_req.initiator_id,flood_req.flood_id)){
-                                            state.log.push_str(&format!("{:?} with id {} has initiated a flood with id {}\n",flood_req.path_trace[0].1,flood_req.initiator_id,flood_req.flood_id));
-                                            thread::sleep(Duration::from_millis(100));
+                                            if let Ok(mut state)=SHARED_LOG.write(){
+                                                state.log.push_str(&format!("{:?} with id {} has initiated a flood with id {}\n",flood_req.path_trace[0].1,flood_req.initiator_id,flood_req.flood_id));
+                                                state.is_updated=true;
+                                            }
+
 
                                         }
                                     }
@@ -467,7 +468,6 @@ pub fn start_simulation(
     let mut packet_drones = HashMap::new();
     let node_event_send = simulation_controller.node_event_send.clone();
     let node_event_recv = simulation_controller.node_event_recv.clone();
-    let log = simulation_controller.log.clone();
     let mut client = simulation_controller.client.clone();
     let mut web_client = simulation_controller.web_client.clone();
 
@@ -506,29 +506,29 @@ pub fn start_simulation(
             .collect::<HashMap<_,_>>();
 
         if i == 0 {
-            let mut server_baia = Arc::new(Mutex::new(Server::new(cfg_server.id, rcv, packet_send)));
+            let mut server_baia =Server::new(cfg_server.id, rcv, packet_send);
             thread::spawn(move || {
                 // server_max.run();
-                server_baia.lock().unwrap().run();
+                server_baia.run();
             });
             //let mut server_max = ServerMax::new(cfg_server.id,rcv.clone(),packet_send);
         }else if i ==1{
-            let text_server_baia = Arc::new(Mutex::new(TextServerBaia::new(cfg_server.id, rcv, packet_send,"src/multimedia/paths/text_server1.txt")));
+            let mut text_server_baia = TextServerBaia::new(cfg_server.id, rcv, packet_send,"src/multimedia/paths/text_server1.txt");
             thread::spawn(move || {
                 // server_max.run();
-                text_server_baia.lock().unwrap().run();
+                text_server_baia.run();
             });
         }else if i==2{
-            let media_server_baia = Arc::new(Mutex::new(MediaServerBaia::new(cfg_server.id, rcv, packet_send,"src/multimedia/paths/media_server1.txt")));
+            let mut media_server_baia = MediaServerBaia::new(cfg_server.id, rcv, packet_send,"src/multimedia/paths/media_server1.txt");
             thread::spawn(move || {
                 // server_max.run();
-                media_server_baia.lock().unwrap().run();
+                media_server_baia.run();
             });
         }else{
-            let media_server_baia = Arc::new(Mutex::new(MediaServerBaia::new(cfg_server.id, rcv, packet_send,"src/multimedia/paths/media_serverr2.txt")));
+            let mut media_server_baia = MediaServerBaia::new(cfg_server.id, rcv, packet_send,"src/multimedia/paths/media_serverr2.txt");
             thread::spawn(move || {
                 // server_max.run();
-                media_server_baia.lock().unwrap().run();
+                media_server_baia.run();
             });
         }
 //
@@ -546,16 +546,16 @@ pub fn start_simulation(
             client.insert(cfg_client.id, command_chat_channel[&cfg_client.id].0.clone());
 
 
-            let mut client_instance = Arc::new(Mutex::new(ChatClient::new(
+            let mut client_instance = ChatClient::new(
                 cfg_client.id,
                 rcv_packet,
                 packet_send.clone(),
                 rcv_command,
                 chat_event_send.clone()
-            )));
+            );
 
             thread::spawn(move || {
-                client_instance.lock().unwrap().run();
+                client_instance.run();
             });
             if let Ok(mut state)=SHARED_STATE.write(){
                 state.n_clients=config.client.len();
@@ -567,15 +567,15 @@ pub fn start_simulation(
            let rcv_command = command_web_channel[&cfg_client.id].1.clone();
            web_client.insert(cfg_client.id, command_web_channel[&cfg_client.id].0.clone());
 
-           let mut web_browser = Arc::new(Mutex::new(WebBrowser::new(
+           let mut web_browser = WebBrowser::new(
                cfg_client.id,
                rcv_packet,
                rcv_command,
                packet_send.clone(),
                web_event_send.clone()
-           )));
+           );
            thread::spawn(move || {
-               web_browser.lock().unwrap().run();
+               web_browser.run();
            });
            if let Ok(mut state)=SHARED_STATE.write(){
                state.n_clients=config.client.len();
@@ -605,7 +605,6 @@ pub fn start_simulation(
         packet_channel: simulation_controller.packet_channel.clone(),
         client: simulation_controller.client.clone(),
         web_client: simulation_controller.web_client.clone(),
-        log,
         seen_floods: HashSet::new(),
         client_list: HashMap::new(),
         chat_event: chat_event_recv,

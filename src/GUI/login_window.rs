@@ -1,5 +1,5 @@
 use std::collections::{HashMap, HashSet};
-use std::sync::{Mutex};
+use std::sync::{Mutex, RwLock};
 use bevy::log::LogPlugin;
 use bevy::prelude::*;
 use bevy::winit::WinitSettings;
@@ -17,6 +17,7 @@ use wg_2024::packet::Packet;
 use crate::common_things::common::{ChatClientEvent, ClientType, CommandChat, ContentCommands, WebBrowserEvents};
 use bevy_framepace::{FramepacePlugin, FramepaceSettings, Limiter};
 use std::sync::{Arc};
+use once_cell::sync::Lazy;
 use crate::GUI::chat_windows::ChatSystemPlugin;
 use crate::GUI::shared_info_plugin::{BackendBridgePlugin, SeenClients};
 use crate::GUI::web_media_plugin::WebMediaPlugin;
@@ -91,7 +92,6 @@ pub struct SimulationController {
     pub neighbours: HashMap<NodeId, Vec<NodeId>>,
     pub client : HashMap<NodeId, Sender<CommandChat>>,
     pub web_client : HashMap<NodeId, Sender<ContentCommands>>,
-    pub log: Arc<Mutex<SharedSimState>>,
     pub seen_floods: HashSet<(NodeId,u64,NodeId)>,
     pub client_list: HashMap<(NodeId, NodeId), Vec<NodeId>>,
     pub chat_event: Receiver<ChatClientEvent>,
@@ -146,22 +146,22 @@ pub fn main() {
         .init_resource::<UserConfig>()
         .init_resource::<NodesConfig>()
         .init_resource::<UiCommands>()
-        .insert_resource(SimulationController{
-            log: shared_state.clone(),
-            ..default()
-        })
+        .init_resource::<SimulationController>()
+        .init_resource::<SimLog>()
+        .init_resource::<DisplayableLog>()
         .init_resource::<NodeEntities>()
         .insert_resource(SimState{
             state: shared_state.clone(),
         })
         .init_state::<AppState>()
         .add_event::<NewDroneSpawned>()
-        .add_systems(Update, ui_settings)
+        .add_systems(Update, (ui_settings,sync_log))
         .add_systems(Startup, setup_camera)
         .add_systems(OnEnter(AppState::SetUp), start_simulation)
         .add_systems(OnEnter(AppState::InGame), setup_network)
         .add_systems(Update, recompute_network.run_if(in_state(AppState::InGame)))
         .add_systems(Update , (draw_connections,set_up_bundle).run_if(in_state(AppState::InGame)))
+
 
 
         .run();
@@ -369,7 +369,7 @@ fn ui_settings(
     mut nodes : ResMut<NodesConfig>,
     mut topology : ResMut<UserConfig>,
     mut sim : ResMut<SimulationController>,
-    mut sim_state: ResMut<SimState>,
+    sim_log: Res<DisplayableLog>,
     mut node_entities: ResMut<NodeEntities>,
     mut simulation_commands: ResMut<UiCommands>,
     mut next_state: ResMut<NextState<AppState>>,
@@ -379,7 +379,7 @@ fn ui_settings(
     if let Some(context)=contexts.try_ctx_mut() {
         let ctx = context;
 
-        let state = sim_state.state.lock().unwrap();
+        //let state = sim_state.state.lock().unwrap();
         occupied_screen_space.left = egui::SidePanel::left("left_panel")
             .resizable(true)
             .show(ctx, |ui| {
@@ -644,12 +644,24 @@ fn ui_settings(
             .resizable(true)
             .show(ctx, |ui| {
                 ui.label("Simulation log");
-                ui.label(&state.log);
+                if ui.button("Clear Log").clicked() {
+                    clear_log();
+                }
+
+                egui::ScrollArea::vertical()
+                    .auto_shrink([false; 2]) // Optional: prevents shrinking when content is smaller
+                    .show(ui, |ui| {
+                        ui.label(sim_log.log.clone());
+                    });
+
+
+
                 ui.allocate_rect(ui.available_rect_before_wrap(), egui::Sense::hover());
             })
             .response
             .rect
             .width();
+
     }
 }
 fn parse_id(id: String)->NodeId{
@@ -661,7 +673,37 @@ fn parse_id(id: String)->NodeId{
         }
     }
 }
+#[derive(Resource, Default)]
+pub struct DisplayableLog{
+     log: String
+}
+#[derive(Resource, Default)]
+pub struct SimLog{
+    pub log: String,
+    pub is_updated: bool,
+}
+fn sync_log(
+    mut displayable_log: ResMut<DisplayableLog>
+){
+    if let Ok(state)=SHARED_LOG.try_read(){
+        if state.is_updated {
+            displayable_log.log = state.log.clone();
 
+            if let Ok(mut state) = SHARED_LOG.try_write() {
+                state.is_updated = false;
+            }
+        }
+    }
+}
+fn clear_log(){
+    if let Ok(mut state)=SHARED_LOG.write(){
+        state.log=String::new();
+        state.is_updated=true;
+    }
+}
+pub static SHARED_LOG: Lazy<Arc<RwLock<SimLog>>>=Lazy::new (||{
+    Arc::new(RwLock::new(SimLog::default()))
+});
 
 
 
