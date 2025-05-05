@@ -183,6 +183,7 @@ impl SimulationController {
                                 }
                             }
                             WebBrowserEvents::SavedMedia(client, actual_media)=>{
+                                println!("saved_media: {}",actual_media);
                                 if let Ok(mut state)=SHARED_STATE.write(){
                                     if let Some(current_path)=state.actual_media_path.get_mut(&client){
                                         let _=std::mem::replace(current_path, actual_media);
@@ -428,6 +429,7 @@ impl SimulationController {
         }
     }
     pub fn get_media_from(&self, web_browser: NodeId, media_server: NodeId, media_path: String){
+        println!("function get_media_from was called");
         if let Some(sender)= self.web_client.get(&web_browser){
             sender.send(ContentCommands::GetMedia(media_server, media_path)).unwrap();
         }
@@ -513,19 +515,19 @@ pub fn start_simulation(
             });
             //let mut server_max = ServerMax::new(cfg_server.id,rcv.clone(),packet_send);
         }else if i ==1{
-            let mut text_server_baia = TextServerBaia::new(cfg_server.id, rcv, packet_send,"src/multimedia/paths/text_server1.txt");
+            let mut text_server_baia = TextServerBaia::new(cfg_server.id, rcv, packet_send,"assets/multimedia/paths/text_server1.txt");
             thread::spawn(move || {
                 // server_max.run();
                 text_server_baia.run();
             });
         }else if i==2{
-            let mut media_server_baia = MediaServerBaia::new(cfg_server.id, rcv, packet_send,"src/multimedia/paths/media_server1.txt");
+            let mut media_server_baia = MediaServerBaia::new(cfg_server.id, rcv, packet_send,"assets/multimedia/paths/media_server1.txt");
             thread::spawn(move || {
                 // server_max.run();
                 media_server_baia.run();
             });
         }else{
-            let mut media_server_baia = MediaServerBaia::new(cfg_server.id, rcv, packet_send,"src/multimedia/paths/media_serverr2.txt");
+            let mut media_server_baia = MediaServerBaia::new(cfg_server.id, rcv, packet_send,"assets/multimedia/paths/media_serverr2.txt");
             thread::spawn(move || {
                 // server_max.run();
                 media_server_baia.run();

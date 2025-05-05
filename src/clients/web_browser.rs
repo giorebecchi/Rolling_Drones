@@ -104,6 +104,7 @@ impl WebBrowser {
                 self.get_position(id_server, id_media)
             },
             ContentCommands::GetMedia(id_media_server, id_media) => {
+                println!("received get media");
                 self.get_media(id_media_server, id_media)
             },
             ContentCommands::GetText(id_server, text_id) => {
@@ -307,7 +308,7 @@ impl WebBrowser {
 
                             TextServer::Text(text) => {
                                 println!("the text file was received by the web browser");
-                                let path_folder = "src/multimedia/SC".to_string();
+                                let path_folder = "assets/multimedia/SC".to_string();
                                 match self.save_file(&path_folder, text) {
                                     Ok(path) => {
                                         if let Err(_) = self.send_event.send(WebBrowserEvents::SavedTextFile(self.config.id.clone(), path.clone())) {
@@ -339,7 +340,7 @@ impl WebBrowser {
 
                             MediaServer::SendMedia(media) => {
                                 println!("the media was received by the web browser");
-                                let path_folder = "src/multimedia/SC".to_string();
+                                let path_folder = "multimedia/SC".to_string();
                                 match self.save_file(&path_folder, media){
                                     Ok(path) => {
                                         if let Err(_) = self.send_event.send(WebBrowserEvents::SavedMedia(self.config.id.clone(), path.clone())){
