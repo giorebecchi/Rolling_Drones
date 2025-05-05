@@ -340,7 +340,7 @@ impl WebBrowser {
 
                             MediaServer::SendMedia(media) => {
                                 println!("the media was received by the web browser");
-                                let path_folder = "multimedia/SC".to_string();
+                                let path_folder = "assets/multimedia/SC".to_string();
                                 match self.save_file(&path_folder, media){
                                     Ok(path) => {
                                         if let Err(_) = self.send_event.send(WebBrowserEvents::SavedMedia(self.config.id.clone(), path.clone())){

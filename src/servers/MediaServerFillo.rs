@@ -151,7 +151,7 @@ impl Server{
             content: filebytes,
         };
         if let Some(srh)=self.best_path_custom_cost(id,nt){
-            if let Ok(vec) = TextServer::Text(fmd).serialize_data(srh.clone(),self.session_id){
+            if let Ok(vec) = MediaServer::SendMedia(fmd).serialize_data(srh.clone(),self.session_id){
                 let mut fragments_send = Vec::new();
                 for i in vec.iter(){
                     if let PacketType::MsgFragment(fragment) = i.clone().pack_type{
