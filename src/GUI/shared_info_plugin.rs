@@ -104,7 +104,9 @@ fn sync_backend_to_frontend(
             web_state.target_media_server=state.target_media_server.clone();
             println!("target_media_server: {:?}",web_state.target_media_server);
             web_state.actual_media_path=state.actual_media_path.clone();
+            println!("actual_media_path: {:?}", web_state.actual_media_path);
             web_state.actual_file_path=state.actual_file_path.clone();
+            println!("actual_file_path: {:?}", web_state.actual_file_path);
 
             drop(state);
 

@@ -515,19 +515,19 @@ pub fn start_simulation(
             });
             //let mut server_max = ServerMax::new(cfg_server.id,rcv.clone(),packet_send);
         }else if i ==1{
-            let mut text_server_baia = TextServerBaia::new(cfg_server.id, rcv, packet_send,"src/multimedia/paths/text_server1.txt");
+            let mut text_server_baia = TextServerBaia::new(cfg_server.id, rcv, packet_send,"assets/multimedia/paths/text_server1.txt");
             thread::spawn(move || {
                 // server_max.run();
                 text_server_baia.run();
             });
         }else if i==2{
-            let mut media_server_baia = MediaServerBaia::new(cfg_server.id, rcv, packet_send,"src/multimedia/paths/media_server1.txt");
+            let mut media_server_baia = MediaServerBaia::new(cfg_server.id, rcv, packet_send,"assets/multimedia/paths/media_server1.txt");
             thread::spawn(move || {
                 // server_max.run();
                 media_server_baia.run();
             });
         }else{
-            let mut media_server_baia = MediaServerBaia::new(cfg_server.id, rcv, packet_send,"src/multimedia/paths/media_serverr2.txt");
+            let mut media_server_baia = MediaServerBaia::new(cfg_server.id, rcv, packet_send,"assets/multimedia/paths/media_serverr2.txt");
             thread::spawn(move || {
                 // server_max.run();
                 media_server_baia.run();
