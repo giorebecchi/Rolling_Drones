@@ -20,7 +20,6 @@ impl Plugin for WebMediaPlugin {
     }
 }
 
-
 #[derive(PartialEq, Eq, Clone, Debug)]
 enum MediaDisplayType {
     Image,
@@ -54,6 +53,7 @@ fn window_format(
 
     for (i, &(window_id, ref client_type)) in open_windows.windows.iter().enumerate() {
         if client_type.clone() == ClientType::WebBrowser {
+
             if !web_state.selected_text_server.contains_key(&window_id) {
                 web_state.selected_text_server.insert(window_id, None);
             }
@@ -77,9 +77,9 @@ fn window_format(
                     let bevy_path = path.strip_prefix("assets/").unwrap_or(&path).to_string();
                     let handle: Handle<Image> = asset_server.load(bevy_path);
                     state.handles.insert(window_id, Some(handle));
+
                 }
             }
-
 
             if let Some(Some(handle)) = state.handles.get(&window_id) {
                 if state.egui_textures.get(&window_id).unwrap_or(&None).is_none() {
@@ -92,9 +92,10 @@ fn window_format(
                 }
             }
 
+            let window_ui_id = egui::Id::new(format!("web_browser_window_{}", window_id));
 
             let window = egui::Window::new(format!("Web Browser: {}", window_id))
-                .id(egui::Id::new(format!("window_{}", window_id)))
+                .id(window_ui_id)
                 .resizable(true)
                 .collapsible(true)
                 .default_size([600., 700.]);
@@ -112,66 +113,84 @@ fn window_format(
                         None => "Select a server".to_string(),
                     };
 
-                    egui::ComboBox::from_id_salt(format!("server_selector_{}", window_id))
+                    let combo_id = egui::Id::new(format!("server_selector_combo_{}", window_id));
+
+                    egui::ComboBox::from_id_source(combo_id)
                         .selected_text(current_server_text)
                         .show_ui(ui, |ui| {
                             let servers = web_state.text_servers.get(&window_id).cloned();
                             if let Some(text_servers) = servers {
                                 for text_server in text_servers {
-                                    let selected = web_state.selected_text_server.get(&window_id) == Some(&Some(text_server));
-                                    if ui.selectable_label(selected, format!("Text_Server: {}", text_server)).clicked() {
-                                        if web_state.selected_text_server.get(&window_id) == Some(&Some(text_server)) {
-                                            web_state.selected_text_server.insert(window_id, None);
-                                        } else {
-                                            web_state.selected_text_server.insert(window_id, Some(text_server));
+                                    let selectable_id = ui.make_persistent_id(format!("text_server_{}_{}", window_id, text_server));
+                                    ui.push_id(selectable_id, |ui| {
+                                        let selected = web_state.selected_text_server.get(&window_id) == Some(&Some(text_server));
+                                        if ui.selectable_label(selected, format!("Text_Server: {}", text_server)).clicked() {
+                                            if web_state.selected_text_server.get(&window_id) == Some(&Some(text_server)) {
+                                                web_state.selected_text_server.insert(window_id, None);
+                                            } else {
+                                                web_state.selected_text_server.insert(window_id, Some(text_server));
+                                            }
                                         }
-                                    }
+                                    });
                                 }
                             }
                         });
 
-                    if ui.button("Ask for Medias").clicked() {
-                        if let Some(selected_text_server) = web_state.selected_text_server.get(&window_id).cloned().flatten() {
-                            sim.get_media_list(window_id, selected_text_server);
+                    let button_id = ui.make_persistent_id(format!("ask_medias_button_{}", window_id));
+                    ui.push_id(button_id, |ui| {
+                        if ui.button("Ask for Medias").clicked() {
+                            if let Some(selected_text_server) = web_state.selected_text_server.get(&window_id).cloned().flatten() {
+                                sim.get_media_list(window_id, selected_text_server);
+                            }
                         }
-                    }
+                    });
                 });
 
                 ui.separator();
                 ui.heading("Available Medias");
 
+
+                let scroll_area_id = ui.make_persistent_id(format!("media_scroll_area_{}", window_id));
+
+
                 if let Some(paths) = web_state.media_paths.get(&window_id).cloned() {
                     let height = (paths.len() as f32 * 24.0).min(200.0);
-                    egui::ScrollArea::vertical().max_height(height).show(ui, |ui| {
-                        for media_path in paths {
-                            if ui.button(format!("{}", media_path)).clicked() {
-                                if let Some(selected_text_server) = web_state.selected_text_server.get(&window_id).cloned().flatten() {
-                                    web_state.actual_media_path.remove(&window_id);
-                                    web_state.actual_file_path.remove(&window_id);
-                                    state.handles.insert(window_id, None);
-                                    state.egui_textures.insert(window_id, None);
-                                    web_state.current_display_type.insert(window_id, MediaDisplayType::None);
+                    ui.push_id(scroll_area_id, |ui| {
+                        egui::ScrollArea::vertical().max_height(height).show(ui, |ui| {
+                            for (idx, media_path) in paths.iter().enumerate() {
 
-                                    web_state.received_medias.insert(window_id, media_path.clone());
+                                let media_button_id = ui.make_persistent_id(format!("media_button_{}_{}", window_id, idx));
+                                ui.push_id(media_button_id, |ui| {
+                                    if ui.button(format!("{}", media_path)).clicked() {
+                                        if let Some(selected_text_server) = web_state.selected_text_server.get(&window_id).cloned().flatten() {
+                                            web_state.actual_media_path.remove(&window_id);
+                                            web_state.actual_file_path.remove(&window_id);
+                                            state.handles.insert(window_id, None);
+                                            state.egui_textures.insert(window_id, None);
+                                            web_state.current_display_type.insert(window_id, MediaDisplayType::None);
 
-                                    println!("Media clicked: {}", media_path);
+                                            web_state.received_medias.insert(window_id, media_path.clone());
 
-                                    if media_path.ends_with(".txt") {
-                                        println!("Processing as text file");
-                                        web_state.current_display_type.insert(window_id, MediaDisplayType::TextFile);
+                                            println!("Media clicked: {}", media_path);
 
-                                        sim.get_text_file(window_id, selected_text_server, media_path.clone());
-                                    } else {
-                                        println!("Processing as image");
-                                        web_state.current_display_type.insert(window_id, MediaDisplayType::Image);
+                                            if media_path.ends_with(".txt") {
+                                                println!("Processing as text file");
+                                                web_state.current_display_type.insert(window_id, MediaDisplayType::TextFile);
 
-                                        sim.get_media_position(window_id, selected_text_server, media_path.clone());
+                                                sim.get_text_file(window_id, selected_text_server, media_path.clone());
+                                            } else {
+                                                println!("Processing as image");
+                                                web_state.current_display_type.insert(window_id, MediaDisplayType::Image);
+
+                                                sim.get_media_position(window_id, selected_text_server, media_path.clone());
+                                            }
+                                        } else {
+                                            ui.label("Search failed, text server unreachable");
+                                        }
                                     }
-                                } else {
-                                    ui.label("Search failed, text server unreachable");
-                                }
+                                });
                             }
-                        }
+                        });
                     });
                 } else {
                     ui.label("No media files available. Click 'Ask for Medias' to refresh.");
@@ -190,85 +209,106 @@ fn window_format(
                 ui.separator();
                 ui.heading("Media View");
 
-                match web_state.current_display_type.get(&window_id).unwrap_or(&MediaDisplayType::None) {
-                    MediaDisplayType::Image => {
-                        if let Some(Some((texture_id, original_size))) = state.egui_textures.get(&window_id) {
-                            if let Some(Some(_)) = state.handles.get(&window_id) {
-                                egui::ScrollArea::both().show(ui, |ui| {
-                                    let available_width = ui.available_width();
-                                    let available_height = 400.0;
+                let media_view_id = ui.make_persistent_id(format!("media_view_area_{}", window_id));
+                ui.push_id(media_view_id, |ui| {
+                    match web_state.current_display_type.get(&window_id).unwrap_or(&MediaDisplayType::None) {
+                        MediaDisplayType::Image => {
+                            if let Some(Some((texture_id, original_size))) = state.egui_textures.get(&window_id) {
+                                if let Some(Some(_)) = state.handles.get(&window_id) {
 
-                                    let scale_factor = (available_width / original_size.x)
-                                        .min(available_height / original_size.y)
-                                        .min(1.0);
+                                    let image_scroll_id = ui.make_persistent_id(format!("image_scroll_{}", window_id));
+                                    ui.push_id(image_scroll_id, |ui| {
+                                        egui::ScrollArea::both().show(ui, |ui| {
+                                            let available_width = ui.available_width();
+                                            let available_height = 400.0;
 
-                                    let display_size = egui::Vec2::new(
-                                        original_size.x * scale_factor,
-                                        original_size.y * scale_factor
-                                    );
 
-                                    let sized_texture = egui::load::SizedTexture::new(*texture_id, *original_size);
-                                    let image_source = egui::ImageSource::Texture(sized_texture);
+                                            let scale_factor = (available_width / original_size.x)
+                                                .min(available_height / original_size.y)
+                                                .min(1.0);
 
-                                    let image_widget = egui::Image::new(image_source)
-                                        .fit_to_exact_size(display_size);
+                                            let display_size = egui::Vec2::new(
+                                                original_size.x * scale_factor,
+                                                original_size.y * scale_factor
+                                            );
 
-                                    ui.add(image_widget);
-                                });
+                                            let sized_texture = egui::load::SizedTexture::new(*texture_id, *original_size);
+                                            let image_source = egui::ImageSource::Texture(sized_texture);
 
-                                ui.label(format!("Original size: {}x{} pixels", original_size.x, original_size.y));
+                                            let image_widget = egui::Image::new(image_source)
+                                                .fit_to_exact_size(display_size);
 
-                                if ui.button("Clear Image").clicked() {
-                                    state.handles.insert(window_id, None);
-                                    state.egui_textures.insert(window_id, None);
-                                    web_state.actual_media_path.remove(&window_id);
-                                    web_state.current_display_type.insert(window_id, MediaDisplayType::None);
-                                }
-                            } else {
-                                ui.label("Image handle invalid. Loading...");
-                            }
-                        } else if web_state.actual_media_path.contains_key(&window_id) {
-                            ui.label("Loading image...");
-                        } else {
-                            ui.label("Loading image...");
-                        }
-                    },
-                    MediaDisplayType::TextFile => {
-                        if let Some(path_to_file) = web_state.actual_file_path.get(&window_id) {
-                            let text = fs::read_to_string(path_to_file);
-                            if let Ok(content) = text {
-                                println!("Displaying text file content from: {}", path_to_file);
-                                egui::ScrollArea::vertical()
-                                    .max_height(300.0)
-                                    .show(ui, |ui| {
-                                        ui.add(egui::TextEdit::multiline(&mut content.as_str())
-                                            .desired_width(ui.available_width())
-                                            .desired_rows(10)
-                                            .interactive(false));
+                                            ui.add(image_widget);
+                                        });
                                     });
 
-                                if ui.button("Clear Text").clicked() {
+                                    ui.label(format!("Original size: {}x{} pixels", original_size.x, original_size.y));
+
+                                    let clear_button_id = ui.make_persistent_id(format!("clear_image_button_{}", window_id));
+                                    ui.push_id(clear_button_id, |ui| {
+                                        if ui.button("Clear Image").clicked() {
+                                            state.handles.insert(window_id, None);
+                                            state.egui_textures.insert(window_id, None);
+                                            web_state.actual_media_path.remove(&window_id);
+                                            web_state.current_display_type.insert(window_id, MediaDisplayType::None);
+                                        }
+                                    });
+                                } else {
+                                    ui.label("Image handle invalid. Loading...");
+                                }
+                            } else if web_state.actual_media_path.contains_key(&window_id) {
+                                ui.label("Loading image...");
+                            } else {
+
+                                ui.label("Loading image...");
+                            }
+                        },
+                        MediaDisplayType::TextFile => {
+                            if let Some(path_to_file) = web_state.actual_file_path.get(&window_id) {
+                                let text = fs::read_to_string(path_to_file);
+                                if let Ok(content) = text {
+                                    let text_scroll_id = ui.make_persistent_id(format!("text_scroll_{}", window_id));
+                                    ui.push_id(text_scroll_id, |ui| {
+                                        egui::ScrollArea::vertical()
+                                            .max_height(300.0)
+                                            .show(ui, |ui| {
+                                                ui.add(egui::TextEdit::multiline(&mut content.as_str())
+                                                    .desired_width(ui.available_width())
+                                                    .desired_rows(10)
+                                                    .interactive(false)
+                                                    .id(ui.make_persistent_id(format!("text_edit_{}", window_id))));
+                                            });
+                                    });
+
+                                    let clear_text_id = ui.make_persistent_id(format!("clear_text_button_{}", window_id));
+                                    ui.push_id(clear_text_id, |ui| {
+                                        if ui.button("Clear Text").clicked() {
+                                            web_state.actual_file_path.remove(&window_id);
+                                            web_state.current_display_type.insert(window_id, MediaDisplayType::None);
+                                        }
+                                    });
+                                } else {
+                                    ui.label(format!("The path to text file: {} was incorrect", path_to_file));
                                     web_state.actual_file_path.remove(&window_id);
                                     web_state.current_display_type.insert(window_id, MediaDisplayType::None);
                                 }
                             } else {
-                                ui.label(format!("The path to text file: {} was incorrect", path_to_file));
-                                web_state.actual_file_path.remove(&window_id);
-                                web_state.current_display_type.insert(window_id, MediaDisplayType::None);
+                                ui.label("Loading text file...");
                             }
-                        } else {
-                            ui.label("Loading text file...");
+                        },
+                        MediaDisplayType::None => {
+                            ui.label("No media to display");
                         }
-                    },
-                    MediaDisplayType::None => {
-                        ui.label("No media to display");
                     }
-                }
+                });
 
                 ui.separator();
-                if ui.button("Close Window").clicked() {
-                    should_close = true;
-                }
+                let close_button_id = ui.make_persistent_id(format!("close_button_{}", window_id));
+                ui.push_id(close_button_id, |ui| {
+                    if ui.button("Close Window").clicked() {
+                        should_close = true;
+                    }
+                });
             });
 
             if should_close {
@@ -289,6 +329,7 @@ fn window_format(
         open_windows.windows.remove(i);
     }
 }
+
 #[derive(Resource, Default)]
 pub struct WebState {
     pub text_servers: HashMap<NodeId, Vec<NodeId>>,
