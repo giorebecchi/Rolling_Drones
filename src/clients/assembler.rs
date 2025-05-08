@@ -89,7 +89,32 @@ impl Fragmentation for TextServer{}
 impl Serialization for MediaServer{}
 impl Fragmentation for MediaServer{}
 
+//used in the graph for the topology
+#[derive(Debug, Clone, Eq, PartialEq, Hash, PartialOrd, Ord)] //need these implemented to use it in the graph
+pub struct NodeData{
+    pub forwarded: u32,
+    pub dropped: u32,
+}
 
+impl NodeData{
+    pub fn new()-> Self{
+        Self{
+            forwarded: 0,
+            dropped: 0
+        }
+    }
+
+    pub fn reliability(&self)-> f32{
+        if (self.dropped + self.forwarded) == 0{
+            return 1.0
+        }
+        let tot = self.forwarded as f32 / (self.dropped + self.forwarded) as f32;
+        if tot == 0.0{
+            return 0.1
+        }
+        tot
+    }
+}
 
 pub fn main(){
     let message_test = MessageChat{

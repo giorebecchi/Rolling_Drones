@@ -1,6 +1,7 @@
 use std::collections::{HashMap, HashSet};
 use std::fs;
 use std::path::Path;
+use std::process::id;
 use base64::Engine;
 use bevy::ui::Node;
 use bevy_egui::egui::debug_text::print;
@@ -14,11 +15,13 @@ use wg_2024::controller;
 use serde::{Serialize, Deserialize};
 use wg_2024::config::Client;
 use wg_2024::network::{NodeId, SourceRoutingHeader};
-use wg_2024::packet::{FloodRequest, FloodResponse, Fragment, NodeType, Packet, PacketType};
-use crate::clients::assembler::Fragmentation;
-use crate::common_things::common::{ChatRequest, ClientType, ContentCommands, ContentType, FileMetaData, MediaId, MediaServer, ServerType, TextServer, WebBrowserCommands, WebBrowserEvents};
+use wg_2024::packet::{FloodRequest, FloodResponse, Fragment, NackType, NodeType, Packet, PacketType};
+use crate::clients::assembler::{Fragmentation, NodeData};
+use crate::common_things::common::{ChatRequest, ClientType, ContentCommands, FileMetaData, MediaId, MediaServer, ServerType, TextServer, WebBrowserCommands, WebBrowserEvents};
+
 use crate::common_things::common::WebBrowserEvents::TypeClient;
 use base64::engine::general_purpose::STANDARD as BASE64;
+use petgraph::prelude::UnGraphMap;
 
 pub struct WebBrowser {
     pub config: Client,
@@ -38,8 +41,9 @@ pub struct WebBrowser {
     pub send_event: Sender<WebBrowserEvents>,
     pub media_servers: Vec<NodeId>,
     pub text_servers: Vec<NodeId>,
-    pub waiting_response: usize
-
+    pub packet_sent: HashMap<u64, (NodeId, Vec<Packet>)>,
+    pub topology_graph: UnGraphMap<NodeId, u32>,
+    pub node_data: HashMap<NodeId, NodeData>
 }
 
 impl WebBrowser {
@@ -67,7 +71,9 @@ impl WebBrowser {
             send_event,
             media_servers: Vec::new(),
             text_servers: Vec::new(),
-            waiting_response: 0
+            packet_sent: HashMap::new(),
+            topology_graph: UnGraphMap::new(),
+            node_data: HashMap::new()
         }
     }
     pub fn run(& mut self) {
@@ -104,7 +110,6 @@ impl WebBrowser {
                 self.get_position(id_server, id_media)
             },
             ContentCommands::GetMedia(id_media_server, id_media) => {
-                println!("received get media");
                 self.get_media(id_media_server, id_media)
             },
             ContentCommands::GetText(id_server, text_id) => {
@@ -135,7 +140,6 @@ impl WebBrowser {
     }
 
     pub fn search_type_servers(& mut self) {
-        self.waiting_response = self.servers.len();
         for server in self.servers.clone() {
             self.ask_type(server);
         }
@@ -150,15 +154,21 @@ impl WebBrowser {
         let request = WebBrowserCommands::GetServerType;
         self.fragments_sent = WebBrowserCommands::fragment_message(&request);
 
-        match self.find_path(&id_server) {
+        match self.find_route(&id_server) {
             Ok(route) => {
+                println!("initial route to ask type: {:?}", route);
                 let packets_to_send = ChatRequest::create_packet(&self.fragments_sent, route.clone(), &mut self.session_id_packet);
-                for packet in packets_to_send {
+
+                let mut session_id = 0;
+                for packet in packets_to_send.clone() {
+                    session_id = packet.session_id;
                     if let Some(next_hop) = route.get(1) {
                         self.send_messages(next_hop, packet);
                     } else { println!("No next hop found") }
                 }
-                println!("Sent request to get the server type to server: {}", id_server);
+
+                self.packet_sent.insert(session_id, (id_server, packets_to_send));
+                println!("Sent request to get the server type to server {} by web browser {}", id_server, self.config.id);
             }
             Err(_) => { println!("No route found for the destination server") }
         }
@@ -173,15 +183,20 @@ impl WebBrowser {
         let request = WebBrowserCommands::GetList;
         self.fragments_sent = WebBrowserCommands::fragment_message(&request);
 
-        match self.find_path(&id_server) {
+        match self.find_route(&id_server) {
             Ok(route) => {
                 let packets_to_send = ChatRequest::create_packet(&self.fragments_sent, route.clone(), &mut self.session_id_packet);
-                for packet in packets_to_send {
+
+                let mut session_id = 0;
+                for packet in packets_to_send.clone() {
+                    session_id = packet.session_id;
                     if let Some(next_hop) = route.get(1) {
                         self.send_messages(next_hop, packet);
                     } else { println!("No next hop found") }
                 }
-                println!("Sent request to get the server type to server: {}", id_server);
+
+                self.packet_sent.insert(session_id, (id_server, packets_to_send));
+                println!("Sent request to get the client list to server: {}", id_server);
             }
             Err(_) => { println!("No route found for the destination server") }
         }
@@ -196,15 +211,20 @@ impl WebBrowser {
         let request = WebBrowserCommands::GetPosition(media_id);
         self.fragments_sent = WebBrowserCommands::fragment_message(&request);
 
-        match self.find_path(&id_server) {
+        match self.find_route(&id_server) {
             Ok(route) => {
                 let packets_to_send = ChatRequest::create_packet(&self.fragments_sent, route.clone(), &mut self.session_id_packet);
-                for packet in packets_to_send {
+
+                let mut session_id = 0;
+                for packet in packets_to_send.clone() {
+                    session_id = packet.session_id;
                     if let Some(next_hop) = route.get(1) {
                         self.send_messages(next_hop, packet);
                     } else { println!("No next hop found") }
                 }
-                println!("Sent request to get the server type to server: {}", id_server);
+
+                self.packet_sent.insert(session_id, (id_server, packets_to_send));
+                println!("Sent request to get the position of the media to server: {}", id_server);
             }
             Err(_) => { println!("No route found for the destination server") }
         }
@@ -218,15 +238,21 @@ impl WebBrowser {
         let request = WebBrowserCommands::GetMedia(media_id);
         self.fragments_sent = WebBrowserCommands::fragment_message(&request);
 
-        match self.find_path(&id_media_server) {
+        match self.find_route(&id_media_server) {
             Ok(route) => {
+                println!("initial route to send request of media {:?}", route);
                 let packets_to_send = ChatRequest::create_packet(&self.fragments_sent, route.clone(), &mut self.session_id_packet);
-                for packet in packets_to_send {
+
+                let mut session_id = 0;
+                for packet in packets_to_send.clone() {
+                    session_id = packet.session_id;
                     if let Some(next_hop) = route.get(1) {
                         self.send_messages(next_hop, packet);
                     } else { println!("No next hop found") }
                 }
-                println!("Sent request to get the server type to server: {}", id_media_server);
+
+                self.packet_sent.insert(session_id, (id_media_server, packets_to_send));
+                println!("Sent request to get retrieve the media from server: {}", id_media_server);
             }
             Err(_) => { println!("No route found for the destination server") }
         }
@@ -240,15 +266,20 @@ impl WebBrowser {
         let request = WebBrowserCommands::GetText(text_id);
         self.fragments_sent = WebBrowserCommands::fragment_message(&request);
 
-        match self.find_path(&id_server) {
+        match self.find_route(&id_server) {
             Ok(route) => {
                 let packets_to_send = ChatRequest::create_packet(&self.fragments_sent, route.clone(), &mut self.session_id_packet);
-                for packet in packets_to_send {
+
+                let mut session_id = 0;
+                for packet in packets_to_send.clone() {
+                    session_id = packet.session_id;
                     if let Some(next_hop) = route.get(1) {
                         self.send_messages(next_hop, packet);
                     } else { println!("No next hop found") }
                 }
-                println!("Sent request to get the server type to server: {}", id_server);
+
+                self.packet_sent.insert(session_id, (id_server, packets_to_send));
+                println!("Sent request to retrieve the the text from server: {}", id_server);
             }
             Err(_) => { println!("No route found for the destination server") }
         }
@@ -379,11 +410,59 @@ impl WebBrowser {
         }
     }
 
-    pub fn handle_nacks(& mut self, packet: Packet){}
+    pub fn handle_nacks(& mut self, packet: Packet){
+        if let PacketType::Nack(nack) = packet.pack_type{
+            match nack.nack_type{
+                NackType::Dropped => {
+                    let failing_node = packet.routing_header.hops[0];
+                    let data = self.node_data.get_mut(&failing_node).unwrap();
+                    data.dropped += 1;
+
+                    let fragment_lost = if let Some(fragment_lost) = self.fragments_sent.get(&nack.fragment_index){
+                        fragment_lost.clone()
+                    }else { return; };
+
+                    let destination_id = match self.packet_sent.get(&packet.session_id){
+                        Some((destination_id, _)) => destination_id.clone(),
+                        None => {
+                            println!("no destination id found by web browser");
+                            return;
+                        }
+                    };
+
+                    match self.find_route(&destination_id){
+                        Ok(route) => {
+                            println!("route re-computed by web: {:?}", route);
+
+                            let packet_to_send = Packet::new_fragment(
+                                SourceRoutingHeader::new(route.clone(), 0),
+                                packet.session_id,
+                                fragment_lost
+                            );
+
+                            if let Some(next_hop) = route.get(1){
+                                self.send_messages(next_hop, packet_to_send);
+                            }else { println!("No next hop found") }
+                        }
+                        Err(_) => println!("failed to find the route after receiving nack")
+                    }
+
+                }
+
+                NackType::ErrorInRouting(id) => {
+
+                }
+
+                _ => {}
+            }
+        }
+    }
 
     pub fn handle_acks(& mut self, packet: Packet){
         if let PacketType::Ack(ack) = packet.pack_type{
             self.fragments_sent.retain(|index, _| *index != ack.fragment_index); //this filters the hashmap, removing the ones with that index
+            let data = self.node_data.get_mut(&packet.routing_header.hops.iter().rev().nth(1).unwrap()).unwrap();
+            data.forwarded += 1;
         }
     }
 
@@ -472,21 +551,72 @@ impl WebBrowser {
     }
 
     pub fn build_topology(& mut self){
-        self.topology.clear();
+        self.topology_graph.clear();
 
         for resp in &self.flood{
             let path = &resp.path_trace;
             for pair in path.windows(2) {
                 let (src, _) = pair[0];
                 let (dst, _) = pair[1];
-                self.topology.add_edge(src.clone(), dst.clone(), 1); // use 1 as weight (hop), could me modified for the nack
+
+                self.node_data.insert(src, NodeData::new());
+                self.node_data.insert(dst, NodeData::new());
+
+                self.topology_graph.add_edge(src.clone(), dst.clone(), 1); // use 1 as weight (hop), could me modified for the nack
             }
         }
     }
 
-    pub fn find_path(& mut self, destination_id : &NodeId)-> Result<Vec<NodeId>, String>{
+    // pub fn find_path(& mut self, destination_id : &NodeId)-> Result<Vec<NodeId>, String>{
+    //     let source = self.config.id.clone();
+    //     let result = dijkstra(&self.topology, source.clone(), Some(destination_id.clone()), |_| 1);
+    //
+    //     if let Some(_) = result.get(destination_id) {
+    //         let mut path = vec![destination_id.clone()];
+    //         let mut current = destination_id.clone();
+    //
+    //         while current != source {
+    //             let mut found = false;
+    //             for edge in self.topology.edges_directed(current.clone(), Direction::Incoming) {
+    //                 let prev = edge.source();
+    //                 let weight = edge.weight();
+    //
+    //                 if let (Some(&prev_cost), Some(&curr_cost)) = (result.get(&prev), result.get(&current)) {
+    //                     if prev_cost + weight == curr_cost {
+    //                         path.push(prev.clone());
+    //                         current = prev.clone();
+    //                         found = true;
+    //                         break;
+    //                     }
+    //                 }
+    //             }
+    //
+    //             if !found {
+    //                 return Err("Failed to reconstruct path".into());
+    //             }
+    //         }
+    //
+    //         path.reverse();
+    //         Ok(path)
+    //     } else {
+    //         Err("No route found".into())
+    //     }
+    // }
+
+    pub fn find_route(& mut self, destination_id: &NodeId)-> Result<Vec<NodeId>, String>{
         let source = self.config.id.clone();
-        let result = dijkstra(&self.topology, source.clone(), Some(destination_id.clone()), |_| 1);
+
+        let result = dijkstra(&self.topology_graph, source.clone(), Some(destination_id.clone()), |edge|{
+            let dest = edge.1;
+            let reliability = self.node_data.get(&dest).map(|data| data.reliability()).unwrap_or(1.0);
+            if reliability <= 0.0 {
+                1_000
+            } else {
+                ((1.0 / reliability).ceil() as u32).min(1_000)
+            }
+            //ceil returns integer closest to result
+            //this transforms the reliability into a weight. when we have higher reliability we need a smaller cost
+        });
 
         if let Some(_) = result.get(destination_id) {
             let mut path = vec![destination_id.clone()];
@@ -494,14 +624,22 @@ impl WebBrowser {
 
             while current != source {
                 let mut found = false;
-                for edge in self.topology.edges_directed(current.clone(), Direction::Incoming) {
-                    let prev = edge.source();
-                    let weight = edge.weight();
+                for edge in self.topology_graph.edges_directed(current.clone(), Direction::Incoming) {
+                    let prev = edge.0;
 
                     if let (Some(&prev_cost), Some(&curr_cost)) = (result.get(&prev), result.get(&current)) {
-                        if prev_cost + weight == curr_cost {
+                        let edge_cost = {
+                            let reliability = self.node_data.get(&current).map(|d| d.reliability()).unwrap_or(1.0);
+                            if reliability <= 0.0 {
+                                u32::MAX
+                            } else {
+                                (1.0 / reliability).ceil() as u32
+                            }
+                        };
+
+                        if prev_cost + edge_cost == curr_cost {
                             path.push(prev.clone());
-                            current = prev.clone();
+                            current = prev;
                             found = true;
                             break;
                         }
@@ -509,14 +647,13 @@ impl WebBrowser {
                 }
 
                 if !found {
-                    return Err("Failed to reconstruct path".into());
+                    return Err("failed to reconstruct path".to_string());
                 }
             }
-
             path.reverse();
             Ok(path)
-        } else {
-            Err("No route found".into())
+        }else {
+            Err("no route found!!".to_string())
         }
     }
 

@@ -54,7 +54,7 @@ connected_drone_ids = [1]
 
 [[client]]
 id = 11
-connected_drone_ids = [1]
+connected_drone_ids = [1, 10]
 
 [[client]]
 id = 13
