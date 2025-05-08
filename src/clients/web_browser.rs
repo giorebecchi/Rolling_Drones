@@ -18,6 +18,7 @@ use wg_2024::network::{NodeId, SourceRoutingHeader};
 use wg_2024::packet::{FloodRequest, FloodResponse, Fragment, NackType, NodeType, Packet, PacketType};
 use crate::clients::assembler::{Fragmentation, NodeData};
 use crate::common_things::common::{ChatRequest, ClientType, ContentCommands, FileMetaData, MediaId, MediaServer, ServerType, TextServer, WebBrowserCommands, WebBrowserEvents};
+
 use crate::common_things::common::WebBrowserEvents::TypeClient;
 use base64::engine::general_purpose::STANDARD as BASE64;
 use petgraph::prelude::UnGraphMap;
@@ -319,6 +320,9 @@ impl WebBrowser {
                                 } else {
                                     println!("client {} sent text_servers {:?}", self.config.id, self.text_servers);
                                 }
+                                if let Err(_) = self.send_event.send(WebBrowserEvents::PacketInfo(self.config.id, ContentType::TextServerList(fragment.total_n_fragments), packet.session_id)){
+                                    println!("client {} failed to notify SC about text server list",self.config.id);
+                                }
                             }
 
                             TextServer::SendFileList(list) => {
@@ -327,12 +331,18 @@ impl WebBrowser {
                                 if let Err(_) = self.send_event.send(WebBrowserEvents::ListFiles(self.config.id.clone(), list.clone())) {
                                     println!("failed to send list of files to simulation control")
                                 }
+                                if let Err(_) = self.send_event.send(WebBrowserEvents::PacketInfo(self.config.id, ContentType::FileList(fragment.total_n_fragments), packet.session_id)){
+                                    println!("client {} failed to notify SC about text server list",self.config.id);
+                                }
                             }
 
                             TextServer::PositionMedia(media_server_id) => {
                                 println!("the wanted media is located at: {}", media_server_id);
                                 if let Err(_) = self.send_event.send(WebBrowserEvents::MediaPosition(self.config.id.clone(), media_server_id.clone())) {
                                     println!("failed to send media position to simulation control")
+                                }
+                                if let Err(_) = self.send_event.send(WebBrowserEvents::PacketInfo(self.config.id, ContentType::MediaPosition(fragment.total_n_fragments), packet.session_id)){
+                                    println!("client {} failed to notify SC about text server list",self.config.id);
                                 }
                             }
 
@@ -343,6 +353,9 @@ impl WebBrowser {
                                     Ok(path) => {
                                         if let Err(_) = self.send_event.send(WebBrowserEvents::SavedTextFile(self.config.id.clone(), path.clone())) {
                                             println!("failed to send path to text file to simulation control")
+                                        }
+                                        if let Err(_) = self.send_event.send(WebBrowserEvents::PacketInfo(self.config.id, ContentType::SavedText(fragment.total_n_fragments), packet.session_id)){
+                                            println!("client {} failed to notify SC about text server list",self.config.id);
                                         }
                                     }
                                     Err(str) => { println!("{}", str) }
@@ -365,6 +378,9 @@ impl WebBrowser {
                                 if let Err(_) = self.send_event.send(WebBrowserEvents::MediaServers(self.config.id.clone(), self.media_servers.clone())){
                                     println!("failed to send list of text servers to simulation control")
                                 }
+                                if let Err(_) = self.send_event.send(WebBrowserEvents::PacketInfo(self.config.id, ContentType::MediaServerList(fragment.total_n_fragments), packet.session_id)){
+                                    println!("client {} failed to notify SC about text server list",self.config.id);
+                                }
 
                             }
 
@@ -375,6 +391,9 @@ impl WebBrowser {
                                     Ok(path) => {
                                         if let Err(_) = self.send_event.send(WebBrowserEvents::SavedMedia(self.config.id.clone(), path.clone())){
                                             println!("failed to send path to media to simulation control")
+                                        }
+                                        if let Err(_) = self.send_event.send(WebBrowserEvents::PacketInfo(self.config.id, ContentType::SavedMedia(fragment.total_n_fragments), packet.session_id)){
+                                            println!("client {} failed to notify SC about text server list",self.config.id);
                                         }
                                     }
                                     Err(str) => {println!("{}", str)}
