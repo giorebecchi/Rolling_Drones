@@ -17,6 +17,7 @@ use wg_2024::packet::Packet;
 use crate::common_things::common::{ChatClientEvent, ClientType, CommandChat, ContentCommands, WebBrowserEvents};
 use bevy_framepace::{FramepacePlugin, FramepaceSettings, Limiter};
 use std::sync::{Arc};
+use egui::{Color32, RichText};
 use once_cell::sync::Lazy;
 use crate::GUI::chat_windows::ChatSystemPlugin;
 use crate::GUI::shared_info_plugin::{BackendBridgePlugin, SeenClients};
@@ -640,28 +641,52 @@ fn ui_settings(
             .response
             .rect
             .width();
-        occupied_screen_space.right = egui::SidePanel::right("right_panel")
-            .resizable(true)
-            .show(ctx, |ui| {
-                ui.label("Simulation log");
-                if ui.button("Clear Log").clicked() {
-                    clear_log();
-                }
+        occupied_screen_space.right = {
+            // Store panel's collapsed state in the UI using a unique ID
+            let mut collapsed = ctx.data_mut(|d| *d.get_persisted_mut_or_default::<bool>(egui::Id::new("right_panel_collapsed")));
 
-                egui::ScrollArea::vertical()
-                    .auto_shrink([false; 2]) // Optional: prevents shrinking when content is smaller
-                    .show(ui, |ui| {
-                        ui.label(sim_log.log.clone());
+            // Create a resizable right panel with a show/hide button
+            let panel = egui::SidePanel::right("right_panel")
+                .resizable(true)
+                .default_width(300.0)
+                .min_width(if collapsed { 24.0 } else { 150.0 })
+                .show(ctx, |ui| {
+                    ui.horizontal(|ui| {
+                        // Toggle button with icon
+                        if ui.button(if collapsed { "show" } else { "collapse" }).clicked() {
+                            collapsed = !collapsed;
+                            ctx.data_mut(|d| d.insert_persisted(egui::Id::new("right_panel_collapsed"), collapsed));
+                        }
+
+                        // Only show the panel title when expanded
+                        if !collapsed {
+                            ui.label("Simulation log");
+                            if ui.button("Clear Log").clicked() {
+                                clear_log();
+                            }
+                        }
                     });
 
+                    // Only show content when not collapsed
+                    if !collapsed {
+                        egui::ScrollArea::vertical()
+                            .show(ui, |ui| {
+                                ui.horizontal(|ui|{
+                                    ui.label(RichText::new(sim_log.flooding_log.clone()).color(Color32::GREEN));
+                                    ui.separator();
+                                    ui.label(RichText::new(sim_log.msg_log.clone()).color(Color32::WHITE));
+                                    ui.separator();
+                                    ui.label(RichText::new(sim_log.nack_log.clone()).color(Color32::RED));
+                                });
+                            });
+                    }
 
+                    ui.allocate_rect(ui.available_rect_before_wrap(), egui::Sense::hover());
+                });
 
-                ui.allocate_rect(ui.available_rect_before_wrap(), egui::Sense::hover());
-            })
-            .response
-            .rect
-            .width();
-
+            // Return the panel width
+            panel.response.rect.width()
+        };
     }
 }
 fn parse_id(id: String)->NodeId{
@@ -675,11 +700,15 @@ fn parse_id(id: String)->NodeId{
 }
 #[derive(Resource, Default)]
 pub struct DisplayableLog{
-     log: String
+    flooding_log: String,
+    msg_log: String,
+    nack_log: String,
 }
 #[derive(Resource, Default)]
 pub struct SimLog{
-    pub log: String,
+    pub flooding_log: String,
+    pub msg_log: String,
+    pub nack_log: String,
     pub is_updated: bool,
 }
 fn sync_log(
@@ -687,7 +716,9 @@ fn sync_log(
 ){
     if let Ok(state)=SHARED_LOG.try_read(){
         if state.is_updated {
-            displayable_log.log = state.log.clone();
+            displayable_log.flooding_log = state.flooding_log.clone();
+            displayable_log.msg_log = state.msg_log.clone();
+            displayable_log.nack_log=state.nack_log.clone();
 
             if let Ok(mut state) = SHARED_LOG.try_write() {
                 state.is_updated = false;
@@ -697,7 +728,9 @@ fn sync_log(
 }
 fn clear_log(){
     if let Ok(mut state)=SHARED_LOG.write(){
-        state.log=String::new();
+        state.flooding_log=String::new();
+        state.msg_log=String::new();
+        state.nack_log=String::new();
         state.is_updated=true;
     }
 }

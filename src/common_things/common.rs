@@ -1,3 +1,4 @@
+use std::fmt::{Display, Formatter};
 use serde::{Deserialize, Serialize};
 use wg_2024::network::NodeId;
 use wg_2024::packet::Packet;
@@ -126,5 +127,39 @@ pub enum WebBrowserEvents{ //not complete
     ListFiles(NodeId, Vec<String>), //node id client, list of all the available files
     MediaPosition(NodeId, NodeId), //node id of client and the node id of the media server where the media is located
     SavedTextFile(NodeId, String), //node id client, path to file saved in SC folder in multimedia
-    SavedMedia(NodeId, String) //node id client, path to correct file save in SC folder in multimedia
+    SavedMedia(NodeId, String), //node id client, path to correct file save in SC folder in multimedia
+    PacketInfo(NodeId, ContentType, u64)
+}
+#[derive(Clone)]
+pub enum ContentType{
+    TextServerList(u64),
+    MediaServerList(u64),
+    FileList(u64),
+    MediaPosition(u64),
+    SavedMedia(u64),
+    SavedText(u64),
+}
+impl Display for ContentType{
+    fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
+        match self{
+            ContentType::TextServerList(_)=>{
+                write!(f,"Fragment of a TextServer List packet")
+            },
+            ContentType::MediaServerList(_)=>{
+                write!(f,"Fragment of a MediaServer List packet")
+            },
+            ContentType::FileList(_)=>{
+                write!(f,"Fragment of a File List packet")
+            },
+            ContentType::MediaPosition(_)=>{
+                write!(f,"Fragment of a MediaPosition packet")
+            },
+            ContentType::SavedMedia(_)=>{
+                write!(f,"Fragment of a SavedMedia packet")
+            },
+            ContentType::SavedText(_)=>{
+                write!(f,"Fragment of a SavedText packet")
+            }
+        }
+    }
 }
