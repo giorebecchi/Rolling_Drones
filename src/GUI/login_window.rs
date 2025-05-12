@@ -163,8 +163,6 @@ pub fn main() {
         .add_systems(Update, recompute_network.run_if(in_state(AppState::InGame)))
         .add_systems(Update , (draw_connections,set_up_bundle).run_if(in_state(AppState::InGame)))
 
-
-
         .run();
 }
 

@@ -21,7 +21,7 @@ pub struct Server{
     registered_clients: Vec<NodeId>,
 }
 impl Server {
-    fn new(id: NodeId, packet_recv: Receiver<Packet>, packet_send: HashMap<NodeId, Sender<Packet>>) -> Self {
+    pub fn new(id: NodeId, packet_recv: Receiver<Packet>, packet_send: HashMap<NodeId, Sender<Packet>>) -> Self {
         let mut links: Vec<NodeId> = Vec::new();
         for i in packet_send.clone() {
             links.push(i.0.clone());
@@ -39,7 +39,7 @@ impl Server {
             registered_clients: Vec::new(),
         }
     }
-    fn run(&mut self) {
+    pub fn run(&mut self) {
         self.floading();
         loop {
             select_biased! {
