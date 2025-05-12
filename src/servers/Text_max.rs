@@ -33,7 +33,7 @@ pub struct Server{
 
 
 impl Server {
-    fn new(server_id: NodeId, packet_recv: Receiver<Packet>, packet_send: HashMap<NodeId, Sender<Packet>>, file_path: &str) -> Self {
+    pub fn new(server_id: NodeId, packet_recv: Receiver<Packet>, packet_send: HashMap<NodeId, Sender<Packet>>, file_path: &str) -> Self {
         let mut links: Vec<NodeId> = Vec::new();
         for i in packet_send.clone() {
             links.push(i.0.clone());
@@ -55,7 +55,7 @@ impl Server {
             already_visited: HashSet::new(),
         }
     }
-    fn run(&mut self) {
+    pub fn run(&mut self) {
         let path = self.path.clone();
         self.load_files_from_directory(Path::new(&path));
         println!("{:?}", self.file_list);

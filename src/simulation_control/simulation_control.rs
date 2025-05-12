@@ -21,6 +21,7 @@ use wg_2024_rust::drone::RustDrone;
 use rustbusters_drone::RustBustersDrone;
 use rusteze_drone::RustezeDrone;
 use rustafarian_drone::RustafarianDrone;
+use wg_2024::config::Config;
 use wg_2024::packet::PacketType::{FloodRequest, MsgFragment, Nack};
 use crate::clients::assembler::Fragmentation;
 use crate::GUI::login_window::{SharedSimState, SimulationController, SHARED_LOG};
@@ -31,7 +32,8 @@ use crate::clients::chat_client::ChatClient;
 use crate::clients::web_browser::WebBrowser;
 use crate::common_things::common::{ChatClientEvent, ChatRequest, ChatResponse, ClientType, CommandChat, ContentCommands, ContentType, ServerType, WebBrowserEvents};
 use crate::common_things::common::ServerType::CommunicationServer;
-use crate::servers::Text_max::Server as ServerMax;
+use crate::servers::Text_max::Server as TextMax;
+use crate::servers::Chat_max::Server as ChatMax;
 
 
 
@@ -556,15 +558,82 @@ pub fn start_simulation(
     mut simulation_controller: ResMut<SimulationController>
 ) {
     let file_path = "assets/configurations/double_chain.toml";
-
     let config = parse_config(file_path);
 
+    let (packet_channels, command_chat_channel, command_web_channel) =
+        setup_communication_channels(&config);
+
+    let (chat_event_send, chat_event_recv) = unbounded();
+    let (web_event_send, web_event_recv) = unbounded();
+
+    let neighbours = create_neighbours_map(&config);
+
+    let mut controller_drones = HashMap::new();
+    let mut packet_drones = HashMap::new();
+    let node_event_send = simulation_controller.node_event_send.clone();
+    let node_event_recv = simulation_controller.node_event_recv.clone();
+    let mut client = simulation_controller.client.clone();
+    let mut web_client = simulation_controller.web_client.clone();
+
+    spawn_drones(
+        &config,
+        &mut controller_drones,
+        &mut packet_drones,
+        &packet_channels,
+        node_event_send.clone()
+    );
+    #[cfg(feature = "max")]
+    {
+        spawn_servers_max(&config, &packet_channels);
+    }
+    #[cfg(not(feature = "max"))]
+    {
+        spawn_servers_baia(&config, &packet_channels);
+    }
+
+    spawn_clients(
+        &config,
+        &packet_channels,
+        &command_chat_channel,
+        &command_web_channel,
+        &mut client,
+        &mut web_client,
+        chat_event_send.clone(),
+        web_event_send.clone()
+    );
+
+    update_simulation_controller(
+        &mut simulation_controller,
+        node_event_send.clone(),
+        controller_drones,
+        node_event_recv,
+        neighbours,
+        packet_drones,
+        client,
+        web_client
+    );
+
+    let mut controller = create_simulation_controller(
+        node_event_send,
+        simulation_controller,
+        chat_event_recv,
+        web_event_recv
+    );
+
+    thread::spawn(move || {
+        controller.run();
+    });
+}
+
+fn setup_communication_channels(config: &Config) -> (
+    HashMap<NodeId, (Sender<Packet>, Receiver<Packet>)>,
+    HashMap<NodeId, (Sender<CommandChat>, Receiver<CommandChat>)>,
+    HashMap<NodeId, (Sender<ContentCommands>, Receiver<ContentCommands>)>
+) {
     let mut packet_channels = HashMap::new();
     let mut command_chat_channel = HashMap::new();
     let mut command_web_channel = HashMap::new();
 
-    let (chat_event_send, chat_event_recv)=unbounded();
-    let (web_event_send, web_event_recv)=unbounded();
     for node_id in config.drone.iter().map(|d| d.id)
         .chain(config.client.iter().map(|c| c.id))
         .chain(config.server.iter().map(|s| s.id)) {
@@ -576,20 +645,25 @@ pub fn start_simulation(
         command_web_channel.insert(client.id, unbounded());
     }
 
+    (packet_channels, command_chat_channel, command_web_channel)
+}
+
+fn create_neighbours_map(config: &Config) -> HashMap<NodeId, Vec<NodeId>> {
     let mut neighbours = HashMap::new();
     for drone in &config.drone {
         neighbours.insert(drone.id, drone.connected_node_ids.clone());
     }
+    neighbours
+}
 
-    let mut controller_drones = HashMap::new();
-    let mut packet_drones = HashMap::new();
-    let node_event_send = simulation_controller.node_event_send.clone();
-    let node_event_recv = simulation_controller.node_event_recv.clone();
-    let mut client = simulation_controller.client.clone();
-    let mut web_client = simulation_controller.web_client.clone();
-
-
-    for cfg_drone in config.drone.into_iter() {
+fn spawn_drones(
+    config: &Config,
+    controller_drones: &mut HashMap<NodeId, Sender<DroneCommand>>,
+    packet_drones: &mut HashMap<NodeId, Sender<Packet>>,
+    packet_channels: &HashMap<NodeId, (Sender<Packet>, Receiver<Packet>)>,
+    node_event_send: Sender<DroneEvent>
+) {
+    for cfg_drone in config.drone.iter().cloned() {
         let (controller_drone_send, controller_drone_recv) = unbounded();
         controller_drones.insert(cfg_drone.id, controller_drone_send);
         packet_drones.insert(cfg_drone.id, packet_channels[&cfg_drone.id].0.clone());
@@ -615,128 +689,7 @@ pub fn start_simulation(
             }
         });
     }
-
-    for (i,cfg_server) in config.server.into_iter().enumerate() {
-        let rcv = packet_channels[&cfg_server.id].1.clone();
-        let packet_send = cfg_server.connected_drone_ids.iter()
-            .map(|nid| (*nid, packet_channels[nid].0.clone()))
-            .collect::<HashMap<_,_>>();
-
-        if i == 0 {
-            let mut server_baia =Server::new(cfg_server.id, rcv, packet_send);
-            thread::spawn(move || {
-                // server_max.run();
-                server_baia.run();
-            });
-            //let mut server_max = ServerMax::new(cfg_server.id,rcv.clone(),packet_send);
-        }else if i ==1{
-            let mut text_server_baia = TextServerBaia::new(cfg_server.id, rcv, packet_send,"assets/multimedia/paths/text_server1.txt");
-            thread::spawn(move || {
-                // server_max.run();
-                text_server_baia.run();
-            });
-        }else if i==2{
-            let mut media_server_baia = MediaServerBaia::new(cfg_server.id, rcv, packet_send,"assets/multimedia/paths/media_server1.txt");
-            thread::spawn(move || {
-                // server_max.run();
-                media_server_baia.run();
-            });
-        }else{
-            let mut media_server_baia = MediaServerBaia::new(cfg_server.id, rcv, packet_send,"assets/multimedia/paths/media_serverr2.txt");
-            thread::spawn(move || {
-                // server_max.run();
-                media_server_baia.run();
-            });
-        }
-//
-
-    }
-
-    for (i,cfg_client) in config.client.clone().into_iter().enumerate() {
-        let packet_send: HashMap<NodeId, Sender<Packet>> = cfg_client.connected_drone_ids.iter()
-            .map(|nid| (*nid, packet_channels[nid].0.clone()))
-            .collect();
-        let rcv_packet = packet_channels[&cfg_client.id].1.clone();
-        if i < 2 {
-
-            let rcv_command = command_chat_channel[&cfg_client.id].1.clone();
-            client.insert(cfg_client.id, command_chat_channel[&cfg_client.id].0.clone());
-
-
-            let mut client_instance = ChatClient::new(
-                cfg_client.id,
-                rcv_packet,
-                packet_send.clone(),
-                rcv_command,
-                chat_event_send.clone()
-            );
-
-            thread::spawn(move || {
-                client_instance.run();
-            });
-            if let Ok(mut state)=SHARED_STATE.write(){
-                state.n_clients=config.client.len();
-                state.client_types.push((ClientType::ChatClient,cfg_client.id));
-                state.is_updated=true;
-            }
-       }else{
-
-           let rcv_command = command_web_channel[&cfg_client.id].1.clone();
-           web_client.insert(cfg_client.id, command_web_channel[&cfg_client.id].0.clone());
-
-           let mut web_browser = WebBrowser::new(
-               cfg_client.id,
-               rcv_packet,
-               rcv_command,
-               packet_send.clone(),
-               web_event_send.clone()
-           );
-           thread::spawn(move || {
-               web_browser.run();
-           });
-           if let Ok(mut state)=SHARED_STATE.write(){
-               state.n_clients=config.client.len();
-               state.client_types.push((ClientType::WebBrowser,cfg_client.id));
-               state.is_updated=true;
-           }
-       }
-
-
-    }
-
-
-
-    simulation_controller.node_event_send = node_event_send.clone();
-    simulation_controller.drones = controller_drones;
-    simulation_controller.node_event_recv = node_event_recv;
-    simulation_controller.neighbours = neighbours;
-    simulation_controller.packet_channel = packet_drones;
-    simulation_controller.client = client;
-    simulation_controller.web_client = web_client;
-
-    let mut controller = SimulationController {
-        node_event_send,
-        drones: simulation_controller.drones.clone(),
-        node_event_recv: simulation_controller.node_event_recv.clone(),
-        neighbours: simulation_controller.neighbours.clone(),
-        packet_channel: simulation_controller.packet_channel.clone(),
-        client: simulation_controller.client.clone(),
-        web_client: simulation_controller.web_client.clone(),
-        seen_floods: HashSet::new(),
-        client_list: HashMap::new(),
-        chat_event: chat_event_recv,
-        web_event: web_event_recv,
-        incoming_message: HashMap::new(),
-        messages: HashMap::new(),
-        register_success: HashMap::new()
-    };
-
-    thread::spawn(move || {
-        controller.run();
-    });
-
 }
-
 fn create_drone(
     id: NodeId,
     node_event_send: Sender<DroneEvent>,
@@ -761,18 +714,192 @@ fn create_drone(
 }
 
 
-fn create_fragments(hops: Vec<NodeId>) -> Packet {
-    Packet {
-        pack_type: PacketType::MsgFragment(Fragment {
-            fragment_index: 1,
-            total_n_fragments: 1,
-            length: 1,
-            data: [1; 128],
-        }),
-        routing_header: SourceRoutingHeader {
-            hop_index: 0,
-            hops,
-        },
-        session_id: 0,
+fn spawn_servers_baia(
+    config: &Config,
+    packet_channels: &HashMap<NodeId, (Sender<Packet>, Receiver<Packet>)>
+) {
+    for (i, cfg_server) in config.server.iter().cloned().enumerate() {
+        let rcv = packet_channels[&cfg_server.id].1.clone();
+        let packet_send = cfg_server.connected_drone_ids.iter()
+            .map(|nid| (*nid, packet_channels[nid].0.clone()))
+            .collect::<HashMap<_,_>>();
+
+        match i {
+            0 => {
+                let mut server_baia = Server::new(cfg_server.id, rcv, packet_send);
+                thread::spawn(move || {
+                    server_baia.run();
+                });
+            },
+            1 => {
+                let mut text_server_baia = TextServerBaia::new(
+                    cfg_server.id,
+                    rcv,
+                    packet_send,
+                    "assets/multimedia/paths/text_server1.txt"
+                );
+                thread::spawn(move || {
+                    text_server_baia.run();
+                });
+            },
+            2 => {
+                let mut media_server_baia = MediaServerBaia::new(
+                    cfg_server.id,
+                    rcv,
+                    packet_send,
+                    "assets/multimedia/paths/media_server1.txt"
+                );
+                thread::spawn(move || {
+                    media_server_baia.run();
+                });
+            },
+            _ => {
+                let mut media_server_baia = MediaServerBaia::new(
+                    cfg_server.id,
+                    rcv,
+                    packet_send,
+                    "assets/multimedia/paths/media_serverr2.txt"
+                );
+                thread::spawn(move || {
+                    media_server_baia.run();
+                });
+            }
+        }
+    }
+}
+fn spawn_clients(
+    config: &Config,
+    packet_channels: &HashMap<NodeId, (Sender<Packet>, Receiver<Packet>)>,
+    command_chat_channel: &HashMap<NodeId, (Sender<CommandChat>, Receiver<CommandChat>)>,
+    command_web_channel: &HashMap<NodeId, (Sender<ContentCommands>, Receiver<ContentCommands>)>,
+    client: &mut HashMap<NodeId, Sender<CommandChat>>,
+    web_client: &mut HashMap<NodeId, Sender<ContentCommands>>,
+    chat_event_send: Sender<ChatClientEvent>,
+    web_event_send: Sender<WebBrowserEvents>
+) {
+    for (i, cfg_client) in config.client.iter().cloned().enumerate() {
+        let packet_send: HashMap<NodeId, Sender<Packet>> = cfg_client.connected_drone_ids.iter()
+            .map(|nid| (*nid, packet_channels[nid].0.clone()))
+            .collect();
+        let rcv_packet = packet_channels[&cfg_client.id].1.clone();
+
+        if i < 2 {
+            let rcv_command = command_chat_channel[&cfg_client.id].1.clone();
+            client.insert(cfg_client.id, command_chat_channel[&cfg_client.id].0.clone());
+
+            let mut client_instance = ChatClient::new(
+                cfg_client.id,
+                rcv_packet,
+                packet_send.clone(),
+                rcv_command,
+                chat_event_send.clone()
+            );
+
+            thread::spawn(move || {
+                client_instance.run();
+            });
+
+            if let Ok(mut state) = SHARED_STATE.write() {
+                state.n_clients = config.client.len();
+                state.client_types.push((ClientType::ChatClient, cfg_client.id));
+                state.is_updated = true;
+            }
+        } else {
+            let rcv_command = command_web_channel[&cfg_client.id].1.clone();
+            web_client.insert(cfg_client.id, command_web_channel[&cfg_client.id].0.clone());
+
+            let mut web_browser = WebBrowser::new(
+                cfg_client.id,
+                rcv_packet,
+                rcv_command,
+                packet_send.clone(),
+                web_event_send.clone()
+            );
+            thread::spawn(move || {
+                web_browser.run();
+            });
+
+            if let Ok(mut state) = SHARED_STATE.write() {
+                state.n_clients = config.client.len();
+                state.client_types.push((ClientType::WebBrowser, cfg_client.id));
+                state.is_updated = true;
+            }
+        }
+    }
+}
+
+fn update_simulation_controller(
+    simulation_controller: &mut SimulationController,
+    node_event_send: Sender<DroneEvent>,
+    controller_drones: HashMap<NodeId, Sender<DroneCommand>>,
+    node_event_recv: Receiver<DroneEvent>,
+    neighbours: HashMap<NodeId, Vec<NodeId>>,
+    packet_channel: HashMap<NodeId, Sender<Packet>>,
+    client: HashMap<NodeId, Sender<CommandChat>>,
+    web_client: HashMap<NodeId, Sender<ContentCommands>>
+) {
+    simulation_controller.node_event_send = node_event_send.clone();
+    simulation_controller.drones = controller_drones;
+    simulation_controller.node_event_recv = node_event_recv;
+    simulation_controller.neighbours = neighbours;
+    simulation_controller.packet_channel = packet_channel;
+    simulation_controller.client = client;
+    simulation_controller.web_client = web_client;
+}
+
+fn create_simulation_controller(
+    node_event_send: Sender<DroneEvent>,
+    simulation_controller: ResMut<SimulationController>,
+    chat_event_recv: Receiver<ChatClientEvent>,
+    web_event_recv: Receiver<WebBrowserEvents>
+) -> SimulationController {
+    SimulationController {
+        node_event_send,
+        drones: simulation_controller.drones.clone(),
+        node_event_recv: simulation_controller.node_event_recv.clone(),
+        neighbours: simulation_controller.neighbours.clone(),
+        packet_channel: simulation_controller.packet_channel.clone(),
+        client: simulation_controller.client.clone(),
+        web_client: simulation_controller.web_client.clone(),
+        seen_floods: HashSet::new(),
+        client_list: HashMap::new(),
+        chat_event: chat_event_recv,
+        web_event: web_event_recv,
+        incoming_message: HashMap::new(),
+        messages: HashMap::new(),
+        register_success: HashMap::new()
+    }
+}
+
+fn spawn_servers_max(
+    config: &Config,
+    packet_channels: &HashMap<NodeId, (Sender<Packet>, Receiver<Packet>)>
+) {
+    for (i, cfg_server) in config.server.iter().cloned().enumerate() {
+        let rcv = packet_channels[&cfg_server.id].1.clone();
+        let packet_send = cfg_server.connected_drone_ids.iter()
+            .map(|nid| (*nid, packet_channels[nid].0.clone()))
+            .collect::<HashMap<_,_>>();
+
+        match i {
+            0 => {
+                let mut server_max = ChatMax::new(cfg_server.id, rcv, packet_send);
+                thread::spawn(move || {
+                    server_max.run();
+                });
+            },
+            _ => {
+                let mut text_server_max = TextMax::new(
+                    cfg_server.id,
+                    rcv,
+                    packet_send,
+                    "assets/multimedia/paths/text_server1.txt"
+                );
+                thread::spawn(move || {
+                    text_server_max.run();
+                });
+            }
+
+        }
     }
 }
