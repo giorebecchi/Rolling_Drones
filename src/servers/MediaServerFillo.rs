@@ -246,6 +246,8 @@ impl Server{
                             *weight =  drops.dropped as f64/(drops.forwarded+drops.dropped) as f64;
                         }
                     }
+                    //println!("graph del mediaserver post ack {:?}: {:?}",self.server_id, self.neigh_map);
+                    //println!("Drone {:?} stats post ack {:?}",i,self.stats.get(&n).unwrap())
                 }
                 None => {}
             }
@@ -323,8 +325,8 @@ impl Server{
                                         *weight =  drops.dropped as f64/(drops.forwarded+drops.dropped) as f64;
                                     }
                                 }
-                                println!("graph del chatserver {:?}: {:?}",self.server_id, self.neigh_map);
-                                println!("Drone {:?} stats {:?}",i,self.stats.get(&n).unwrap());
+                                //println!("graph del mediaserver post nack {:?}: {:?}",self.server_id, self.neigh_map);
+                                //println!("Drone {:?} stats post nack {:?}",i,self.stats.get(&n).unwrap());
                             }
                             None => {}
                         }
