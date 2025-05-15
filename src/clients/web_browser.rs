@@ -1,4 +1,4 @@
-use crate::common_things::common::ContentType;
+use crate::common_things::common::{BackGroundFlood, ContentType};
 use std::collections::{HashMap, HashSet};
 use std::fs;
 use std::path::Path;
@@ -44,7 +44,8 @@ pub struct WebBrowser {
     pub text_servers: Vec<NodeId>,
     pub packet_sent: HashMap<u64, (NodeId, Vec<Packet>)>,
     pub topology_graph: UnGraphMap<NodeId, u32>,
-    pub node_data: HashMap<NodeId, NodeData>
+    pub node_data: HashMap<NodeId, NodeData>,
+    pub rcv_flood: Receiver<BackGroundFlood>
 }
 
 impl WebBrowser {
@@ -52,7 +53,9 @@ impl WebBrowser {
         id: NodeId, receiver_msg: Receiver<Packet>,
         receiver_commands: Receiver<ContentCommands>,
         send_packets: HashMap<NodeId, Sender<Packet>>,
+        rcv_flood: Receiver<BackGroundFlood>,
         send_event: Sender<WebBrowserEvents>
+
     ) -> Self {
         Self{
             config: Client{id, connected_drone_ids:Vec::new()},
@@ -74,7 +77,8 @@ impl WebBrowser {
             text_servers: Vec::new(),
             packet_sent: HashMap::new(),
             topology_graph: UnGraphMap::new(),
-            node_data: HashMap::new()
+            node_data: HashMap::new(),
+            rcv_flood
         }
     }
     pub fn run(& mut self) {
@@ -95,6 +99,11 @@ impl WebBrowser {
                         self.handle_messages(message)
                     }
                 }
+                recv(self.rcv_flood) -> flood => {
+                    if let Ok(_) = flood {
+                        self.flooding();
+                    }
+                }
             }
         }
     }
@@ -108,9 +117,11 @@ impl WebBrowser {
                 self.get_list(id_server)
             },
             ContentCommands::GetMediaPosition(id_server, id_media) => {
+                println!("GETMEDIAPOSITION\nclient: {}, server id: {}", self.config.id,id_server);
                 self.get_position(id_server, id_media)
             },
             ContentCommands::GetMedia(id_media_server, id_media) => {
+                println!("GETMEDIA\nclient: {}, server id: {}", self.config.id,id_media);
                 self.get_media(id_media_server, id_media)
             },
             ContentCommands::GetText(id_server, text_id) => {

@@ -70,24 +70,40 @@ fn window_format(
                 web_state.current_display_type.insert(window_id, MediaDisplayType::None);
             }
 
+            if let Some(path) = web_state.actual_media_path.get(&window_id).cloned() {
+                let current_path = web_state.last_loaded_path.get(&window_id).cloned().unwrap_or_default();
 
-            if let Some(path) = web_state.actual_media_path.get(&window_id) {
-                if state.handles.get(&window_id).unwrap_or(&None).is_none() {
-                    println!("Loading image: {}", path);
+                if current_path != *path {
+                    //println!("New image path detected: {}", path);
+                    if let Some(Some(text)) = state.handles.get(&window_id) {
+                        contexts.remove_image(text);
+                    }
+                    state.egui_textures.insert(window_id, None);
+                    state.handles.insert(window_id, None);
+
+                    web_state.last_loaded_path.insert(window_id, path.clone());
+
+                    let bevy_path = path.strip_prefix("assets/").unwrap_or(&path).to_string();
+                    //println!("Loading image with path: {}", bevy_path);
+                    let handle: Handle<Image> = asset_server.load(bevy_path);
+                    state.handles.insert(window_id, Some(handle));
+                } else if state.handles.get(&window_id).unwrap_or(&None).is_none() {
                     let bevy_path = path.strip_prefix("assets/").unwrap_or(&path).to_string();
                     let handle: Handle<Image> = asset_server.load(bevy_path);
                     state.handles.insert(window_id, Some(handle));
-
                 }
             }
 
             if let Some(Some(handle)) = state.handles.get(&window_id) {
                 if state.egui_textures.get(&window_id).unwrap_or(&None).is_none() {
                     if let Some(image) = images.get(handle) {
+                        // Only now do we know the image is fully loaded
                         let size = egui::Vec2::new(image.width() as f32, image.height() as f32);
                         let texture_id = contexts.add_image(handle.clone());
                         state.egui_textures.insert(window_id, Some((texture_id, size)));
-                        println!("Image registered with egui: {}x{}", image.width(), image.height());
+                        //println!("Image registered with egui: {}x{}", image.width(), image.height());
+                    } else {
+                        // println!("Image still loading..."); // Uncomment for debugging
                     }
                 }
             }
@@ -102,7 +118,9 @@ fn window_format(
 
             let mut should_close = false;
 
-            window.show(contexts.ctx_mut(), |ui| {
+            let mut ctx=contexts.ctx_mut().clone();
+
+            window.show(&mut ctx, |ui| {
                 ui.heading(format!("Web Browser Client: {}", window_id));
                 ui.separator();
 
@@ -163,23 +181,30 @@ fn window_format(
                                 ui.push_id(media_button_id, |ui| {
                                     if ui.button(format!("{}", media_path)).clicked() {
                                         if let Some(selected_text_server) = web_state.selected_text_server.get(&window_id).cloned().flatten() {
+                                            if let Some(Some(text)) = state.handles.get(&window_id) {
+                                                contexts.remove_image(text);
+                                            }
+
                                             web_state.actual_media_path.remove(&window_id);
                                             web_state.actual_file_path.remove(&window_id);
+                                            web_state.received_medias.remove(&window_id);
+                                            web_state.media_servers.remove(&window_id);
+                                            web_state.target_media_server.remove(&window_id);
                                             state.handles.insert(window_id, None);
                                             state.egui_textures.insert(window_id, None);
                                             web_state.current_display_type.insert(window_id, MediaDisplayType::None);
 
                                             web_state.received_medias.insert(window_id, media_path.clone());
 
-                                            println!("Media clicked: {}", media_path);
+                                            //println!("Media clicked: {}", media_path);
 
                                             if media_path.ends_with(".txt") {
-                                                println!("Processing as text file");
+                                                //println!("Processing as text file");
                                                 web_state.current_display_type.insert(window_id, MediaDisplayType::TextFile);
 
                                                 sim.get_text_file(window_id, selected_text_server, media_path.clone());
                                             } else {
-                                                println!("Processing as image");
+                                                //println!("Processing as image");
                                                 web_state.current_display_type.insert(window_id, MediaDisplayType::Image);
 
                                                 sim.get_media_position(window_id, selected_text_server, media_path.clone());
@@ -199,10 +224,9 @@ fn window_format(
                 ui.separator();
 
                 if let Some(media_server) = web_state.target_media_server.get(&window_id).cloned() {
-                    if let Some(media_path) = web_state.received_medias.get(&window_id).cloned() {
-                        println!("GUI called get_media_from for path: {}", media_path);
+                    if let Some(media_path) = web_state.received_medias.remove(&window_id) {
+                        //println!("GUI called get_media_from for path: {}", media_path);
                         sim.get_media_from(window_id, media_server, media_path.clone());
-                        web_state.received_medias.remove(&window_id);
                     }
                 }
 
@@ -215,13 +239,11 @@ fn window_format(
                         MediaDisplayType::Image => {
                             if let Some(Some((texture_id, original_size))) = state.egui_textures.get(&window_id) {
                                 if let Some(Some(_)) = state.handles.get(&window_id) {
-
                                     let image_scroll_id = ui.make_persistent_id(format!("image_scroll_{}", window_id));
                                     ui.push_id(image_scroll_id, |ui| {
                                         egui::ScrollArea::both().show(ui, |ui| {
                                             let available_width = ui.available_width();
                                             let available_height = 400.0;
-
 
                                             let scale_factor = (available_width / original_size.x)
                                                 .min(available_height / original_size.y)
@@ -247,10 +269,29 @@ fn window_format(
                                     let clear_button_id = ui.make_persistent_id(format!("clear_image_button_{}", window_id));
                                     ui.push_id(clear_button_id, |ui| {
                                         if ui.button("Clear Image").clicked() {
+                                            if let Some(Some(text))=state.handles.get(&window_id) {
+                                                contexts.remove_image(text);
+                                            }
+
+                                            //println!("media_path: {:?}",web_state.actual_media_path);
+                                            if let Some(path)=web_state.actual_media_path.get(&window_id){
+                                                match fs::remove_file(path){
+                                                    Ok(_)=>println!("image : {:?} removed",path),
+                                                    Err(e)=>println!("failed to remove image: {:?}, error: {}",path,e)
+                                                }
+                                            }else{
+                                                println!("Error occured while clearing image");
+                                            }
+
                                             state.handles.insert(window_id, None);
                                             state.egui_textures.insert(window_id, None);
+                                            web_state.received_medias.remove(&window_id);
                                             web_state.actual_media_path.remove(&window_id);
+                                            web_state.last_loaded_path.remove(&window_id);
+                                            web_state.media_servers.remove(&window_id);
+                                            web_state.target_media_server.remove(&window_id);
                                             web_state.current_display_type.insert(window_id, MediaDisplayType::None);
+                                            println!("web_state after clearing image: {:?}",web_state);
                                         }
                                     });
                                 } else {
@@ -259,10 +300,10 @@ fn window_format(
                             } else if web_state.actual_media_path.contains_key(&window_id) {
                                 ui.label("Loading image...");
                             } else {
-
                                 ui.label("Loading image...");
                             }
                         },
+                        // Text file handling remains the same
                         MediaDisplayType::TextFile => {
                             if let Some(path_to_file) = web_state.actual_file_path.get(&window_id) {
                                 let text = fs::read_to_string(path_to_file);
@@ -313,6 +354,11 @@ fn window_format(
 
             if should_close {
                 windows_to_close.push(i);
+
+                if let Some(Some(texture_id)) = state.handles.get(&window_id) {
+                    contexts.remove_image(texture_id);
+                }
+
                 state.handles.insert(window_id, None);
                 state.egui_textures.insert(window_id, None);
                 web_state.actual_media_path.remove(&window_id);
@@ -321,6 +367,7 @@ fn window_format(
                 web_state.selected_media_server.remove(&window_id);
                 web_state.received_medias.remove(&window_id);
                 web_state.current_display_type.remove(&window_id);
+                web_state.last_loaded_path.remove(&window_id);
             }
         }
     }
@@ -330,7 +377,7 @@ fn window_format(
     }
 }
 
-#[derive(Resource, Default)]
+#[derive(Resource, Default, Debug)]
 pub struct WebState {
     pub text_servers: HashMap<NodeId, Vec<NodeId>>,
     pub media_servers: HashMap<NodeId, Vec<NodeId>>,
@@ -342,4 +389,5 @@ pub struct WebState {
     selected_media_server: HashMap<NodeId, Option<NodeId>>,
     received_medias: HashMap<NodeId, String>,
     current_display_type: HashMap<NodeId, MediaDisplayType>,
+    last_loaded_path: HashMap<NodeId, String>,
 }

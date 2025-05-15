@@ -1,1 +1,1 @@
-assets/multimedia/media/saif.png
+assets/multimedia/media/dumbimage.png

@@ -35,10 +35,11 @@ pub struct Server{
     pub packet_send: HashMap<NodeId, Sender<Packet>>,
     fragments_recv : HashMap<(NodeId,u64),Vec<Fragment>>,
     fragments_send : HashMap<u64,(NodeId,NodeType,Vec<Fragment>)>,
+    rcv_flood: Receiver<BackGroundFlood>
 }
 
 impl Server{
-    pub fn new(id:NodeId, packet_recv: Receiver<Packet>, packet_send: HashMap<NodeId,Sender<Packet>>)->Self{
+    pub fn new(id:NodeId, packet_recv: Receiver<Packet>, packet_send: HashMap<NodeId,Sender<Packet>>, rcv_flood: Receiver<BackGroundFlood>)->Self{
         Self{
             server_id:id,
             server_type: ServerType::CommunicationServer,
@@ -51,7 +52,8 @@ impl Server{
             already_visited:HashSet::new(),
             packet_send:packet_send,
             fragments_recv : HashMap::new(),
-            fragments_send : HashMap::new()
+            fragments_send : HashMap::new(),
+            rcv_flood
         }
     }
     pub(crate) fn run(&mut self) {
@@ -63,6 +65,11 @@ impl Server{
                         self.handle_packet(packet);
                     }
                 },
+                recv(self.rcv_flood) -> flood => {
+                    if let Ok(_) = flood {
+                        self.flooding();
+                    }
+                }
             }
         }
     }
@@ -92,7 +99,7 @@ impl Server{
 
     fn send_packet<T>(&mut self, p:T, id:NodeId, nt:NodeType)where T : Fragmentation+Serialize+Debug{
         // println!("flooding : {:?}", self.flooding); //fa vedere tutte le flood response salvaate nel server
-        // println!("graph del chatserver {:?}: {:?}",self.server_id, self.neigh_map); //fa vedere il grafo (tutti i nodi e tutti gli edges)
+         println!("graph del chatserver {:?}: {:?}",self.server_id, self.neigh_map); //fa vedere il grafo (tutti i nodi e tutti gli edges)
         if let Some(srh) = self.best_path_custom_cost(id,nt){
             println!("srh : {:?}",srh);
             if let Ok(vec) = p.serialize_data(srh,self.session_id){
@@ -332,6 +339,7 @@ impl Server{
     }
 
     fn handle_flood_response(&mut self, p:Packet){
+        println!("chat server flood response: {}", p.pack_type);
         if let PacketType::FloodResponse(mut flood) = p.pack_type{
             // println!("server {} has received flood response {}", self.server_id,flood.clone());
             let mut safetoadd = true;

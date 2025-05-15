@@ -118,6 +118,9 @@ pub enum ContentCommands{
     SearchTypeServers,
     Crash
 }
+pub enum BackGroundFlood{
+    Start
+}
 
 //from client to SC
 pub enum WebBrowserEvents{ //not complete
