@@ -30,7 +30,7 @@ use crate::GUI::shared_info_plugin::SHARED_STATE;
 use crate::servers::ChatServer::Server;
 use crate::clients::chat_client::ChatClient;
 use crate::clients::web_browser::WebBrowser;
-use crate::common_things::common::{ChatClientEvent, ChatRequest, ChatResponse, ClientType, CommandChat, ContentCommands, ContentType, ServerType, WebBrowserEvents};
+use crate::common_things::common::{BackGroundFlood, ChatClientEvent, ChatRequest, ChatResponse, ClientType, CommandChat, ContentCommands, ContentType, ServerType, WebBrowserEvents};
 use crate::common_things::common::ServerType::CommunicationServer;
 use crate::servers::Text_max::Server as TextMax;
 use crate::servers::Chat_max::Server as ChatMax;
@@ -57,7 +57,8 @@ impl Default for SimulationController{
             web_event: web_recv,
             messages: HashMap::new(),
             incoming_message: HashMap::new(),
-            register_success : HashMap::new()
+            register_success : HashMap::new(),
+            background_flooding: HashMap::new(),
         }
     }
 }
@@ -471,18 +472,10 @@ impl SimulationController {
             sender.send(packet).unwrap();
         }
     }
-    pub fn initiate_flood(&mut self, packet: Packet){
-        println!("Initiating flood");
-        if let FloodRequest(_)=packet.clone().pack_type {
-            for node_neighbours in packet.clone().routing_header.hops{
-                if let Some(sender) = self.packet_channel.get(&node_neighbours) {
-                    sender.send(packet.clone()).unwrap();
-                }else{
-                    println!("No sender found for neighbours {:?}", node_neighbours);
-                }
-            }
-        }else{
-            println!("Unexpected error occurred, message wasn't a flood request");
+    pub fn initiate_flood(&self){
+        println!("Initiating a background flooding");
+        for (_, sender) in self.background_flooding.iter(){
+            sender.send(BackGroundFlood::Start).unwrap();
         }
     }
     pub fn spawn_new_drone(&mut self, links: Vec<NodeId>, id: NodeId){
@@ -560,7 +553,8 @@ pub fn start_simulation(
     let file_path = "assets/configurations/double_chain.toml";
     let config = parse_config(file_path);
 
-    let (packet_channels, command_chat_channel, command_web_channel) =
+    let (packet_channels, command_chat_channel,
+        command_web_channel, background_flooding) =
         setup_communication_channels(&config);
 
     let (chat_event_send, chat_event_recv) = unbounded();
@@ -574,6 +568,7 @@ pub fn start_simulation(
     let node_event_recv = simulation_controller.node_event_recv.clone();
     let mut client = simulation_controller.client.clone();
     let mut web_client = simulation_controller.web_client.clone();
+    let mut background_flood = simulation_controller.background_flooding.clone();
 
     spawn_drones(
         &config,
@@ -588,7 +583,7 @@ pub fn start_simulation(
     }
     #[cfg(not(feature = "max"))]
     {
-        spawn_servers_baia(&config, &packet_channels);
+        spawn_servers_baia(&config, &packet_channels, &background_flooding, &mut background_flood);
     }
 
     spawn_clients(
@@ -596,8 +591,10 @@ pub fn start_simulation(
         &packet_channels,
         &command_chat_channel,
         &command_web_channel,
+        &background_flooding,
         &mut client,
         &mut web_client,
+        &mut background_flood,
         chat_event_send.clone(),
         web_event_send.clone()
     );
@@ -610,7 +607,8 @@ pub fn start_simulation(
         neighbours,
         packet_drones,
         client,
-        web_client
+        web_client,
+        background_flood
     );
 
     let mut controller = create_simulation_controller(
@@ -628,11 +626,13 @@ pub fn start_simulation(
 fn setup_communication_channels(config: &Config) -> (
     HashMap<NodeId, (Sender<Packet>, Receiver<Packet>)>,
     HashMap<NodeId, (Sender<CommandChat>, Receiver<CommandChat>)>,
-    HashMap<NodeId, (Sender<ContentCommands>, Receiver<ContentCommands>)>
+    HashMap<NodeId, (Sender<ContentCommands>, Receiver<ContentCommands>)>,
+    HashMap<NodeId, (Sender<BackGroundFlood>, Receiver<BackGroundFlood>)>
 ) {
     let mut packet_channels = HashMap::new();
     let mut command_chat_channel = HashMap::new();
     let mut command_web_channel = HashMap::new();
+    let mut background_flood=HashMap::new();
 
     for node_id in config.drone.iter().map(|d| d.id)
         .chain(config.client.iter().map(|c| c.id))
@@ -643,9 +643,13 @@ fn setup_communication_channels(config: &Config) -> (
     for client in &config.client {
         command_chat_channel.insert(client.id, unbounded());
         command_web_channel.insert(client.id, unbounded());
+        background_flood.insert(client.id, unbounded());
+    }
+    for server in &config.server{
+        background_flood.insert(server.id, unbounded());
     }
 
-    (packet_channels, command_chat_channel, command_web_channel)
+    (packet_channels, command_chat_channel, command_web_channel, background_flood)
 }
 
 fn create_neighbours_map(config: &Config) -> HashMap<NodeId, Vec<NodeId>> {
@@ -716,17 +720,21 @@ fn create_drone(
 
 fn spawn_servers_baia(
     config: &Config,
-    packet_channels: &HashMap<NodeId, (Sender<Packet>, Receiver<Packet>)>
+    packet_channels: &HashMap<NodeId, (Sender<Packet>, Receiver<Packet>)>,
+    background_flood: &HashMap<NodeId, (Sender<BackGroundFlood>, Receiver<BackGroundFlood>)>,
+    flooding: &mut HashMap<NodeId, Sender<BackGroundFlood>>,
 ) {
     for (i, cfg_server) in config.server.iter().cloned().enumerate() {
         let rcv = packet_channels[&cfg_server.id].1.clone();
         let packet_send = cfg_server.connected_drone_ids.iter()
             .map(|nid| (*nid, packet_channels[nid].0.clone()))
             .collect::<HashMap<_,_>>();
+        let rcv_flood= background_flood[&cfg_server.id].1.clone();
+        flooding.insert(cfg_server.id, background_flood[&cfg_server.id].0.clone());
 
         match i {
             0 => {
-                let mut server_baia = Server::new(cfg_server.id, rcv, packet_send);
+                let mut server_baia = Server::new(cfg_server.id, rcv, packet_send, rcv_flood);
                 thread::spawn(move || {
                     server_baia.run();
                 });
@@ -736,6 +744,7 @@ fn spawn_servers_baia(
                     cfg_server.id,
                     rcv,
                     packet_send,
+                    rcv_flood,
                     "assets/multimedia/paths/text_server1.txt"
                 );
                 thread::spawn(move || {
@@ -747,23 +756,26 @@ fn spawn_servers_baia(
                     cfg_server.id,
                     rcv,
                     packet_send,
+                    rcv_flood,
                     "assets/multimedia/paths/media_server1.txt"
                 );
                 thread::spawn(move || {
                     media_server_baia.run();
                 });
             },
-            _ => {
+            3 => {
                 let mut media_server_baia = MediaServerBaia::new(
                     cfg_server.id,
                     rcv,
                     packet_send,
+                    rcv_flood,
                     "assets/multimedia/paths/media_serverr2.txt"
                 );
                 thread::spawn(move || {
                     media_server_baia.run();
                 });
-            }
+            },
+            _=>{}
         }
     }
 }
@@ -772,8 +784,10 @@ fn spawn_clients(
     packet_channels: &HashMap<NodeId, (Sender<Packet>, Receiver<Packet>)>,
     command_chat_channel: &HashMap<NodeId, (Sender<CommandChat>, Receiver<CommandChat>)>,
     command_web_channel: &HashMap<NodeId, (Sender<ContentCommands>, Receiver<ContentCommands>)>,
+    background_flood: &HashMap<NodeId, (Sender<BackGroundFlood>, Receiver<BackGroundFlood>)>,
     client: &mut HashMap<NodeId, Sender<CommandChat>>,
     web_client: &mut HashMap<NodeId, Sender<ContentCommands>>,
+    flooding: &mut HashMap<NodeId, Sender<BackGroundFlood>>,
     chat_event_send: Sender<ChatClientEvent>,
     web_event_send: Sender<WebBrowserEvents>
 ) {
@@ -782,6 +796,9 @@ fn spawn_clients(
             .map(|nid| (*nid, packet_channels[nid].0.clone()))
             .collect();
         let rcv_packet = packet_channels[&cfg_client.id].1.clone();
+        let rcv_flood = background_flood[&cfg_client.id].1.clone();
+        flooding.insert(cfg_client.id, background_flood[&cfg_client.id].0.clone());
+
 
         if i < 2 {
             let rcv_command = command_chat_channel[&cfg_client.id].1.clone();
@@ -792,7 +809,8 @@ fn spawn_clients(
                 rcv_packet,
                 packet_send.clone(),
                 rcv_command,
-                chat_event_send.clone()
+                chat_event_send.clone(),
+                rcv_flood,
             );
 
             thread::spawn(move || {
@@ -813,6 +831,7 @@ fn spawn_clients(
                 rcv_packet,
                 rcv_command,
                 packet_send.clone(),
+                rcv_flood,
                 web_event_send.clone()
             );
             thread::spawn(move || {
@@ -836,7 +855,8 @@ fn update_simulation_controller(
     neighbours: HashMap<NodeId, Vec<NodeId>>,
     packet_channel: HashMap<NodeId, Sender<Packet>>,
     client: HashMap<NodeId, Sender<CommandChat>>,
-    web_client: HashMap<NodeId, Sender<ContentCommands>>
+    web_client: HashMap<NodeId, Sender<ContentCommands>>,
+    background_flooding : HashMap<NodeId, Sender<BackGroundFlood>>
 ) {
     simulation_controller.node_event_send = node_event_send.clone();
     simulation_controller.drones = controller_drones;
@@ -845,6 +865,7 @@ fn update_simulation_controller(
     simulation_controller.packet_channel = packet_channel;
     simulation_controller.client = client;
     simulation_controller.web_client = web_client;
+    simulation_controller.background_flooding= background_flooding;
 }
 
 fn create_simulation_controller(
@@ -867,7 +888,8 @@ fn create_simulation_controller(
         web_event: web_event_recv,
         incoming_message: HashMap::new(),
         messages: HashMap::new(),
-        register_success: HashMap::new()
+        register_success: HashMap::new(),
+        background_flooding: simulation_controller.background_flooding.clone()
     }
 }
 

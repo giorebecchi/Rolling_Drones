@@ -11,7 +11,7 @@ use wg_2024::config::{Client};
 use wg_2024::network::{NodeId, SourceRoutingHeader};
 use wg_2024::packet::{FloodRequest, FloodResponse, Fragment, NackType, NodeType, Packet, PacketType};
 use crate::clients::assembler::{Fragmentation, NodeData};
-use crate::common_things::common::{ChatRequest, MessageChat, CommandChat, ChatResponse, ServerType, ChatClientEvent, ClientType};
+use crate::common_things::common::{ChatRequest, MessageChat, CommandChat, ChatResponse, ServerType, ChatClientEvent, ClientType, BackGroundFlood};
 use crate::common_things::common::ChatClientEvent::{ClientList, ClientType as OtherClientType, IncomingMessage, RegisteredSuccess};
 
 pub struct ChatClient {
@@ -33,13 +33,15 @@ pub struct ChatClient {
     pub topology: UnGraphMap<NodeId, u32>,
     pub node_data: HashMap<NodeId, NodeData>,
     pub packet_sent: HashMap<u64, (NodeId, Vec<Packet>)>,
+    pub rcv_flood: Receiver<BackGroundFlood>
 }
 impl ChatClient {
     pub fn new(
         id: NodeId, receiver_msg: Receiver<Packet>,
         send_packets: HashMap<NodeId, Sender<Packet>>,
         receiver_commands: Receiver<CommandChat>,
-        event_send: Sender<ChatClientEvent>
+        event_send: Sender<ChatClientEvent>,
+        rcv_flood: Receiver<BackGroundFlood>
     ) -> Self {
         Self {
             config: Client { id, connected_drone_ids: Vec::new() },
@@ -59,7 +61,8 @@ impl ChatClient {
             event_send,
             topology: UnGraphMap::new(),
             node_data: HashMap::new(),
-            packet_sent: HashMap::new()
+            packet_sent: HashMap::new(),
+            rcv_flood
         }
     }
     pub fn run(&mut self) {
@@ -78,6 +81,11 @@ impl ChatClient {
                     if let Ok(message) = message {
                         self.build_topology();
                         self.handle_incoming(message)
+                    }
+                }
+                recv(self.rcv_flood) -> flood =>{
+                    if let Ok(_) = flood{
+                        self.initiate_flooding();
                     }
                 }
             }

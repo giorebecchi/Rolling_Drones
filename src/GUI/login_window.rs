@@ -14,7 +14,7 @@ use crate::simulation_control::simulation_control::*;
 use egui::widgets::TextEdit;
 use wg_2024::controller::{DroneCommand, DroneEvent};
 use wg_2024::packet::Packet;
-use crate::common_things::common::{ChatClientEvent, ClientType, CommandChat, ContentCommands, WebBrowserEvents};
+use crate::common_things::common::{BackGroundFlood, ChatClientEvent, ClientType, CommandChat, ContentCommands, WebBrowserEvents};
 use bevy_framepace::{FramepacePlugin, FramepaceSettings, Limiter};
 use std::sync::{Arc};
 use egui::{Color32, RichText};
@@ -99,7 +99,8 @@ pub struct SimulationController {
     pub web_event : Receiver<WebBrowserEvents>,
     pub messages: HashMap<(NodeId,NodeId),Vec<String>>,
     pub incoming_message: HashMap<(NodeId,NodeId,NodeId), Vec<String>>,
-    pub register_success: HashMap<(NodeId,NodeId),bool>
+    pub register_success: HashMap<(NodeId,NodeId),bool>,
+    pub background_flooding: HashMap<NodeId, Sender<BackGroundFlood>>
 }
 
 #[derive(Default,Debug,Clone)]
@@ -159,7 +160,7 @@ pub fn main() {
         .add_systems(Update, (ui_settings,sync_log))
         .add_systems(Startup, setup_camera)
         .add_systems(OnEnter(AppState::SetUp), start_simulation)
-        .add_systems(OnEnter(AppState::InGame), setup_network)
+        .add_systems(OnEnter(AppState::InGame), (setup_network, initiate_flood))
         .add_systems(Update, recompute_network.run_if(in_state(AppState::InGame)))
         .add_systems(Update , (draw_connections,set_up_bundle).run_if(in_state(AppState::InGame)))
 
@@ -731,6 +732,12 @@ fn clear_log(){
         state.nack_log=String::new();
         state.is_updated=true;
     }
+}
+fn initiate_flood(
+    sim: Res<SimulationController>
+){
+    sim.initiate_flood();
+
 }
 pub static SHARED_LOG: Lazy<Arc<RwLock<SimLog>>>=Lazy::new (||{
     Arc::new(RwLock::new(SimLog::default()))
