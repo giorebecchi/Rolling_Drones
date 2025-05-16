@@ -35,7 +35,14 @@ use crate::common_things::common::ServerType::CommunicationServer;
 use crate::servers::Text_max::Server as TextMax;
 use crate::servers::Chat_max::Server as ChatMax;
 
-
+#[derive(Clone,Debug)]
+pub enum MyNodeType{
+    WebBrowser,
+    ChatClient,
+    TextServer,
+    MediaServer,
+    ChatServer
+}
 
 
 impl Default for SimulationController{
@@ -703,16 +710,16 @@ fn create_drone(
     pdr: f32,
 ) -> Option<Box<dyn Drone>> {
     match id % 10 {
-        0 => Some(Box::new(BagelBomber::new(id, node_event_send, controller_drone_recv, packet_recv, packet_send, pdr))),
-        1 => Some(Box::new(FungiDrone::new(id, node_event_send, controller_drone_recv, packet_recv, packet_send, pdr))),
+        0 => Some(Box::new(LockheedRustin::new(id, node_event_send, controller_drone_recv, packet_recv, packet_send, pdr))),
+        1 => Some(Box::new(LockheedRustin::new(id, node_event_send, controller_drone_recv, packet_recv, packet_send, pdr))),
         2 => Some(Box::new(LockheedRustin::new(id, node_event_send, controller_drone_recv, packet_recv, packet_send, pdr))),
-        3 => Some(Box::new(SkyLinkDrone::new(id, node_event_send, controller_drone_recv, packet_recv, packet_send, pdr))),
-        4 => Some(Box::new(Le_Drone::new(id, node_event_send, controller_drone_recv, packet_recv, packet_send, pdr))),
+        3 => Some(Box::new(LockheedRustin::new(id, node_event_send, controller_drone_recv, packet_recv, packet_send, pdr))),
+        4 => Some(Box::new(LockheedRustin::new(id, node_event_send, controller_drone_recv, packet_recv, packet_send, pdr))),
         5 => Some(Box::new(LockheedRustin::new(id, node_event_send, controller_drone_recv, packet_recv, packet_send, pdr))),
-        6 => Some(Box::new(RustDrone::new(id, node_event_send, controller_drone_recv, packet_recv, packet_send, pdr))),
-        7 => Some(Box::new(RustBustersDrone::new(id, node_event_send, controller_drone_recv, packet_recv, packet_send, pdr))),
-        8 => Some(Box::new(RustezeDrone::new(id, node_event_send, controller_drone_recv, packet_recv, packet_send, pdr))),
-        9 => Some(Box::new(RustafarianDrone::new(id, node_event_send, controller_drone_recv, packet_recv, packet_send, pdr))),
+        6 => Some(Box::new(LockheedRustin::new(id, node_event_send, controller_drone_recv, packet_recv, packet_send, pdr))),
+        7 => Some(Box::new(LockheedRustin::new(id, node_event_send, controller_drone_recv, packet_recv, packet_send, pdr))),
+        8 => Some(Box::new(LockheedRustin::new(id, node_event_send, controller_drone_recv, packet_recv, packet_send, pdr))),
+        9 => Some(Box::new(LockheedRustin::new(id, node_event_send, controller_drone_recv, packet_recv, packet_send, pdr))),
         _ => Some(Box::new(LockheedRustin::new(id, node_event_send, controller_drone_recv, packet_recv, packet_send, pdr))),
     }
 }
@@ -738,6 +745,7 @@ fn spawn_servers_baia(
                 thread::spawn(move || {
                     server_baia.run();
                 });
+                set_node_types(MyNodeType::ChatServer, config.server.len(), cfg_server.id);
             },
             1 => {
                 let mut text_server_baia = TextServerBaia::new(
@@ -750,6 +758,7 @@ fn spawn_servers_baia(
                 thread::spawn(move || {
                     text_server_baia.run();
                 });
+                set_node_types(MyNodeType::TextServer, config.server.len(), cfg_server.id);
             },
             2 => {
                 let mut media_server_baia = MediaServerBaia::new(
@@ -762,6 +771,7 @@ fn spawn_servers_baia(
                 thread::spawn(move || {
                     media_server_baia.run();
                 });
+                set_node_types(MyNodeType::MediaServer, config.server.len(), cfg_server.id);
             },
             3 => {
                 let mut media_server_baia = MediaServerBaia::new(
@@ -774,6 +784,7 @@ fn spawn_servers_baia(
                 thread::spawn(move || {
                     media_server_baia.run();
                 });
+                set_node_types(MyNodeType::MediaServer, config.server.len(), cfg_server.id);
             },
             _=>{}
         }
@@ -816,12 +827,7 @@ fn spawn_clients(
             thread::spawn(move || {
                 client_instance.run();
             });
-
-            if let Ok(mut state) = SHARED_STATE.write() {
-                state.n_clients = config.client.len();
-                state.client_types.push((ClientType::ChatClient, cfg_client.id));
-                state.is_updated = true;
-            }
+            set_node_types(MyNodeType::ChatClient, config.client.len(), cfg_client.id);
         } else {
             let rcv_command = command_web_channel[&cfg_client.id].1.clone();
             web_client.insert(cfg_client.id, command_web_channel[&cfg_client.id].0.clone());
@@ -837,10 +843,38 @@ fn spawn_clients(
             thread::spawn(move || {
                 web_browser.run();
             });
+            set_node_types(MyNodeType::WebBrowser, config.client.len(), cfg_client.id);
+        }
+    }
+}
+fn set_node_types(node_type: MyNodeType, n: usize, id: NodeId){
+    if let Ok(mut state) = SHARED_STATE.write() {
+        match node_type{
+            MyNodeType::WebBrowser=>{
+                state.n_clients=n;
+                state.client_types.push((MyNodeType::WebBrowser, id));
+                state.is_updated=true;
+            },
+            MyNodeType::ChatClient=>{
+                state.n_clients=n;
+                state.client_types.push((MyNodeType::ChatClient, id));
+                state.is_updated=true;
+            },
+            MyNodeType::TextServer=>{
+                state.n_servers=n;
+                state.server_types.push((MyNodeType::TextServer, id));
+                state.is_updated=true;
 
-            if let Ok(mut state) = SHARED_STATE.write() {
-                state.n_clients = config.client.len();
-                state.client_types.push((ClientType::WebBrowser, cfg_client.id));
+
+            },
+            MyNodeType::MediaServer=> {
+                state.n_servers = n;
+                state.server_types.push((MyNodeType::MediaServer, id));
+                state.is_updated = true;
+            },
+            MyNodeType::ChatServer=> {
+                state.n_servers = n;
+                state.server_types.push((MyNodeType::ChatServer, id));
                 state.is_updated = true;
             }
         }

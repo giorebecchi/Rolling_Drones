@@ -3,6 +3,7 @@ use crate::common_things::common::ClientType;
 use crate::GUI::login_window::{NodeConfig, NodeType, AddedDrone};
 use crate::GUI::shared_info_plugin::SeenClients;
 use crate::network_initializer::network_initializer::parse_config;
+use crate::simulation_control::simulation_control::MyNodeType;
 
 pub fn spawn_double_chain(
     added_drone: Option<AddedDrone>,
@@ -43,8 +44,9 @@ pub fn spawn_double_chain(
         for (client_type, id) in &clients.clients{
             if id.clone() == client.id{
                 match client_type{
-                    ClientType::WebBrowser=>all_nodes.push((NodeType::WebBrowser, client.id, &client.connected_drone_ids)),
-                    ClientType::ChatClient=>all_nodes.push((NodeType::ChatClient, client.id, &client.connected_drone_ids)),
+                    MyNodeType::WebBrowser=>all_nodes.push((NodeType::WebBrowser, client.id, &client.connected_drone_ids)),
+                    MyNodeType::ChatClient=>all_nodes.push((NodeType::ChatClient, client.id, &client.connected_drone_ids)),
+                    _=>unreachable!()
                 }
             }
         }
@@ -52,7 +54,17 @@ pub fn spawn_double_chain(
 
     // Add servers
     for server in &config.server {
-        all_nodes.push((NodeType::Server, server.id, &server.connected_drone_ids));
+        for (server_type, id) in &clients.servers {
+            if id.clone() == server.id {
+                match server_type {
+                    MyNodeType::TextServer=>all_nodes.push((NodeType::TextServer, server.id, &server.connected_drone_ids)),
+                    MyNodeType::MediaServer=>all_nodes.push((NodeType::MediaServer, server.id, &server.connected_drone_ids)),
+                    MyNodeType::ChatServer=>all_nodes.push((NodeType::ChatServer, server.id, &server.connected_drone_ids)),
+                    _=>unreachable!()
+
+                }
+            }
+        }
     }
 
     // Calculate positions and create node configs

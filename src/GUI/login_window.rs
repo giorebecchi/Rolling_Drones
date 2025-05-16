@@ -72,7 +72,9 @@ struct NodeEntities(pub Vec<Entity>);
 pub enum NodeType{
     #[default]
     Drone,
-    Server,
+    TextServer,
+    MediaServer,
+    ChatServer,
     WebBrowser,
     ChatClient
 }
@@ -199,8 +201,10 @@ fn setup_network(
 
     match (*user_config).0.as_str(){
         "star"=>{
+
             let nodes= spawn_star_decagram(None,&mut seen_clients);
             (*nodes_config).0=nodes;
+            println!("nodes :{:?}",nodes_config.clone());
         },
         "double_chain"=>{
             let nodes=spawn_double_chain(None,&mut seen_clients);
@@ -262,15 +266,10 @@ pub fn set_up_bundle(
 
     for node_data in node_data.0.iter() {
 
-        if node_data.node_type == NodeType::Server || node_data.node_type == NodeType::Drone {
+        if node_data.node_type == NodeType::Drone {
             let entity = commands.spawn((
                 Sprite {
-                    image: match node_data.node_type {
-                        NodeType::Drone => asset_server.load("images/Rolling_Drone.png"),
-                        NodeType::ChatClient => unreachable!(),
-                        NodeType::WebBrowser=> unreachable!(),
-                        NodeType::Server => asset_server.load("images/server.png")
-                    },
+                    image: asset_server.load("images/Rolling_Drone.png"),
                     custom_size: Some(Vec2::new(45., 45.)),
                     ..default()
                 },
@@ -288,8 +287,7 @@ pub fn set_up_bundle(
                 ));
             }).id();
             entity_vector.0.push(entity);
-        }
-        else if node_data.node_type==NodeType::ChatClient{
+        } else if node_data.node_type==NodeType::ChatClient{
             let entity=commands.spawn((
                 Sprite {
                     image: asset_server.load("images/client.png"),
@@ -314,8 +312,7 @@ pub fn set_up_bundle(
                     ));
             }).id();
             entity_vector.0.push(entity);
-        }
-        else{
+        }else if node_data.node_type==NodeType::WebBrowser{
             let entity=commands.spawn((
                 Sprite {
                     image: asset_server.load("images/web_browser.png"),
@@ -341,6 +338,72 @@ pub fn set_up_bundle(
             }).id();
             entity_vector.0.push(entity);
 
+        } else if node_data.node_type==NodeType::TextServer{
+            let entity=commands.spawn((
+                Sprite {
+                    image: asset_server.load("images/server.png"),
+                    custom_size: Some(Vec2::new(45., 45.)),
+                    ..default()
+                },
+                Transform::from_xyz(node_data.position[0], node_data.position[1], 0.)
+
+            )).with_children(|parent|{
+                parent.spawn((
+                    Text2d::new(format!("{}",node_data.id)),
+                    TextFont {
+                        font: asset_server.load("fonts/FiraSans-Bold.ttf"),
+                        font_size: 12.,
+                        ..default()
+                    },
+                    TextColor(Color::srgb(1.,0.,0.)),
+                    Transform::from_translation(Vec3::new(-30.,-30.,0.))
+                ));
+            }).id();
+            entity_vector.0.push(entity);
+
+        }else if node_data.node_type==NodeType::MediaServer{
+            let entity=commands.spawn((
+                Sprite {
+                    image: asset_server.load("images/mediaserver_icon.png"),
+                    custom_size: Some(Vec2::new(45., 45.)),
+                    ..default()
+                },
+                Transform::from_xyz(node_data.position[0], node_data.position[1], 0.)
+            )).with_children(|parent|{
+                parent.spawn((
+                    Text2d::new(format!("{}",node_data.id)),
+                    TextFont {
+                        font: asset_server.load("fonts/FiraSans-Bold.ttf"),
+                        font_size: 12.,
+                        ..default()
+                    },
+                    TextColor(Color::srgb(1.,0.,0.)),
+                    Transform::from_translation(Vec3::new(-30.,-30.,0.))
+                ));
+            }).id();
+            entity_vector.0.push(entity);
+
+        }else{
+            let entity=commands.spawn((
+                Sprite {
+                    image: asset_server.load("images/chatserver_icon.png"),
+                    custom_size: Some(Vec2::new(45., 45.)),
+                    ..default()
+                },
+                Transform::from_xyz(node_data.position[0], node_data.position[1], 0.)
+            )).with_children(|parent|{
+                parent.spawn((
+                    Text2d::new(format!("{}",node_data.id)),
+                    TextFont {
+                        font: asset_server.load("fonts/FiraSans-Bold.ttf"),
+                        font_size: 12.,
+                        ..default()
+                    },
+                    TextColor(Color::srgb(1.,0.,0.)),
+                    Transform::from_translation(Vec3::new(-30.,-30.,0.))
+                ));
+            }).id();
+            entity_vector.0.push(entity);
         }
     }
 

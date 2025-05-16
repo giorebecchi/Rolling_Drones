@@ -4,20 +4,22 @@ use bevy::app::{App, Plugin, Update};
 use bevy::prelude::{in_state, IntoSystemConfigs, NextState, ResMut, Resource};
 use once_cell::sync::Lazy;
 use wg_2024::network::NodeId;
-use crate::common_things::common::ClientType;
 use crate::GUI::chat_windows::ChatState;
 use crate::GUI::login_window::{AppState, NodeConfig, NodeType, NodesConfig};
 use crate::GUI::web_media_plugin::WebState;
+use crate::simulation_control::simulation_control::MyNodeType;
 
 pub static SHARED_STATE: Lazy<Arc<RwLock<ThreadInfo>>> = Lazy::new(|| {
     Arc::new(RwLock::new(ThreadInfo::default()))
 });
 
 
-#[derive(Default)]
+#[derive(Default,Debug)]
 pub struct ThreadInfo {
     pub n_clients: usize,
-    pub client_types: Vec<(ClientType, NodeId)>,
+    pub client_types: Vec<(MyNodeType, NodeId)>,
+    pub n_servers: usize,
+    pub server_types: Vec<(MyNodeType, NodeId)>,
     pub responses: HashMap<(NodeId,(NodeId,NodeId)),Vec<String>>,
     pub client_list: HashMap<(NodeId,NodeId), Vec<NodeId>>,
     pub chat_servers: HashMap<NodeId, Vec<NodeId>>,
@@ -54,8 +56,10 @@ impl Plugin for BackendBridgePlugin {
 }
 #[derive(Resource,Default)]
 pub struct SeenClients{
-    pub clients : Vec<(ClientType,NodeId)>,
-    len: usize,
+    pub clients : Vec<(MyNodeType,NodeId)>,
+    clients_len: usize,
+    pub servers: Vec<(MyNodeType, NodeId)>,
+    servers_len: usize
 }
 
 fn sync_before_setup(
@@ -66,7 +70,10 @@ fn sync_before_setup(
         if state.is_updated{
 
                 seen_clients.clients=state.client_types.clone();
-                seen_clients.len=state.n_clients;
+                seen_clients.clients_len+=state.n_clients;
+                seen_clients.servers.extend(state.server_types.clone());
+                seen_clients.servers_len+=state.n_servers;
+            println!("state: {:?}",state);
 
 
             }
@@ -120,7 +127,7 @@ fn evaluate_state(
     mut seen_clients: ResMut<SeenClients>,
     mut next_state: ResMut<NextState<AppState>>
 ){
-    if seen_clients.len==seen_clients.clients.len(){
+    if seen_clients.clients_len==seen_clients.clients.len() &&seen_clients.servers_len==seen_clients.servers.len(){
         next_state.set(AppState::InGame);
     }
 
