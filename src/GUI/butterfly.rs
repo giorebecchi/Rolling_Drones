@@ -3,6 +3,7 @@ use crate::common_things::common::ClientType;
 use crate::GUI::login_window::{NodeConfig, NodeType, AddedDrone};
 use crate::GUI::shared_info_plugin::SeenClients;
 use crate::network_initializer::network_initializer::parse_config;
+use crate::simulation_control::simulation_control::MyNodeType;
 
 pub fn spawn_butterfly(
     added_drone: Option<AddedDrone>,
@@ -24,14 +25,24 @@ pub fn spawn_butterfly(
         for (client_type, id) in &clients.clients{
             if id.clone() == client.id{
                 match client_type{
-                    ClientType::WebBrowser=>all_nodes.push((NodeType::WebBrowser, client.id, client.connected_drone_ids.clone())),
-                    ClientType::ChatClient=>all_nodes.push((NodeType::ChatClient, client.id, client.connected_drone_ids.clone())),
+                    MyNodeType::WebBrowser=>all_nodes.push((NodeType::WebBrowser, client.id, client.connected_drone_ids.clone())),
+                    MyNodeType::ChatClient=>all_nodes.push((NodeType::ChatClient, client.id, client.connected_drone_ids.clone())),
+                    _=>unreachable!()
                 }
             }
         }
     }
     for server in config.server {
-        all_nodes.push((NodeType::Server, server.id, server.connected_drone_ids));
+        for (server_type, id) in &clients.servers {
+            if id.clone()==server.id {
+                match server_type {
+                    MyNodeType::TextServer => all_nodes.push((NodeType::TextServer, server.id, server.connected_drone_ids.clone())),
+                    MyNodeType::MediaServer => all_nodes.push((NodeType::MediaServer, server.id, server.connected_drone_ids.clone())),
+                    MyNodeType::ChatServer=>all_nodes.push((NodeType::ChatServer, server.id, server.connected_drone_ids.clone())),
+                    _ => unreachable!()
+                }
+            }
+        }
     }
 
     let node_count = all_nodes.len();

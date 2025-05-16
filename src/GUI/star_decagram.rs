@@ -1,8 +1,8 @@
 use bevy::prelude::*;
-use crate::common_things::common::ClientType;
 use crate::network_initializer::network_initializer::*;
 use crate::GUI::login_window::{AddedDrone, NodeConfig, NodeType};
 use crate::GUI::shared_info_plugin::SeenClients;
+use crate::simulation_control::simulation_control::MyNodeType;
 
 pub fn spawn_star_decagram(
     added_drone: Option<AddedDrone>,
@@ -54,8 +54,9 @@ pub fn spawn_star_decagram(
             if id.clone() == client.id {
                 let position = calculate_position(current_index);
                 let node_type=match client_type{
-                    ClientType::WebBrowser=>NodeType::WebBrowser,
-                    ClientType::ChatClient=>NodeType::ChatClient,
+                    MyNodeType::WebBrowser=>NodeType::WebBrowser,
+                    MyNodeType::ChatClient=>NodeType::ChatClient,
+                    _=>unreachable!(),
                 };
                 nodes.push(NodeConfig::new(
                     node_type,
@@ -69,14 +70,24 @@ pub fn spawn_star_decagram(
     }
 
     for server in &config.server {
-        let position = calculate_position(current_index);
-        nodes.push(NodeConfig::new(
-            NodeType::Server,
-            server.id,
-            position,
-            server.connected_drone_ids.clone()
-        ));
-        current_index += 1;
+        for (server_type, id) in &clients.servers {
+            if id.clone() == server.id {
+                let position = calculate_position(current_index);
+                let node_type=match server_type {
+                    MyNodeType::TextServer=>NodeType::TextServer,
+                    MyNodeType::MediaServer=>NodeType::MediaServer,
+                    MyNodeType::ChatServer=>NodeType::ChatServer,
+                    _=>unreachable!(),
+                };
+                nodes.push(NodeConfig::new(
+                    node_type,
+                    server.id,
+                    position,
+                    server.connected_drone_ids.clone()
+                ));
+                current_index += 1;
+            }
+        }
     }
 
     nodes
