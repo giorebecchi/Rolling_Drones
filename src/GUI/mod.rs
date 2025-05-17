@@ -6,4 +6,4 @@ pub mod test_try;
 pub mod chat_windows;
 pub mod shared_info_plugin;
 pub mod web_media_plugin;
-pub mod network_controller;
+pub mod advanced_logs_window;

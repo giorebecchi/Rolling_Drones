@@ -23,6 +23,7 @@ use once_cell::sync::Lazy;
 use crate::GUI::chat_windows::ChatSystemPlugin;
 use crate::GUI::shared_info_plugin::{BackendBridgePlugin, SeenClients};
 use crate::GUI::web_media_plugin::WebMediaPlugin;
+use crate::GUI::advanced_logs_window::AdvancedLogsPlugin;
 
 #[derive(Component)]
 struct InputText;
@@ -142,6 +143,7 @@ pub fn main() {
             ..default()
         }))
         .add_plugins(BackendBridgePlugin)
+        .add_plugins(AdvancedLogsPlugin)
         .add_plugins(FramepacePlugin)
         .add_plugins(ChatSystemPlugin)
         .insert_resource(FramepaceSettings {
@@ -154,6 +156,7 @@ pub fn main() {
         .init_resource::<UserConfig>()
         .init_resource::<NodesConfig>()
         .init_resource::<UiCommands>()
+        .init_resource::<SimWindows>()
         .init_resource::<SimulationController>()
         .init_resource::<SimLog>()
         .init_resource::<DisplayableLog>()
@@ -437,6 +440,7 @@ fn ui_settings(
     mut topology : ResMut<UserConfig>,
     mut sim : ResMut<SimulationController>,
     sim_log: Res<DisplayableLog>,
+    mut sim_windows: ResMut<SimWindows>,
     mut node_entities: ResMut<NodeEntities>,
     mut simulation_commands: ResMut<UiCommands>,
     mut next_state: ResMut<NextState<AppState>>,
@@ -757,7 +761,12 @@ fn ui_settings(
                                     ui.separator();
                                     ui.label(RichText::new(server_log).color(Color32::WHITE));
                                 });
+
                             });
+                        if ui.button("Advanced Logs").clicked(){
+                            sim_windows.advanced_logs=true;
+                            println!("now open: {}", sim_windows.advanced_logs);
+                        }
                     }
 
                     ui.allocate_rect(ui.available_rect_before_wrap(), egui::Sense::hover());
@@ -777,11 +786,15 @@ fn parse_id(id: String)->NodeId{
         }
     }
 }
-#[derive(Resource, Default)]
+#[derive(Resource,Default)]
+pub struct SimWindows{
+    pub advanced_logs: bool,
+}
+#[derive(Resource, Clone, Default)]
 pub struct DisplayableLog{
-    flooding_log: HashMap<(MyNodeType, NodeId), String>,
-    msg_log: HashMap<(MyNodeType, NodeId), String>,
-    nack_log: HashMap<(MyNodeType, NodeId), String>,
+    pub flooding_log: HashMap<(MyNodeType, NodeId), String>,
+    pub msg_log: HashMap<(MyNodeType, NodeId), String>,
+    pub nack_log: HashMap<(MyNodeType, NodeId), String>,
 }
 
 #[derive(Resource, Default)]
