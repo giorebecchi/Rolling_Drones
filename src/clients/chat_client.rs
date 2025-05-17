@@ -11,7 +11,7 @@ use wg_2024::config::{Client};
 use wg_2024::network::{NodeId, SourceRoutingHeader};
 use wg_2024::packet::{FloodRequest, FloodResponse, Fragment, NackType, NodeType, Packet, PacketType};
 use crate::clients::assembler::{Fragmentation, NodeData};
-use crate::common_things::common::{ChatRequest, MessageChat, CommandChat, ChatResponse, ServerType, ChatClientEvent, ClientType, BackGroundFlood};
+use crate::common_things::common::{ChatRequest, MessageChat, CommandChat, ChatResponse, ServerType, ChatClientEvent, ClientType, BackGroundFlood, ChatEvent};
 use crate::common_things::common::ChatClientEvent::{ClientList, ClientType as OtherClientType, IncomingMessage, RegisteredSuccess};
 
 pub struct ChatClient {
@@ -98,6 +98,7 @@ impl ChatClient {
         if let Err(_) = self.event_send.send(OtherClientType(self.client_type.clone(),self.config.id.clone())){
             println!("Error sending client type");
         }
+
     }
 
     pub fn handle_sim_command(&mut self, command: CommandChat) {
@@ -317,6 +318,10 @@ impl ChatClient {
                             if let Err(err) = self.event_send.send(ChatClientEvent::ChatServers(self.config.id.clone(), self.chat_servers.clone())) {
                                 println!("Failed to notify SC about server list: {}", err);
                             }
+                            if let Err(err) = self.event_send.send(ChatClientEvent::PacketInfo(self.config.id, ChatEvent::ChatServers(fragment.total_n_fragments), packet.session_id )) {
+                                println!("Failed to notify SC about server list: {}", err);
+                            }
+
 
                     },
                     ChatResponse::EndChat(response) =>{
@@ -330,6 +335,9 @@ impl ChatClient {
                                 println!("registered successfully");
                                 if let Err(_) = self.event_send.send(RegisteredSuccess((self.config.id.clone(), src_id.clone()), Ok(()))){
                                     println!("could not send to simulation control");
+                                }
+                                if let Err(err) = self.event_send.send(ChatClientEvent::PacketInfo(self.config.id, ChatEvent::RegisteredSuccess(fragment.total_n_fragments), packet.session_id )) {
+                                    println!("Failed to notify SC about server list: {}", err);
                                 }
                             }else {
                                 println!("not registered successfully");
@@ -349,12 +357,18 @@ impl ChatClient {
                             if let Err(_) = self.event_send.send(ClientList((self.config.id.clone(), src_id.clone()), registered_clients)){
                                 println!("failed to send the registered clients to sc");
                             }
+                            if let Err(err) = self.event_send.send(ChatClientEvent::PacketInfo(self.config.id, ChatEvent::ClientList(fragment.total_n_fragments), packet.session_id )) {
+                                println!("Failed to notify SC about server list: {}", err);
+                            }
                         },
                         ChatResponse::ForwardMessage(message_chat) =>{
                             let sender = message_chat.from_id;
                             println!("Message from: {}, content:\n{}", sender, message_chat.content);
                             if let Err(str) = self.event_send.send(IncomingMessage((self.config.id.clone(), src_id.clone(), sender), message_chat.content)){
                                 println!("failed to send message to simulation control: {}", str);
+                            }
+                            if let Err(err) = self.event_send.send(ChatClientEvent::PacketInfo(self.config.id, ChatEvent::IncomingMessage(fragment.total_n_fragments), packet.session_id )) {
+                                println!("Failed to notify SC about server list: {}", err);
                             }
                         }
                     }

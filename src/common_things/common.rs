@@ -25,7 +25,16 @@ pub enum ChatClientEvent{
     RegisteredSuccess((NodeId,NodeId),Result<(), String>), //NodeId registered client and NodeId server { either Ok(()) or Err("something".to_string()) }
     Error(NodeId),//Generic Error to send to SC
     ChatServers(NodeId, Vec<NodeId>),
-    ClientType(ClientType,NodeId)
+    ClientType(ClientType,NodeId),
+    PacketInfo(NodeId, ChatEvent, u64)
+}
+#[derive(Debug,Clone)]
+pub enum ChatEvent{
+    ClientList(u64),
+    IncomingMessage(u64),
+    RegisteredSuccess(u64),
+    ChatServers(u64),
+    ClientType(u64)
 }
 
 //comandi da client a server

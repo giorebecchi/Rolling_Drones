@@ -14,6 +14,7 @@ use crate::simulation_control::simulation_control::*;
 use egui::widgets::TextEdit;
 use wg_2024::controller::{DroneCommand, DroneEvent};
 use wg_2024::packet::Packet;
+use std::fmt::{Display, Formatter};
 use crate::common_things::common::{BackGroundFlood, ChatClientEvent, ClientType, CommandChat, ContentCommands, WebBrowserEvents};
 use bevy_framepace::{FramepacePlugin, FramepaceSettings, Limiter};
 use std::sync::{Arc};
@@ -95,6 +96,9 @@ pub struct SimulationController {
     pub neighbours: HashMap<NodeId, Vec<NodeId>>,
     pub client : HashMap<NodeId, Sender<CommandChat>>,
     pub web_client : HashMap<NodeId, Sender<ContentCommands>>,
+    pub text_servers: Vec<NodeId>,
+    pub media_servers: Vec<NodeId>,
+    pub chat_servers: Vec<NodeId>,
     pub seen_floods: HashSet<(NodeId,u64,NodeId)>,
     pub client_list: HashMap<(NodeId, NodeId), Vec<NodeId>>,
     pub chat_event: Receiver<ChatClientEvent>,
@@ -728,17 +732,30 @@ fn ui_settings(
                             }
                         }
                     });
+                    let mut client_log = String::new();
+                    let mut server_log = String::new();
+                    for ((node_type, _), node_content) in sim_log.flooding_log.iter(){
+                        match node_type{
+                            MyNodeType::WebBrowser=> client_log.push_str(node_content),
+                            MyNodeType::ChatClient=> client_log.push_str(node_content),
+                            MyNodeType::TextServer=> server_log.push_str(node_content),
+                            MyNodeType::MediaServer=> server_log.push_str(node_content),
+                            MyNodeType::ChatServer=>server_log.push_str(node_content),
+                        }
+                    }
+
+                    for (_, node_content) in sim_log.msg_log.iter(){
+                        client_log.push_str(node_content);
+                    }
 
                     // Only show content when not collapsed
                     if !collapsed {
                         egui::ScrollArea::vertical()
                             .show(ui, |ui| {
                                 ui.horizontal(|ui|{
-                                    ui.label(RichText::new(sim_log.flooding_log.clone()).color(Color32::GREEN));
+                                    ui.label(RichText::new(client_log).color(Color32::GREEN));
                                     ui.separator();
-                                    ui.label(RichText::new(sim_log.msg_log.clone()).color(Color32::WHITE));
-                                    ui.separator();
-                                    ui.label(RichText::new(sim_log.nack_log.clone()).color(Color32::RED));
+                                    ui.label(RichText::new(server_log).color(Color32::WHITE));
                                 });
                             });
                     }
@@ -762,15 +779,16 @@ fn parse_id(id: String)->NodeId{
 }
 #[derive(Resource, Default)]
 pub struct DisplayableLog{
-    flooding_log: String,
-    msg_log: String,
-    nack_log: String,
+    flooding_log: HashMap<(MyNodeType, NodeId), String>,
+    msg_log: HashMap<(MyNodeType, NodeId), String>,
+    nack_log: HashMap<(MyNodeType, NodeId), String>,
 }
+
 #[derive(Resource, Default)]
 pub struct SimLog{
-    pub flooding_log: String,
-    pub msg_log: String,
-    pub nack_log: String,
+    pub flooding_log: HashMap<(MyNodeType,NodeId), String>,
+    pub msg_log: HashMap<(MyNodeType,NodeId), String>,
+    pub nack_log: HashMap<(MyNodeType,NodeId), String>,
     pub is_updated: bool,
 }
 fn sync_log(
@@ -790,9 +808,9 @@ fn sync_log(
 }
 fn clear_log(){
     if let Ok(mut state)=SHARED_LOG.write(){
-        state.flooding_log=String::new();
-        state.msg_log=String::new();
-        state.nack_log=String::new();
+        state.flooding_log=HashMap::new();
+        state.msg_log=HashMap::new();
+        state.nack_log=HashMap::new();
         state.is_updated=true;
     }
 }
