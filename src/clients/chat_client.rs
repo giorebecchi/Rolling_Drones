@@ -1,3 +1,4 @@
+use std::cmp::min;
 use std::collections::{HashMap, HashSet};
 use crossbeam_channel::{select_biased, Receiver, Sender};
 use petgraph::algo::dijkstra;
@@ -389,6 +390,7 @@ impl ChatClient {
         if let PacketType::Nack(nack) = packet.clone().pack_type{
             match nack.nack_type{
                 NackType::ErrorInRouting(id) => {
+                    println!("received nack ErrorInRouting");
                     if !self.problematic_nodes.contains(&id){
                         self.problematic_nodes.push(id);
                     }
@@ -570,7 +572,17 @@ impl ChatClient {
                     let prev = edge.0;
 
                     if let (Some(&prev_cost), Some(&curr_cost)) = (result.get(&prev), result.get(&current)) {
-                        let weight = edge.weight();
+                        let dest = edge.1;
+                        let weight = if self.problematic_nodes.contains(&dest) {
+                            1_000
+                        } else {
+                            let reliability = self.node_data.get(&dest).map(|d| d.reliability()).unwrap_or(1.0);
+                            if reliability <= 0.0 {
+                                1_000
+                            } else {
+                                ((1.0 / reliability).ceil() as u32).min(1_000)
+                            }
+                        };
                         
                         if prev_cost + weight == curr_cost {
                             path.push(prev.clone());

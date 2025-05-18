@@ -613,7 +613,7 @@ impl WebBrowser {
                 } 
             }
             //ceil returns integer closest to result
-            //this transforms the reliability into a weight. when we have higher reliability we need a smaller cost
+            //this transforms the reliability into a weight. when we have higher reliability, we need a smaller cost
         });
 
         if let Some(_) = result.get(destination_id) {
@@ -626,7 +626,17 @@ impl WebBrowser {
                     let prev = edge.0;
 
                     if let (Some(&prev_cost), Some(&curr_cost)) = (result.get(&prev), result.get(&current)) {
-                        let weight = edge.weight();
+                        let dest = edge.1;
+                        let weight = if self.problematic_nodes.contains(&dest) {
+                            1_000
+                        } else {
+                            let reliability = self.node_data.get(&dest).map(|d| d.reliability()).unwrap_or(1.0);
+                            if reliability <= 0.0 {
+                                1_000
+                            } else {
+                                ((1.0 / reliability).ceil() as u32).min(1_000)
+                            }
+                        };
 
                         if prev_cost + weight == curr_cost {
                             path.push(prev.clone());
