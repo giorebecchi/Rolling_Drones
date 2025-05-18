@@ -193,6 +193,7 @@ fn window_format(
                                             state.handles.insert(window_id, None);
                                             state.egui_textures.insert(window_id, None);
                                             web_state.current_display_type.insert(window_id, MediaDisplayType::None);
+                                            web_state.last_loaded_path.remove(&window_id);
 
                                             web_state.received_medias.insert(window_id, media_path.clone());
 
@@ -324,8 +325,17 @@ fn window_format(
                                     let clear_text_id = ui.make_persistent_id(format!("clear_text_button_{}", window_id));
                                     ui.push_id(clear_text_id, |ui| {
                                         if ui.button("Clear Text").clicked() {
+                                            if let Some(path)=web_state.actual_file_path.get(&window_id){
+                                                match fs::remove_file(path){
+                                                    Ok(_)=>println!("image : {:?} removed",path),
+                                                    Err(e)=>println!("failed to remove image: {:?}, error: {}",path,e)
+                                                }
+                                            }else{
+                                                println!("Error occured while clearing image");
+                                            }
                                             web_state.actual_file_path.remove(&window_id);
                                             web_state.current_display_type.insert(window_id, MediaDisplayType::None);
+
                                         }
                                     });
                                 } else {

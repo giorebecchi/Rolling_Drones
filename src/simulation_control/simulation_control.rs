@@ -24,18 +24,18 @@ use rustafarian_drone::RustafarianDrone;
 use wg_2024::config::Config;
 use wg_2024::packet::PacketType::{FloodRequest, MsgFragment, Nack};
 use crate::clients::assembler::Fragmentation;
-use crate::GUI::login_window::{SharedSimState, SimulationController, SHARED_LOG};
+use crate::GUI::login_window::{NodeType, SharedSimState, SimulationController, SHARED_LOG};
 use crate::network_initializer::network_initializer::parse_config;
 use crate::GUI::shared_info_plugin::SHARED_STATE;
 use crate::servers::ChatServer::Server;
 use crate::clients::chat_client::ChatClient;
 use crate::clients::web_browser::WebBrowser;
-use crate::common_things::common::{BackGroundFlood, ChatClientEvent, ChatRequest, ChatResponse, ClientType, CommandChat, ContentCommands, ContentType, ServerType, WebBrowserEvents};
+use crate::common_things::common::{BackGroundFlood, ChatClientEvent, ChatEvent, ChatRequest, ChatResponse, ClientType, CommandChat, ContentCommands, ContentType, ServerType, WebBrowserEvents};
 use crate::common_things::common::ServerType::CommunicationServer;
 use crate::servers::Text_max::Server as TextMax;
 use crate::servers::Chat_max::Server as ChatMax;
 
-#[derive(Clone,Debug)]
+#[derive(Clone,Debug,PartialEq, Eq, Hash)]
 pub enum MyNodeType{
     WebBrowser,
     ChatClient,
@@ -58,6 +58,9 @@ impl Default for SimulationController{
             neighbours: HashMap::new(),
             client:  HashMap::new(),
             web_client: HashMap::new(),
+            text_servers: Vec::new(),
+            media_servers: Vec::new(),
+            chat_servers: Vec::new(),
             seen_floods: HashSet::new(),
             client_list: HashMap::new(),
             chat_event: chat_recv,
@@ -76,7 +79,7 @@ impl SimulationController {
     fn run(&mut self) {
         let mut flood_req_hash=HashSet::new();
         let mut msg_hash=HashMap::new();
-        let mut already_seen_nacks= HashMap::new();
+        let mut web_hash=HashMap::new();
         loop{
             select_biased! {
                 recv(self.chat_event) -> event =>{
@@ -142,6 +145,76 @@ impl SimulationController {
                                         ClientType::WebBrowser=>state.web_clients.push(node_id),
                                     }
                                     state.is_updated=true;
+                                }
+                            }
+                            ChatClientEvent::PacketInfo(client, event, session) => {
+                                msg_hash.insert((client, session), event.clone());
+                                match event{
+                                    ChatEvent::ChatServers(size)=>{
+                                        if let Ok(mut state)= SHARED_LOG.write(){
+                                            state.msg_log.insert(
+                                                (MyNodeType::ChatClient, client),
+                                                (session,
+                                                format!(
+                                                    "Chat Client {}: asked for list of Chat Servers\n the message was made of {} fragments\n", client, size
+                                                ))
+                                            );
+                                            state.is_updated=true;
+                                        }
+                                    },
+                                    ChatEvent::ClientList(size)=>{
+                                        if let Ok(mut state)= SHARED_LOG.write(){
+                                            state.msg_log.insert(
+                                                (MyNodeType::ChatClient, client),
+                                                (session,
+                                                format!(
+                                                    "Chat Client {}: asked for list of Chat Clients\n the message was made of {} fragments\n", client, size
+                                                ))
+                                            );
+                                            state.is_updated=true;
+                                        }
+                                    },
+                                    ChatEvent::IncomingMessage(size) => {
+                                        if let Ok(mut state)= SHARED_LOG.write(){
+                                            state.msg_log.insert(
+                                                (MyNodeType::ChatClient, client),
+                                                (session,
+                                                format!(
+                                                    "Chat Client {}: received a message\n the message was made of {} fragments\n", client, size
+                                                ))
+                                            );
+                                            state.is_updated=true;
+                                        }
+                                    },
+                                    ChatEvent::RegisteredSuccess(size) => {
+                                        if let Ok(mut state)= SHARED_LOG.write(){
+                                            state.msg_log.insert(
+                                                (MyNodeType::ChatClient, client),
+                                                (session,
+                                                format!(
+                                                    "Chat Client {}: registered successfully\n the message was made of {} fragments\n", client, size
+                                                ))
+                                            );
+                                            state.is_updated=true;
+                                        }
+                                    },
+                                    ChatEvent::ClientType(size)=> {
+                                        if let Ok(mut state)= SHARED_LOG.write(){
+                                            state.msg_log.insert(
+                                                (MyNodeType::ChatClient, client),
+                                                (session,
+                                                format!(
+                                                    "Chat Client {}: revealed its type\n the message was made of {} fragments\n", client, size
+                                                ))
+                                            );
+                                            state.is_updated=true;
+                                        }
+                                    }
+                                }
+                            },
+                            ChatClientEvent::Graph(id, graph) =>{
+                                if let Ok(mut state) = SHARED_LOG.write(){
+                                    state.graph.insert(id, graph);
                                 }
                             }
                             _=>{}
@@ -216,44 +289,49 @@ impl SimulationController {
                                 }
                             }
                             WebBrowserEvents::PacketInfo(client, packet_info, session_id)=>{
-                                msg_hash.insert((client, session_id), packet_info.clone());
+                                web_hash.insert((client, session_id), packet_info.clone());
                                 match packet_info{
                                     ContentType::TextServerList(size)=>{
                                         if let Ok(mut state)= SHARED_LOG.write(){
-                                            state.msg_log.push_str(&format!("Web browser: {} asked for list of Text Servers\n the message was made of {} fragments\n", client, size));
+                                            state.msg_log.insert((MyNodeType::WebBrowser, client), (session_id, format!("Web browser: {} asked for list of Text Servers\n the message was made of {} fragments\n", client, size)));
                                             state.is_updated=true;
                                         }
                                     }
                                     ContentType::MediaServerList(size)=>{
                                          if let Ok(mut state)= SHARED_LOG.write(){
-                                            state.msg_log.push_str(&format!("Web browser: {} asked for list of Media Servers\n the message was made of {} fragments\n", client, size));
+                                            state.msg_log.insert((MyNodeType::WebBrowser, client), (session_id, format!("Web browser: {} asked for list of Media Servers\n the message was made of {} fragments\n", client, size)));
                                             state.is_updated=true;
                                         }
                                     }
                                     ContentType::FileList(size)=>{
                                         if let Ok(mut state)= SHARED_LOG.write(){
-                                            state.msg_log.push_str(&format!("Web browser: {} asked for File List\n the message was made of {} fragments\n", client, size));
+                                            state.msg_log.insert((MyNodeType::WebBrowser, client), (session_id, format!("Web browser: {} asked for File List\n the message was made of {} fragments\n", client, size)));
                                             state.is_updated=true;
                                         }
                                     }
                                     ContentType::MediaPosition(size)=>{
                                         if let Ok(mut state)= SHARED_LOG.write(){
-                                            state.msg_log.push_str(&format!("Web browser: {} asked for Media Position\n the message was made of {} fragments\n", client, size));
+                                            state.msg_log.insert((MyNodeType::WebBrowser, client), (session_id, format!("Web browser: {} asked for Media Position\n the message was made of {} fragments\n", client, size)));
                                             state.is_updated=true;
                                         }
                                     }
                                     ContentType::SavedText(size)=>{
                                         if let Ok(mut state)= SHARED_LOG.write(){
-                                            state.msg_log.push_str(&format!("Web browser: {} asked for a Text File\n the message was made of {} fragments\n", client, size));
+                                            state.msg_log.insert((MyNodeType::WebBrowser, client), (session_id, format!("Web browser: {} asked for a Text File\n the message was made of {} fragments\n", client, size)));
                                             state.is_updated=true;
                                         }
                                     }
                                     ContentType::SavedMedia(size)=>{
                                         if let Ok(mut state)= SHARED_LOG.write(){
-                                            state.msg_log.push_str(&format!("Web browser: {} asked for a Media\n the message was made of {} fragments\n", client, size));
+                                            state.msg_log.insert((MyNodeType::WebBrowser, client), (session_id, format!("Web browser: {} asked for a Media\n the message was made of {} fragments\n", client, size)));
                                             state.is_updated=true;
                                         }
                                     }
+                                }
+                            },
+                            WebBrowserEvents::Graph(id, graph) =>{
+                                if let Ok(mut state) = SHARED_LOG.write(){
+                                    state.graph.insert(id, graph);
                                 }
                             }
 
@@ -269,8 +347,20 @@ impl SimulationController {
                                 match packet.pack_type.clone(){
                                     FloodRequest(flood_req)=>{
                                         if flood_req_hash.insert((flood_req.initiator_id,flood_req.flood_id)){
+                                            let node_type = if self.client.contains_key(&flood_req.initiator_id){
+                                                MyNodeType::ChatClient
+                                            }else if self.web_client.contains_key(&flood_req.initiator_id){
+                                                MyNodeType::WebBrowser
+                                            }
+                                            else if self.text_servers.contains(&flood_req.initiator_id){
+                                                MyNodeType::TextServer
+                                            }else if self.media_servers.contains(&flood_req.initiator_id){
+                                                MyNodeType::MediaServer
+                                            }else{
+                                                MyNodeType::ChatServer
+                                            };
                                             if let Ok(mut state)=SHARED_LOG.write(){
-                                                state.flooding_log.push_str(&format!("{:?} with id {} has initiated a flood with id {}\n",flood_req.path_trace[0].1,flood_req.initiator_id,flood_req.flood_id));
+                                                state.flooding_log.insert((node_type,flood_req.initiator_id), format!("{:?} with id {} has initiated a flood with id {}\n",flood_req.path_trace[0].1,flood_req.initiator_id,flood_req.flood_id));
                                                 state.is_updated=true;
                                             }
 
@@ -278,81 +368,97 @@ impl SimulationController {
                                         }
 
                                     },
-                                    Nack(nack)=>{
-                                        if None == already_seen_nacks.insert(packet.routing_header.hops.clone(), packet.session_id){
-                                            let route_len=packet.routing_header.len();
-                                            let naccked_drone=packet.routing_header.hops[0];
-                                            let initiator=packet.routing_header.hops[route_len-1];
-                                            let mut pack_info=None;
-                                            if let Some(packet_info)=msg_hash.get(&(initiator, packet.session_id)){
-                                                pack_info=Some(packet_info);
-                                            }
-                                            match nack.nack_type{
-                                                NackType::ErrorInRouting(neighbor)=>{
+                                    MsgFragment(_)=>{
+                                        if let Ok(mut state)=SHARED_LOG.write(){
+                                            let node=packet.routing_header.hops[0];
 
-                                                    if let Ok(mut state)=SHARED_LOG.write(){
-                                                        match pack_info{
-                                                            Some(pack)=>{
-                                                                state.nack_log.push_str(&format!("1. An Error In Routing was received by Drone {}\n 2. Nack is about Packet {} to {}\n",naccked_drone,pack, neighbor ));
-                                                            },
-                                                            None=>{
-                                                                state.nack_log.push_str(&format!("1. An Error In Routing was received by Drone {}\n 2. Nack is about Packet from Server to {}\n", naccked_drone, neighbor));
-                                                            }
-                                                        }
-                                                        state.is_updated=true;
+                                            if let Some(routes)=state.route_attempt.get_mut(&(node,packet.session_id)){
+                                                if !routes.contains(&packet.routing_header.hops){
+                                                    routes.push(packet.routing_header.hops.clone());
+                                                }
 
-                                                    }
-
-                                                }
-                                                NackType::DestinationIsDrone=>{
-                                                    if let Ok(mut state)=SHARED_LOG.write(){
-                                                        match pack_info{
-                                                            Some(pack)=>{
-                                                                state.nack_log.push_str(&format!("1. A Destination Is Drone was received by Drone {}\n 2. Nack is about Packet {}\n",naccked_drone,pack));
-                                                            }
-                                                            None=>{
-                                                                state.nack_log.push_str(&format!("1. A Destination Is Drone was received by Drone {}\n 2. Nack is about a Packet from Server\n",naccked_drone));
-                                                            }
-                                                        }
-                                                        state.is_updated=true;
-                                                    }
-                                                }
-                                                NackType::Dropped=>{
-                                                    if let Ok(mut state)=SHARED_LOG.write(){
-                                                        match pack_info{
-                                                            Some(pack)=>{
-                                                                state.nack_log.push_str(&format!("1. A Dropped was received by Drone {}\n 2. Nack is about Packet {}\n",naccked_drone,pack));
-                                                            }
-                                                            None=>{
-                                                                state.nack_log.push_str(&format!("1. A Dropped was received by Drone {}\n 2. Nack is about a Packet from Server\n",naccked_drone));
-                                                            }
-                                                        }
-                                                        state.is_updated=true;
-                                                    }
-                                                }
-                                                NackType::UnexpectedRecipient(drone)=>{
-                                                    if let Ok(mut state)=SHARED_LOG.write(){
-                                                        match pack_info{
-                                                            Some(pack)=>{
-                                                                state.nack_log.push_str(&format!("1. An Unexpected Recipient was received by Drone {}\n 2. Nack is about Packet {}\n",drone,pack));
-                                                            }
-                                                            None=>{
-                                                                state.nack_log.push_str(&format!("1. An Unexpected Recipient was received by Drone {}\n 2. Nack is about a Packet from Server\n",drone));
-                                                            }
-                                                        }
-                                                        state.is_updated=true;
-                                                    }
-                                                }
+                                            }else{
+                                                let routes = vec![packet.routing_header.hops.clone()];
+                                                state.route_attempt.insert((node,packet.session_id), routes);
                                             }
                                         }
 
-                                    },
-
-
+                                    }
+                                    Nack(nack)=>{
+                                       }
                                     _=>{}
                                 }
-                        }
+                            }
                         DroneEvent::PacketDropped(ref packet) => {
+                                match packet.pack_type.clone(){
+                                    MsgFragment(fragment)=>{
+                                        if let Ok(mut state) = SHARED_LOG.write(){
+                                            let drone = packet.routing_header.hops[packet.routing_header.hop_index];
+                                            if let Some(mut fragments)=state.lost_msg.get_mut(&(drone, packet.session_id)){
+                                                fragments.push(fragment.clone());
+                                            }else{
+                                                let mut fragments=Vec::new();
+                                                fragments.push(fragment.clone());
+                                                state.lost_msg.insert((drone, packet.session_id), fragments);
+                                            }
+                                            state.is_updated=true;
+                                        }
+                                    },
+                                    PacketType::Ack(ack)=>{
+                                        if let Ok(mut state) = SHARED_LOG.write(){
+                                            let drone = packet.routing_header.hops[packet.routing_header.hop_index];
+                                            if let Some(mut fragments)=state.lost_ack.get_mut(&(drone, packet.session_id)){
+                                                fragments.push(ack.clone());
+                                            }else{
+                                                let mut fragments=Vec::new();
+                                                fragments.push(ack.clone());
+                                                state.lost_ack.insert((drone, packet.session_id), fragments);
+                                            }
+                                            state.is_updated=true;
+                                        }
+                                    },
+                                    PacketType::Nack(nack)=>{
+                                        if let Ok(mut state) = SHARED_LOG.write(){
+                                            let drone = packet.routing_header.hops[packet.routing_header.hop_index];
+                                            if let Some(mut fragments)=state.lost_nack.get_mut(&(drone, packet.session_id)){
+                                            fragments.push(nack.clone());
+                                            }else{
+                                                let mut fragments=Vec::new();
+                                                fragments.push(nack.clone());
+                                                state.lost_nack.insert((drone, packet.session_id), fragments);
+                                            }
+                                            state.is_updated=true;
+                                        }
+                                    },
+                                    PacketType::FloodRequest(flood_req)=>{
+                                        if let Ok(mut state) = SHARED_LOG.write(){
+                                            let drone = packet.routing_header.hops[packet.routing_header.hop_index];
+                                            if let Some(mut fragments)=state.lost_flood_req.get_mut(&(drone, packet.session_id)){
+                                                fragments.push(flood_req.clone());
+                                            }else{
+                                                let mut fragments=Vec::new();
+                                                fragments.push(flood_req.clone());
+                                                state.lost_flood_req.insert((drone, packet.session_id), fragments);
+                                            }
+                                            state.is_updated=true;
+                                        }
+                                    },
+                                    PacketType::FloodResponse(flood_resp)=>{
+                                        if let Ok(mut state) = SHARED_LOG.write(){
+                                            let drone = packet.routing_header.hops[packet.routing_header.hop_index];
+                                            if let Some(mut fragments)=state.lost_flood_resp.get_mut(&(drone, packet.session_id)){
+                                                fragments.push(flood_resp.clone());
+                                            }else{
+                                                let mut fragments=Vec::new();
+                                                fragments.push(flood_resp.clone());
+                                                state.lost_flood_resp.insert((drone, packet.session_id), fragments);
+                                            }
+                                            state.is_updated=true;
+                                        }
+                                    }
+
+                                }
+
                             println!("Simulation control: drone dropped packet");
                         }
                         DroneEvent::ControllerShortcut(ref controller_shortcut) => {
@@ -392,6 +498,23 @@ impl SimulationController {
             sender.send(packet).unwrap();
         }
 
+    }
+    pub fn ask_topology_graph(&self,client: NodeId, client_type: NodeType){
+        match client_type {
+            NodeType::ChatClient=> {
+                if let Some(sender) = self.client.get(&client) {
+                    sender.send(CommandChat::SendTopologyGraph).unwrap();
+                }
+            }
+            NodeType::WebBrowser=>{
+                if let Some(sender) = self.web_client.get(&client) {
+                    sender.send(ContentCommands::SendTopologyGraph).unwrap();
+                }
+            }
+            _=>{
+                println!("Error");
+            }
+        }
     }
 
 
@@ -559,6 +682,7 @@ pub fn start_simulation(
 ) {
     let file_path = "assets/configurations/double_chain.toml";
     let config = parse_config(file_path);
+    check_full_duplex_connections(&config);
 
     let (packet_channels, command_chat_channel,
         command_web_channel, background_flooding) =
@@ -575,6 +699,9 @@ pub fn start_simulation(
     let node_event_recv = simulation_controller.node_event_recv.clone();
     let mut client = simulation_controller.client.clone();
     let mut web_client = simulation_controller.web_client.clone();
+    let mut text_servers = simulation_controller.text_servers.clone();
+    let mut media_servers = simulation_controller.media_servers.clone();
+    let mut chat_servers = simulation_controller.chat_servers.clone();
     let mut background_flood = simulation_controller.background_flooding.clone();
 
     spawn_drones(
@@ -590,7 +717,15 @@ pub fn start_simulation(
     }
     #[cfg(not(feature = "max"))]
     {
-        spawn_servers_baia(&config, &packet_channels, &background_flooding, &mut background_flood);
+        spawn_servers_baia(
+            &config,
+            &packet_channels,
+            &background_flooding,
+            &mut background_flood,
+            &mut text_servers,
+            &mut media_servers,
+            &mut chat_servers
+        );
     }
 
     spawn_clients(
@@ -615,6 +750,9 @@ pub fn start_simulation(
         packet_drones,
         client,
         web_client,
+        text_servers,
+        media_servers,
+        chat_servers,
         background_flood
     );
 
@@ -675,6 +813,12 @@ fn spawn_drones(
     node_event_send: Sender<DroneEvent>
 ) {
     for cfg_drone in config.drone.iter().cloned() {
+        if cfg_drone.pdr>1.0{
+            if let Ok(mut state)= SHARED_STATE.write(){
+                state.wrong_pdr.insert(cfg_drone.id, true);
+                state.is_updated=true;
+            }
+        }
         let (controller_drone_send, controller_drone_recv) = unbounded();
         controller_drones.insert(cfg_drone.id, controller_drone_send);
         packet_drones.insert(cfg_drone.id, packet_channels[&cfg_drone.id].0.clone());
@@ -730,8 +874,14 @@ fn spawn_servers_baia(
     packet_channels: &HashMap<NodeId, (Sender<Packet>, Receiver<Packet>)>,
     background_flood: &HashMap<NodeId, (Sender<BackGroundFlood>, Receiver<BackGroundFlood>)>,
     flooding: &mut HashMap<NodeId, Sender<BackGroundFlood>>,
+    text_servers: &mut Vec<NodeId>,
+    media_servers: &mut Vec<NodeId>,
+    chat_servers: &mut Vec<NodeId>
 ) {
     for (i, cfg_server) in config.server.iter().cloned().enumerate() {
+        if cfg_server.connected_drone_ids.is_empty(){
+            topology_error(cfg_server.id, cfg_server.connected_drone_ids.clone());
+        }
         let rcv = packet_channels[&cfg_server.id].1.clone();
         let packet_send = cfg_server.connected_drone_ids.iter()
             .map(|nid| (*nid, packet_channels[nid].0.clone()))
@@ -745,6 +895,7 @@ fn spawn_servers_baia(
                 thread::spawn(move || {
                     server_baia.run();
                 });
+                chat_servers.push(cfg_server.id);
                 set_node_types(MyNodeType::ChatServer, config.server.len(), cfg_server.id);
             },
             1 => {
@@ -758,7 +909,9 @@ fn spawn_servers_baia(
                 thread::spawn(move || {
                     text_server_baia.run();
                 });
+                text_servers.push(cfg_server.id);
                 set_node_types(MyNodeType::TextServer, config.server.len(), cfg_server.id);
+
             },
             2 => {
                 let mut media_server_baia = MediaServerBaia::new(
@@ -771,6 +924,7 @@ fn spawn_servers_baia(
                 thread::spawn(move || {
                     media_server_baia.run();
                 });
+                media_servers.push(cfg_server.id);
                 set_node_types(MyNodeType::MediaServer, config.server.len(), cfg_server.id);
             },
             3 => {
@@ -784,6 +938,7 @@ fn spawn_servers_baia(
                 thread::spawn(move || {
                     media_server_baia.run();
                 });
+                media_servers.push(cfg_server.id);
                 set_node_types(MyNodeType::MediaServer, config.server.len(), cfg_server.id);
             },
             _=>{}
@@ -803,6 +958,9 @@ fn spawn_clients(
     web_event_send: Sender<WebBrowserEvents>
 ) {
     for (i, cfg_client) in config.client.iter().cloned().enumerate() {
+        if cfg_client.connected_drone_ids.is_empty(){
+            topology_error(cfg_client.id, cfg_client.connected_drone_ids.clone());
+        }
         let packet_send: HashMap<NodeId, Sender<Packet>> = cfg_client.connected_drone_ids.iter()
             .map(|nid| (*nid, packet_channels[nid].0.clone()))
             .collect();
@@ -890,6 +1048,9 @@ fn update_simulation_controller(
     packet_channel: HashMap<NodeId, Sender<Packet>>,
     client: HashMap<NodeId, Sender<CommandChat>>,
     web_client: HashMap<NodeId, Sender<ContentCommands>>,
+    text_servers: Vec<NodeId>,
+    media_servers: Vec<NodeId>,
+    chat_servers: Vec<NodeId>,
     background_flooding : HashMap<NodeId, Sender<BackGroundFlood>>
 ) {
     simulation_controller.node_event_send = node_event_send.clone();
@@ -899,6 +1060,9 @@ fn update_simulation_controller(
     simulation_controller.packet_channel = packet_channel;
     simulation_controller.client = client;
     simulation_controller.web_client = web_client;
+    simulation_controller.text_servers = text_servers;
+    simulation_controller.media_servers = media_servers;
+    simulation_controller.chat_servers = chat_servers;
     simulation_controller.background_flooding= background_flooding;
 }
 
@@ -916,6 +1080,9 @@ fn create_simulation_controller(
         packet_channel: simulation_controller.packet_channel.clone(),
         client: simulation_controller.client.clone(),
         web_client: simulation_controller.web_client.clone(),
+        text_servers: Vec::new(),
+        media_servers: Vec::new(),
+        chat_servers: Vec::new(),
         seen_floods: HashSet::new(),
         client_list: HashMap::new(),
         chat_event: chat_event_recv,
@@ -932,6 +1099,9 @@ fn spawn_servers_max(
     packet_channels: &HashMap<NodeId, (Sender<Packet>, Receiver<Packet>)>
 ) {
     for (i, cfg_server) in config.server.iter().cloned().enumerate() {
+        if cfg_server.connected_drone_ids.is_empty(){
+            topology_error(cfg_server.id, cfg_server.connected_drone_ids.clone());
+        }
         let rcv = packet_channels[&cfg_server.id].1.clone();
         let packet_send = cfg_server.connected_drone_ids.iter()
             .map(|nid| (*nid, packet_channels[nid].0.clone()))
@@ -958,4 +1128,79 @@ fn spawn_servers_max(
 
         }
     }
+}
+fn topology_error(id: NodeId, connected_ids: Vec<NodeId>){
+    if let Ok(mut state) = SHARED_STATE.write(){
+        state.wrong_connections.insert(id, connected_ids);
+        state.is_updated=true;
+    }
+}
+fn check_full_duplex_connections(config: &Config){
+    let mut incomplete_connections = Vec::new();
+
+    // Create a map of node IDs to their connected nodes
+    let mut connection_map: HashMap<NodeId, HashSet<NodeId>> = HashMap::new();
+
+    // Populate the connection map for all clients
+    for client in &config.client {
+        let connected_set: HashSet<NodeId> = client.connected_drone_ids.iter().cloned().collect();
+        connection_map.insert(client.id, connected_set);
+    }
+    for server in &config.server{
+        let connected_set: HashSet<NodeId> = server.connected_drone_ids.iter().cloned().collect();
+        connection_map.insert(server.id, connected_set);
+    }
+    for drone in &config.drone{
+        let connected_set: HashSet<NodeId> = drone.connected_node_ids.iter().cloned().collect();
+        connection_map.insert(drone.id, connected_set);
+    }
+
+    // Check for full duplex connections
+    for client in &config.client {
+        for &neighbor_id in &client.connected_drone_ids {
+            // Check if the neighbor has this client in its connection list
+            if let Some(neighbor_connections) = connection_map.get(&neighbor_id) {
+                if !neighbor_connections.contains(&client.id) {
+                    // This is not a full duplex connection
+                    incomplete_connections.push((client.id, neighbor_id));
+                }
+            } else {
+                // Neighbor doesn't exist in the map
+                incomplete_connections.push((client.id, neighbor_id));
+            }
+        }
+    }
+    for server in &config.server {
+        for &neighbor_id in &server.connected_drone_ids {
+            // Check if the neighbor has this client in its connection list
+            if let Some(neighbor_connections) = connection_map.get(&neighbor_id) {
+                if !neighbor_connections.contains(&server.id) {
+                    // This is not a full duplex connection
+                    incomplete_connections.push((server.id, neighbor_id));
+                }
+            } else {
+                // Neighbor doesn't exist in the map
+                incomplete_connections.push((server.id, neighbor_id));
+            }
+        }
+    }
+    for drone in &config.drone {
+        for &neighbor_id in &drone.connected_node_ids {
+            // Check if the neighbor has this client in its connection list
+            if let Some(neighbor_connections) = connection_map.get(&neighbor_id) {
+                if !neighbor_connections.contains(&drone.id) {
+                    // This is not a full duplex connection
+                    incomplete_connections.push((drone.id, neighbor_id));
+                }
+            } else {
+                // Neighbor doesn't exist in the map
+                incomplete_connections.push((drone.id, neighbor_id));
+            }
+        }
+    }
+    if let Ok(mut state) = SHARED_STATE.write(){
+        state.incomplete_connections=incomplete_connections;
+        state.is_updated=true;
+    }
+
 }

@@ -13,15 +13,18 @@ use crate::GUI::butterfly::spawn_butterfly;
 use crate::simulation_control::simulation_control::*;
 use egui::widgets::TextEdit;
 use wg_2024::controller::{DroneCommand, DroneEvent};
-use wg_2024::packet::Packet;
+use wg_2024::packet::{Ack, FloodRequest, FloodResponse, Fragment, Nack, Packet};
+use std::fmt::{Display, Formatter};
 use crate::common_things::common::{BackGroundFlood, ChatClientEvent, ClientType, CommandChat, ContentCommands, WebBrowserEvents};
 use bevy_framepace::{FramepacePlugin, FramepaceSettings, Limiter};
 use std::sync::{Arc};
 use egui::{Color32, RichText};
 use once_cell::sync::Lazy;
+use petgraph::prelude::UnGraphMap;
 use crate::GUI::chat_windows::ChatSystemPlugin;
 use crate::GUI::shared_info_plugin::{BackendBridgePlugin, SeenClients};
 use crate::GUI::web_media_plugin::WebMediaPlugin;
+use crate::GUI::advanced_logs_window::AdvancedLogsPlugin;
 
 #[derive(Component)]
 struct InputText;
@@ -95,6 +98,9 @@ pub struct SimulationController {
     pub neighbours: HashMap<NodeId, Vec<NodeId>>,
     pub client : HashMap<NodeId, Sender<CommandChat>>,
     pub web_client : HashMap<NodeId, Sender<ContentCommands>>,
+    pub text_servers: Vec<NodeId>,
+    pub media_servers: Vec<NodeId>,
+    pub chat_servers: Vec<NodeId>,
     pub seen_floods: HashSet<(NodeId,u64,NodeId)>,
     pub client_list: HashMap<(NodeId, NodeId), Vec<NodeId>>,
     pub chat_event: Receiver<ChatClientEvent>,
@@ -138,6 +144,7 @@ pub fn main() {
             ..default()
         }))
         .add_plugins(BackendBridgePlugin)
+        .add_plugins(AdvancedLogsPlugin)
         .add_plugins(FramepacePlugin)
         .add_plugins(ChatSystemPlugin)
         .insert_resource(FramepaceSettings {
@@ -150,6 +157,7 @@ pub fn main() {
         .init_resource::<UserConfig>()
         .init_resource::<NodesConfig>()
         .init_resource::<UiCommands>()
+        .init_resource::<SimWindows>()
         .init_resource::<SimulationController>()
         .init_resource::<SimLog>()
         .init_resource::<DisplayableLog>()
@@ -433,6 +441,7 @@ fn ui_settings(
     mut topology : ResMut<UserConfig>,
     mut sim : ResMut<SimulationController>,
     sim_log: Res<DisplayableLog>,
+    mut sim_windows: ResMut<SimWindows>,
     mut node_entities: ResMut<NodeEntities>,
     mut simulation_commands: ResMut<UiCommands>,
     mut next_state: ResMut<NextState<AppState>>,
@@ -728,19 +737,37 @@ fn ui_settings(
                             }
                         }
                     });
+                    let mut client_log = String::new();
+                    let mut server_log = String::new();
+                    for ((node_type, _), node_content) in sim_log.flooding_log.iter(){
+                        match node_type{
+                            MyNodeType::WebBrowser=> client_log.push_str(node_content),
+                            MyNodeType::ChatClient=> client_log.push_str(node_content),
+                            MyNodeType::TextServer=> server_log.push_str(node_content),
+                            MyNodeType::MediaServer=> server_log.push_str(node_content),
+                            MyNodeType::ChatServer=>server_log.push_str(node_content),
+                        }
+                    }
+
+                    for (_, (_,node_content)) in sim_log.msg_log.iter(){
+                        client_log.push_str(node_content);
+                    }
 
                     // Only show content when not collapsed
                     if !collapsed {
                         egui::ScrollArea::vertical()
                             .show(ui, |ui| {
                                 ui.horizontal(|ui|{
-                                    ui.label(RichText::new(sim_log.flooding_log.clone()).color(Color32::GREEN));
+                                    ui.label(RichText::new(client_log).color(Color32::GREEN));
                                     ui.separator();
-                                    ui.label(RichText::new(sim_log.msg_log.clone()).color(Color32::WHITE));
-                                    ui.separator();
-                                    ui.label(RichText::new(sim_log.nack_log.clone()).color(Color32::RED));
+                                    ui.label(RichText::new(server_log).color(Color32::WHITE));
                                 });
+
                             });
+                        if ui.button("Advanced Logs").clicked(){
+                            sim_windows.advanced_logs=true;
+                            println!("now open: {}", sim_windows.advanced_logs);
+                        }
                     }
 
                     ui.allocate_rect(ui.available_rect_before_wrap(), egui::Sense::hover());
@@ -760,17 +787,36 @@ fn parse_id(id: String)->NodeId{
         }
     }
 }
-#[derive(Resource, Default)]
-pub struct DisplayableLog{
-    flooding_log: String,
-    msg_log: String,
-    nack_log: String,
+#[derive(Resource,Default)]
+pub struct SimWindows{
+    pub advanced_logs: bool,
 }
+#[derive(Resource, Clone, Default)]
+pub struct DisplayableLog{
+    pub flooding_log: HashMap<(MyNodeType, NodeId), String>,
+    pub msg_log: HashMap<(MyNodeType, NodeId), (u64,String)>,
+    pub lost_msg: HashMap<(NodeId, u64), Vec<Fragment>>,
+    pub lost_ack: HashMap<(NodeId, u64), Vec<Ack>>,
+    pub lost_flood_req: HashMap<(NodeId, u64), Vec<FloodRequest>>,
+    pub lost_flood_resp: HashMap<(NodeId, u64), Vec<FloodResponse>>,
+    pub lost_nack : HashMap<(NodeId, u64), Vec<Nack>>,
+    pub route_attempt: HashMap<(NodeId,u64) , Vec<Vec<NodeId>>>,
+    pub nack_log: HashMap<(MyNodeType, NodeId), String>,
+    pub graph : HashMap<NodeId,UnGraphMap<NodeId, u32>>,
+}
+
 #[derive(Resource, Default)]
 pub struct SimLog{
-    pub flooding_log: String,
-    pub msg_log: String,
-    pub nack_log: String,
+    pub flooding_log: HashMap<(MyNodeType,NodeId), String>,
+    pub msg_log: HashMap<(MyNodeType,NodeId), (u64,String)>,
+    pub lost_msg: HashMap<(NodeId, u64), Vec<Fragment>>,
+    pub lost_ack: HashMap<(NodeId, u64), Vec<Ack>>,
+    pub lost_flood_req: HashMap<(NodeId, u64), Vec<FloodRequest>>,
+    pub lost_flood_resp: HashMap<(NodeId, u64), Vec<FloodResponse>>,
+    pub lost_nack : HashMap<(NodeId, u64), Vec<Nack>>,
+    pub route_attempt: HashMap<(NodeId,u64), Vec<Vec<NodeId>>>,
+    pub nack_log: HashMap<(MyNodeType,NodeId), String>,
+    pub graph : HashMap<NodeId,UnGraphMap<NodeId, u32>>,
     pub is_updated: bool,
 }
 fn sync_log(
@@ -780,7 +826,14 @@ fn sync_log(
         if state.is_updated {
             displayable_log.flooding_log = state.flooding_log.clone();
             displayable_log.msg_log = state.msg_log.clone();
+            displayable_log.lost_msg = state.lost_msg.clone();
+            displayable_log.lost_ack = state.lost_ack.clone();
+            displayable_log.lost_nack = state.lost_nack.clone();
+            displayable_log.lost_flood_req = state.lost_flood_req.clone();
+            displayable_log.lost_flood_resp = state.lost_flood_resp.clone();
+            displayable_log.route_attempt = state.route_attempt.clone();
             displayable_log.nack_log=state.nack_log.clone();
+            displayable_log.graph=state.graph.clone();
 
             if let Ok(mut state) = SHARED_LOG.try_write() {
                 state.is_updated = false;
@@ -790,9 +843,9 @@ fn sync_log(
 }
 fn clear_log(){
     if let Ok(mut state)=SHARED_LOG.write(){
-        state.flooding_log=String::new();
-        state.msg_log=String::new();
-        state.nack_log=String::new();
+        state.flooding_log=HashMap::new();
+        state.msg_log=HashMap::new();
+        state.nack_log=HashMap::new();
         state.is_updated=true;
     }
 }

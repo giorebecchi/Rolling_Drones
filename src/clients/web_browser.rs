@@ -130,9 +130,15 @@ impl WebBrowser {
             ContentCommands::SearchTypeServers => {
                 self.search_type_servers();
             }
+            ContentCommands::SendTopologyGraph => {
+                self.send_topology_graph();
+            }
 
             _ => {}
         }
+    }
+    fn send_topology_graph(&self){
+        self.send_event.send(WebBrowserEvents::Graph(self.config.id, self.topology_graph.clone())).unwrap();
     }
 
     fn handle_messages(& mut self, message: Packet){

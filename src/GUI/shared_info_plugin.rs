@@ -1,7 +1,8 @@
 use std::collections::HashMap;
+use std::num::NonZero;
 use std::sync::{Arc, RwLock};
-use bevy::app::{App, Plugin, Update};
-use bevy::prelude::{in_state, IntoSystemConfigs, NextState, ResMut, Resource};
+use bevy::app::{App, AppExit, Plugin, Update};
+use bevy::prelude::{in_state, EventWriter, IntoSystemConfigs, NextState, Res, ResMut, Resource};
 use once_cell::sync::Lazy;
 use wg_2024::network::NodeId;
 use crate::GUI::chat_windows::ChatState;
@@ -32,6 +33,9 @@ pub struct ThreadInfo {
     pub target_media_server: HashMap<NodeId, NodeId>,
     pub actual_media_path: HashMap<NodeId, String>,
     pub actual_file_path: HashMap<NodeId, String>,
+    pub wrong_connections: HashMap<NodeId, Vec<NodeId>>,
+    pub incomplete_connections: Vec<(NodeId, NodeId)>,
+    pub wrong_pdr: HashMap<NodeId, bool>,
     pub is_updated: bool,
     pub ready_setup: bool,
 
@@ -49,9 +53,11 @@ impl Plugin for BackendBridgePlugin {
         app
 
             .init_resource::<StateBridge>()
+            .init_resource::<VerifyTopology>()
             .init_resource::<SeenClients>()
             .add_systems(Update, (sync_before_setup,evaluate_state).run_if(in_state(AppState::SetUp)))
-            .add_systems(Update, sync_backend_to_frontend.run_if(in_state(AppState::InGame)));
+            .add_systems(Update, sync_backend_to_frontend.run_if(in_state(AppState::InGame)))
+            .add_systems(Update, check_topology);
     }
 }
 #[derive(Resource,Default)]
@@ -60,6 +66,13 @@ pub struct SeenClients{
     clients_len: usize,
     pub servers: Vec<(MyNodeType, NodeId)>,
     servers_len: usize
+}
+#[derive(Resource, Default)]
+pub struct VerifyTopology{
+    node_connection: HashMap<NodeId, Vec<NodeId>>,
+    incomplete_connections: Vec<(NodeId, NodeId)>,
+    wrong_pdr: HashMap<NodeId, bool>
+
 }
 
 fn sync_before_setup(
@@ -92,6 +105,7 @@ fn sync_before_setup(
 fn sync_backend_to_frontend(
     mut chat_state: ResMut<ChatState>,
     mut web_state: ResMut<WebState>,
+    mut topology: ResMut<VerifyTopology>
 ) {
 
     if let Ok(state) = SHARED_STATE.try_read() {
@@ -114,6 +128,13 @@ fn sync_backend_to_frontend(
             println!("actual_media_path: {:?}", web_state.actual_media_path);
             web_state.actual_file_path=state.actual_file_path.clone();
             println!("actual_file_path: {:?}", web_state.actual_file_path);
+            topology.node_connection=state.wrong_connections.clone();
+            topology.incomplete_connections=state.incomplete_connections.clone();
+            topology.wrong_pdr=state.wrong_pdr.clone();
+            println!("node_connection: {:?}",topology.node_connection);
+            println!("incomplete_connection: {:?}",topology.incomplete_connections);
+            println!("wong pdr: {:?}",topology.wrong_pdr);
+
 
             drop(state);
 
@@ -127,8 +148,23 @@ fn evaluate_state(
     mut seen_clients: ResMut<SeenClients>,
     mut next_state: ResMut<NextState<AppState>>
 ){
+
     if seen_clients.clients_len==seen_clients.clients.len() &&seen_clients.servers_len==seen_clients.servers.len(){
+
         next_state.set(AppState::InGame);
+
     }
 
+}
+fn check_topology(
+    topology: Res<VerifyTopology>,
+    mut exit : EventWriter<AppExit>
+){
+    if !topology.node_connection.is_empty() || !topology.incomplete_connections.is_empty() || !topology.wrong_pdr.is_empty(){
+        let exit_code=NonZero::new(12).unwrap();
+        println!("Check the toml for errors in the configuration!!");
+        println!("Errors can be: \nclients/servers without a connection: {:?}\nnot full duplex connections: {:?}\n wrong pdr: {:?}", topology.node_connection, topology.incomplete_connections, topology.wrong_pdr);
+        exit.send(AppExit::Error(exit_code));
+
+    }
 }
