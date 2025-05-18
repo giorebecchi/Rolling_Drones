@@ -16,12 +16,12 @@ pdr = 0.00
 [[drone]]
 id = 3
 connected_node_ids = [0, 6, 11]
-pdr = 0.50
+pdr = 0.00
 
 [[drone]]
 id = 4
 connected_node_ids = [1, 7]
-pdr = 0.50
+pdr = 0.00
 
 [[drone]]
 id = 5
