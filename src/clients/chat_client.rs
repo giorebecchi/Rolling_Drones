@@ -122,8 +122,14 @@ impl ChatClient {
             CommandChat::SearchChatServers => {
                 self.search_chat_servers();
             }
+            CommandChat::SendTopologyGraph => {
+                self.send_topology_graph();
+            }
             _ => {}
         }
+    }
+    fn send_topology_graph(&self){
+        self.event_send.send(ChatClientEvent::Graph(self.config.id, self.topology.clone())).unwrap();
     }
     pub fn handle_incoming(&mut self, message: Packet) {
         match message.pack_type {

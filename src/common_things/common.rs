@@ -1,4 +1,5 @@
 use std::fmt::{Display, Formatter};
+use petgraph::prelude::UnGraphMap;
 use serde::{Deserialize, Serialize};
 use wg_2024::network::NodeId;
 use wg_2024::packet::Packet;
@@ -15,6 +16,7 @@ pub enum CommandChat {
     GetListClients(NodeId),//node id server
     SendMessage(NodeId, NodeId, String),//node id del client a cui mandare la string, node id server da cui passare
     EndChat(NodeId),//node id del server
+    SendTopologyGraph,
     Crash
 }
 ///The NodeId identifies the client that sent the ChatClientEvent
@@ -26,7 +28,8 @@ pub enum ChatClientEvent{
     Error(NodeId),//Generic Error to send to SC
     ChatServers(NodeId, Vec<NodeId>),
     ClientType(ClientType,NodeId),
-    PacketInfo(NodeId, ChatEvent, u64)
+    PacketInfo(NodeId, ChatEvent, u64),
+    Graph(NodeId, UnGraphMap<NodeId, u32>)
 }
 #[derive(Debug,Clone)]
 pub enum ChatEvent{
@@ -125,6 +128,7 @@ pub enum ContentCommands{
     GetServerType(NodeId), //sent to client, node id of the server needed,
     GetText(NodeId, TextId), //sent to client, text id of the text file needed
     SearchTypeServers,
+    SendTopologyGraph,
     Crash
 }
 pub enum BackGroundFlood{
@@ -140,7 +144,8 @@ pub enum WebBrowserEvents{ //not complete
     MediaPosition(NodeId, NodeId), //node id of client and the node id of the media server where the media is located
     SavedTextFile(NodeId, String), //node id client, path to file saved in SC folder in multimedia
     SavedMedia(NodeId, String), //node id client, path to correct file save in SC folder in multimedia
-    PacketInfo(NodeId, ContentType, u64)
+    PacketInfo(NodeId, ContentType, u64),
+    Graph(NodeId, UnGraphMap<NodeId, u32>)
 }
 #[derive(Clone)]
 pub enum ContentType{
