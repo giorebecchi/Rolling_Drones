@@ -366,61 +366,69 @@ impl ChatClient {
     }
 
     pub fn handle_nacks(& mut self, mut packet: Packet){
-        if let PacketType::Nack(nack) = packet.pack_type{
+        if let PacketType::Nack(nack) = packet.clone().pack_type{
             match nack.nack_type{
                 NackType::ErrorInRouting(id) => {
-                    //need to resend packet changing the route, not including the node specified
-
+                    if !self.problematic_nodes.contains(&id){
+                        self.problematic_nodes.push(id);
+                    }
+                    self.resend_fragment_lost(packet);
                 }
                 NackType::Dropped => {
                     let failing_node = packet.routing_header.hops[0];
                     let data = self.node_data.get_mut(&failing_node).unwrap();
                     data.dropped += 1;
-
-                    let fragment_lost = if let Some(fragment_lost) = self.fragments_sent.get(&nack.fragment_index){
-                        // println!("fragment to resend: {:?}", fragment_lost);
-                        fragment_lost.clone()
-                    }else {
-                        return;
-                    };
-
-                    let destination_id = match self.packet_sent.get(&packet.session_id){
-                        Some((destination_id, _)) => destination_id.clone(),
-                        None => {
-                            println!("no destination id found");
-                            return;
-                        }
-                    };
-
-                    println!("source id: {}", packet.routing_header.hops.last().unwrap());
-                    println!("destination id: {}", destination_id);
-
-                    match self.find_best_route(&destination_id) {
-                        Ok(route) => {
-                            println!("route re-computed: {:?}", route);
-                            let packet_to_send = Packet::new_fragment(
-                                SourceRoutingHeader::new(route.clone(), 0),
-                                packet.session_id,
-                                fragment_lost
-                            );
-
-                            if let Some(next_hop) = route.get(1){
-                                self.send_packet(next_hop, packet_to_send);
-                            }else { println!("No next hop found") }
-
-                        }
-                        Err(_) => println!("no route found to resend packet"),
-                    }
-
+                    
+                    self.resend_fragment_lost(packet);
                 }
                 _ => {}
 
             }
         }
     }
+    
+    pub fn resend_fragment_lost(& mut self, packet: Packet){
+        if let PacketType::Nack(nack) = packet.pack_type{
+            
+            let fragment_lost = if let Some(fragment_lost) = self.fragments_sent.get(&nack.fragment_index){
+                fragment_lost.clone()
+            }else {
+                return;
+            };
+
+            let destination_id = match self.packet_sent.get(&packet.session_id){
+                Some((destination_id, _)) => destination_id.clone(),
+                None => {
+                    println!("no destination id found");
+                    return;
+                }
+            };
+
+            match self.find_best_route(&destination_id) {
+                Ok(route) => {
+                    println!("route re-computed: {:?}", route);
+                    let packet_to_send = Packet::new_fragment(
+                        SourceRoutingHeader::new(route.clone(), 0),
+                        packet.session_id,
+                        fragment_lost
+                    );
+
+                    if let Some(next_hop) = route.get(1){
+                        self.send_packet(next_hop, packet_to_send);
+                    }else { println!("No next hop found") }
+
+                }
+                Err(_) => println!("no route found to resend packet"),
+            }
+            
+            
+        }
+    }
 
     pub fn handle_ack(& mut self, packet: Packet){
         if let PacketType::Ack(ack) = packet.pack_type{
+            self.problematic_nodes.clear();
+            
             self.fragments_sent.retain(|index, _| *index != ack.fragment_index); //this filters the hashmap, removing the ones with that index
             let data = self.node_data.get_mut(&packet.routing_header.hops.iter().rev().nth(1).unwrap()).unwrap();
             data.forwarded += 1;
@@ -517,11 +525,16 @@ impl ChatClient {
 
         let result = dijkstra(&self.topology, source.clone(), Some(destination_id.clone()), |edge|{
             let dest = edge.1;
-            let reliability = self.node_data.get(&dest).map(|data| data.reliability()).unwrap_or(1.0);
-            if reliability <= 0.0 {
+            
+            if self.problematic_nodes.contains(&dest){
                 1_000
-            } else {
-                ((1.0 / reliability).ceil() as u32).min(1_000)
+            }else {
+                let reliability = self.node_data.get(&dest).map(|data| data.reliability()).unwrap_or(1.0);
+                if reliability <= 0.0 {
+                    1_000
+                } else {
+                    ((1.0 / reliability).ceil() as u32).min(1_000)
+                }
             }
              //ceil returns integer closest to result
             //this transforms the reliability into a weight. when we have higher reliability we need a smaller cost
@@ -537,16 +550,9 @@ impl ChatClient {
                     let prev = edge.0;
 
                     if let (Some(&prev_cost), Some(&curr_cost)) = (result.get(&prev), result.get(&current)) {
-                        let edge_cost = {
-                            let reliability = self.node_data.get(&current).map(|d| d.reliability()).unwrap_or(1.0);
-                            if reliability <= 0.0 {
-                                u32::MAX
-                            } else {
-                                (1.0 / reliability).ceil() as u32
-                            }
-                        };
-
-                        if prev_cost + edge_cost == curr_cost {
+                        let weight = edge.weight();
+                        
+                        if prev_cost + weight == curr_cost {
                             path.push(prev.clone());
                             current = prev;
                             found = true;
