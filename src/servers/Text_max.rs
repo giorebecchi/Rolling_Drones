@@ -29,11 +29,12 @@ pub struct Server{
     media_others: HashMap<NodeId, Vec<MediaId>>,
     others : HashMap<NodeId, Vec<NodeId>>,
     already_visited: HashSet<(NodeId, u64)>,
+    rcv_flood: Receiver<BackGroundFlood>
 }
 
 
 impl Server {
-    pub fn new(server_id: NodeId, packet_recv: Receiver<Packet>, packet_send: HashMap<NodeId, Sender<Packet>>, file_path: &str) -> Self {
+    pub fn new(server_id: NodeId, packet_recv: Receiver<Packet>, packet_send: HashMap<NodeId, Sender<Packet>>, file_path: &str, rcv_flood: Receiver<BackGroundFlood>) -> Self {
         let mut links: Vec<NodeId> = Vec::new();
         for i in packet_send.clone() {
             links.push(i.0.clone());
@@ -53,6 +54,7 @@ impl Server {
             media_others: HashMap::new(),
             others: HashMap::new(),
             already_visited: HashSet::new(),
+            rcv_flood
         }
     }
     pub fn run(&mut self) {
@@ -73,6 +75,11 @@ impl Server {
                             break
                         }
                     },
+                    recv(self.rcv_flood) -> flood => {
+                        if let Ok(_) = flood {
+                            self.floading();
+                        }
+                    }
                 }
         }
     }
@@ -640,7 +647,7 @@ fn read_file<P: AsRef<Path>>(path: P) -> Result<String, io::Error> {
 
 
 
-
+/*
 
 
 pub(crate) fn main() -> () {
@@ -706,7 +713,7 @@ pub(crate) fn main() -> () {
 
 
     // Creiamo il server con la topologia di rete (mappa completa)
-    let mut server = Server::new(server_id, packet_recv_server, packet_send_map, path);
+    //let mut server = Server::new(server_id, packet_recv_server, packet_send_map, path);
 
 
 
@@ -1219,3 +1226,5 @@ pub(crate) fn main() -> () {
 
 
 }
+
+ */

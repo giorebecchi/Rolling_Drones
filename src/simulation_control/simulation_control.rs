@@ -713,7 +713,14 @@ pub fn start_simulation(
     );
     #[cfg(feature = "max")]
     {
-        spawn_servers_max(&config, &packet_channels);
+        spawn_servers_max(
+            &config,
+            &packet_channels,
+            &background_flooding,
+            &mut background_flood,
+            &mut text_servers,
+            &mut chat_servers
+        );
     }
     #[cfg(not(feature = "max"))]
     {
@@ -1096,9 +1103,16 @@ fn create_simulation_controller(
 
 fn spawn_servers_max(
     config: &Config,
-    packet_channels: &HashMap<NodeId, (Sender<Packet>, Receiver<Packet>)>
+    packet_channels: &HashMap<NodeId, (Sender<Packet>, Receiver<Packet>)>,
+    background_flood: &HashMap<NodeId, (Sender<BackGroundFlood>, Receiver<BackGroundFlood>)>,
+    flooding: &mut HashMap<NodeId, Sender<BackGroundFlood>>,
+    text_servers: &mut Vec<NodeId>,
+    chat_servers: &mut Vec<NodeId>
 ) {
     for (i, cfg_server) in config.server.iter().cloned().enumerate() {
+        if cfg_server.connected_drone_ids.is_empty(){
+            topology_error(cfg_server.id, cfg_server.connected_drone_ids.clone());
+        }
         if cfg_server.connected_drone_ids.is_empty(){
             topology_error(cfg_server.id, cfg_server.connected_drone_ids.clone());
         }
@@ -1106,24 +1120,31 @@ fn spawn_servers_max(
         let packet_send = cfg_server.connected_drone_ids.iter()
             .map(|nid| (*nid, packet_channels[nid].0.clone()))
             .collect::<HashMap<_,_>>();
+        let rcv_flood= background_flood[&cfg_server.id].1.clone();
+        flooding.insert(cfg_server.id, background_flood[&cfg_server.id].0.clone());
 
         match i {
             0 => {
-                let mut server_max = ChatMax::new(cfg_server.id, rcv, packet_send);
+                let mut server_max = ChatMax::new(cfg_server.id, rcv, packet_send, rcv_flood);
                 thread::spawn(move || {
                     server_max.run();
                 });
+                chat_servers.push(cfg_server.id);
+                set_node_types(MyNodeType::ChatServer, config.server.len(), cfg_server.id);
             },
             _ => {
                 let mut text_server_max = TextMax::new(
                     cfg_server.id,
                     rcv,
                     packet_send,
-                    "assets/multimedia/paths/text_server1.txt"
+                    "assets/multimedia/paths/text_server1.txt",
+                    rcv_flood
                 );
                 thread::spawn(move || {
                     text_server_max.run();
                 });
+                text_servers.push(cfg_server.id);
+                set_node_types(MyNodeType::TextServer, config.server.len(), cfg_server.id);
             }
 
         }
