@@ -1,28 +1,17 @@
 use crate::common_things::common::{BackGroundFlood, ContentType};
 use std::collections::{HashMap, HashSet};
 use std::fs;
-use std::path::Path;
-use std::process::id;
 use base64::Engine;
-use bevy::ui::Node;
-use bevy_egui::egui::debug_text::print;
 use crossbeam_channel::{select_biased, Receiver, Sender};
 use petgraph::algo::dijkstra;
 use petgraph::Direction;
-use petgraph::graphmap::DiGraphMap;
-use petgraph::visit::EdgeRef;
-use wg_2024::packet;
-use wg_2024::controller;
-use serde::{Serialize, Deserialize};
 use wg_2024::config::Client;
 use wg_2024::network::{NodeId, SourceRoutingHeader};
 use wg_2024::packet::{FloodRequest, FloodResponse, Fragment, NackType, NodeType, Packet, PacketType};
 use crate::clients::assembler::{Fragmentation, NodeData};
 use crate::common_things::common::{ChatRequest, ClientType, ContentCommands, FileMetaData, MediaId, MediaServer, ServerType, TextServer, WebBrowserCommands, WebBrowserEvents};
-
 use crate::common_things::common::WebBrowserEvents::TypeClient;
 use base64::engine::general_purpose::STANDARD as BASE64;
-use petgraph::data::DataMap;
 use petgraph::prelude::UnGraphMap;
 
 pub struct WebBrowser {
@@ -37,7 +26,7 @@ pub struct WebBrowser {
     pub unique_flood_id: u64,
     pub session_id_packet: u64,
     pub incoming_fragments: HashMap<(u64, NodeId ), HashMap<u64, Fragment>>,
-    pub fragments_sent: HashMap<u64, Fragment>, //used for sending the correct fragment if was lost in the process
+    pub fragments_sent: HashMap<u64, HashMap<u64, Fragment>> ,//used for sending the correct fragment if was lost in the process, key session id packet, key 2 fragment index
     pub problematic_nodes: Vec<NodeId>,
     pub send_event: Sender<WebBrowserEvents>,
     pub media_servers: Vec<NodeId>,
@@ -169,16 +158,19 @@ impl WebBrowser {
         }
 
         let request = WebBrowserCommands::GetServerType;
-        self.fragments_sent = WebBrowserCommands::fragment_message(&request);
+        
+        let session_id = self.session_id_packet;
+        self.session_id_packet += 1;
+        
+        let fragments = WebBrowserCommands::fragment_message(&request);
+        self.fragments_sent.insert(session_id, fragments.clone());
 
         match self.find_route(&id_server) {
             Ok(route) => {
                 println!("initial route to ask type: {:?}", route);
-                let packets_to_send = ChatRequest::create_packet(&self.fragments_sent, route.clone(), &mut self.session_id_packet);
-
-                let mut session_id = 0;
+                let packets_to_send = ChatRequest::create_packet(&fragments, route.clone(), session_id);
+                
                 for packet in packets_to_send.clone() {
-                    session_id = packet.session_id;
                     if let Some(next_hop) = route.get(1) {
                         self.send_messages(next_hop, packet);
                     } else { println!("No next hop found") }
@@ -198,15 +190,18 @@ impl WebBrowser {
         }
 
         let request = WebBrowserCommands::GetList;
-        self.fragments_sent = WebBrowserCommands::fragment_message(&request);
+
+        let session_id = self.session_id_packet;
+        self.session_id_packet += 1;
+
+        let fragments = WebBrowserCommands::fragment_message(&request);
+        self.fragments_sent.insert(session_id, fragments.clone());
 
         match self.find_route(&id_server) {
             Ok(route) => {
-                let packets_to_send = ChatRequest::create_packet(&self.fragments_sent, route.clone(), &mut self.session_id_packet);
-
-                let mut session_id = 0;
+                let packets_to_send = ChatRequest::create_packet(&fragments, route.clone(), session_id);
+                
                 for packet in packets_to_send.clone() {
-                    session_id = packet.session_id;
                     if let Some(next_hop) = route.get(1) {
                         self.send_messages(next_hop, packet);
                     } else { println!("No next hop found") }
@@ -226,15 +221,17 @@ impl WebBrowser {
         }
 
         let request = WebBrowserCommands::GetPosition(media_id);
-        self.fragments_sent = WebBrowserCommands::fragment_message(&request);
+        let session_id = self.session_id_packet;
+        self.session_id_packet += 1;
+
+        let fragments = WebBrowserCommands::fragment_message(&request);
+        self.fragments_sent.insert(session_id, fragments.clone());
 
         match self.find_route(&id_server) {
             Ok(route) => {
-                let packets_to_send = ChatRequest::create_packet(&self.fragments_sent, route.clone(), &mut self.session_id_packet);
-
-                let mut session_id = 0;
+                let packets_to_send = ChatRequest::create_packet(&fragments, route.clone(), session_id);
+                
                 for packet in packets_to_send.clone() {
-                    session_id = packet.session_id;
                     if let Some(next_hop) = route.get(1) {
                         self.send_messages(next_hop, packet);
                     } else { println!("No next hop found") }
@@ -253,16 +250,19 @@ impl WebBrowser {
             return;
         }
         let request = WebBrowserCommands::GetMedia(media_id);
-        self.fragments_sent = WebBrowserCommands::fragment_message(&request);
+        
+        let session_id = self.session_id_packet;
+        self.session_id_packet += 1;
+
+        let fragments = WebBrowserCommands::fragment_message(&request);
+        self.fragments_sent.insert(session_id, fragments.clone());
 
         match self.find_route(&id_media_server) {
             Ok(route) => {
                 println!("initial route to send request of media {:?}", route);
-                let packets_to_send = ChatRequest::create_packet(&self.fragments_sent, route.clone(), &mut self.session_id_packet);
-
-                let mut session_id = 0;
+                let packets_to_send = ChatRequest::create_packet(&fragments, route.clone(), session_id);
+                
                 for packet in packets_to_send.clone() {
-                    session_id = packet.session_id;
                     if let Some(next_hop) = route.get(1) {
                         self.send_messages(next_hop, packet);
                     } else { println!("No next hop found") }
@@ -281,15 +281,17 @@ impl WebBrowser {
             return;
         }
         let request = WebBrowserCommands::GetText(text_id);
-        self.fragments_sent = WebBrowserCommands::fragment_message(&request);
+        let session_id = self.session_id_packet;
+        self.session_id_packet += 1;
+
+        let fragments = WebBrowserCommands::fragment_message(&request);
+        self.fragments_sent.insert(session_id, fragments.clone());
 
         match self.find_route(&id_server) {
             Ok(route) => {
-                let packets_to_send = ChatRequest::create_packet(&self.fragments_sent, route.clone(), &mut self.session_id_packet);
-
-                let mut session_id = 0;
+                let packets_to_send = ChatRequest::create_packet(&fragments, route.clone(), session_id);
+                
                 for packet in packets_to_send.clone() {
-                    session_id = packet.session_id;
                     if let Some(next_hop) = route.get(1) {
                         self.send_messages(next_hop, packet);
                     } else { println!("No next hop found") }
@@ -428,7 +430,7 @@ impl WebBrowser {
     }
 
     pub fn handle_nacks(& mut self, packet: Packet){
-        if let PacketType::Nack(nack) = packet.clone().pack_type{
+        if let PacketType::Nack(nack) = packet.pack_type.clone(){
             match nack.nack_type{
                 NackType::Dropped => {
                     let failing_node = packet.routing_header.hops[0];
@@ -453,9 +455,20 @@ impl WebBrowser {
 
     pub fn resend_fragment(& mut self, packet: Packet){
         if let PacketType::Nack(nack) = packet.pack_type{
-            let fragment_lost = if let Some(fragment_lost) = self.fragments_sent.get(&nack.fragment_index){
+            
+            let session_fragments = if let Some(session_fragments) = self.fragments_sent.get(&packet.session_id){
+                session_fragments
+            }else { 
+                println!("no fragments for this session");
+                return;
+            };
+            
+            let fragment_lost = if let Some(fragment_lost) = session_fragments.get(&nack.fragment_index){
                 fragment_lost.clone()
-            }else { return; };
+            }else { 
+                println!("couldn't find the fragment lost in case of {:?}, route of nack: {:?} ", nack.fragment_index, packet.routing_header.hops);
+                return;
+            };
 
             let destination_id = match self.packet_sent.get(&packet.session_id){
                 Some((destination_id, _)) => destination_id.clone(),
@@ -497,10 +510,10 @@ impl WebBrowser {
 
 
     pub fn flooding(& mut self){
-        let mut flood_id = self.unique_flood_id;
+        let flood_id = self.unique_flood_id;
         self.unique_flood_id += 1;
 
-        let mut flood_request = Packet::new_flood_request(
+        let flood_request = Packet::new_flood_request(
             SourceRoutingHeader::empty_route(),
             0,
             FloodRequest {

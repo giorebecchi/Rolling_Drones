@@ -48,17 +48,16 @@ pub trait Fragmentation: Serialization{
         let message = Serialization::from_string(&convert_to_string)?;
         Ok(message)
     }
-    fn create_packet(fragments: &HashMap<u64, Fragment>, path: Vec<NodeId>, mut session_id: & mut u64) ->Vec<Packet>{
+    fn create_packet(fragments: &HashMap<u64, Fragment>, path: Vec<NodeId>, session_id: u64) ->Vec<Packet>{
         let mut res = Vec::new();
         for (_, fragment) in fragments{
             let packet = Packet::new_fragment(
                 SourceRoutingHeader::new(path.clone(), 0),
-                *session_id, //to increment every time you have to send a new message, so every time you call this function
+                session_id, //to increment every time you have to send a new message, so every time you call this function
                 fragment.clone()
             );
             res.push(packet);
         }
-        *session_id += 1;
         res
     }
 
@@ -142,7 +141,7 @@ pub fn main(){
         Err(_) => println!("error in reassembling message")
     }
     println!();
-    let packet = MessageChat::create_packet(&fragments, vec![1,3,4], &mut session_id);
+    let packet = MessageChat::create_packet(&fragments, vec![1,3,4], session_id);
     println!("The packet is {:?}", packet);
     println!();
 
@@ -182,7 +181,7 @@ pub fn main(){
     }
     println!();
 
-    let packets = ChatRequest::create_packet(&fragment_request, vec![3,6,8], & mut session_id );
+    let packets = ChatRequest::create_packet(&fragment_request, vec![3,6,8], session_id );
     println!("The packet is {:?}", packets);
 
     //test for bool
@@ -203,7 +202,7 @@ pub fn main(){
     }
     println!();
 
-    let packet_registration = ChatRequest::create_packet(&fragments_registration, vec![1,3,4] , & mut session_id);
+    let packet_registration = ChatRequest::create_packet(&fragments_registration, vec![1,3,4] , session_id);
     println!("The packet registration is  {:?}", packet_registration);
 
     let registered_client = ChatResponse::RegisteredClients(vec![3,5,6,9,8,2,1,0]);
@@ -220,7 +219,7 @@ pub fn main(){
     println!("{:?}", reassembled_client);
     println!();
 
-    let packet_to_send = ChatResponse::create_packet(&fragments_registered_client, vec![1,3,4] , & mut session_id);
+    let packet_to_send = ChatResponse::create_packet(&fragments_registered_client, vec![1,3,4] , session_id);
     println!("{:?}", packet_to_send);
 
 

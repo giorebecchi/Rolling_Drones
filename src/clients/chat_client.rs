@@ -1,13 +1,8 @@
-use std::cmp::min;
 use std::collections::{HashMap, HashSet};
 use crossbeam_channel::{select_biased, Receiver, Sender};
 use petgraph::algo::dijkstra;
-use petgraph::data::Build;
-use petgraph::{Direction, Graph, Undirected};
-use petgraph::graph::NodeIndex;
-use petgraph::graphmap::{DiGraphMap, UnGraphMap};
-use petgraph::prelude::EdgeRef;
-use petgraph::visit::IntoEdgesDirected;
+use petgraph::{Direction};
+use petgraph::graphmap::{UnGraphMap};
 use wg_2024::config::{Client};
 use wg_2024::network::{NodeId, SourceRoutingHeader};
 use wg_2024::packet::{FloodRequest, FloodResponse, Fragment, NackType, NodeType, Packet, PacketType};
@@ -27,7 +22,7 @@ pub struct ChatClient {
     pub unique_flood_id: u64,
     pub session_id_packet: u64,
     pub incoming_fragments: HashMap<(u64, NodeId ), HashMap<u64, Fragment>>,
-    pub fragments_sent: HashMap<u64, Fragment>, //used for sending the correct fragment if was lost in the process
+    pub fragments_sent: HashMap<u64, HashMap<u64, Fragment> >, //used for sending the correct fragment if was lost in the process
     pub problematic_nodes: Vec<NodeId>,
     pub chat_servers: Vec<NodeId>,
     pub event_send : Sender<ChatClientEvent>,
@@ -157,21 +152,23 @@ impl ChatClient {
         }
         println!("servers: {:?}",self.servers);
         let request_to_send = ChatRequest::ServerType;
-        self.fragments_sent = ChatRequest::fragment_message(&request_to_send);
+        
+        let session_id = self.session_id_packet;
+        self.session_id_packet += 1;
+        
+        let fragments = ChatRequest::fragment_message(&request_to_send);
+        self.fragments_sent.insert(session_id, fragments.clone());
 
         match self.find_best_route(&id_server) {
             Ok(route) => {
                 println!("route: {:?}", route);
-                let packets_to_send = ChatRequest::create_packet(&self.fragments_sent, route.clone(), &mut self.session_id_packet);
-
-                let mut session_id = 0;
+                let packets_to_send = ChatRequest::create_packet(&fragments, route.clone(), session_id);
+                
                 for packet in packets_to_send.clone() {
-                    session_id = packet.session_id;
                     if let Some(next_hop) = route.get(1){
                         self.send_packet(next_hop, packet);
                     }else { println!("No next hop found") }
                 }
-                // println!("session id saved: {}, session id on self {}",session_id, self.session_id_packet);
                 self.packet_sent.insert(session_id, (id_server, packets_to_send));
 
                 println!("Sent request to get the server type to server {} by client: {}", id_server, self.config.id);
@@ -186,21 +183,22 @@ impl ChatClient {
             return;
         }
         let request = ChatRequest::RegisterClient(self.config.id.clone());
-        self.fragments_sent = ChatRequest::fragment_message(&request);
+        
+        let session_id = self.session_id_packet;
+        self.session_id_packet += 1;
+
+        let fragments = ChatRequest::fragment_message(&request);
+        self.fragments_sent.insert(session_id, fragments.clone());
 
         match self.find_best_route(&id_server) {
             Ok(route) => {
-                // println!("route: {:?}", route);
-                let packets_to_send = ChatRequest::create_packet(&self.fragments_sent, route.clone(), &mut self.session_id_packet);
-
-                let mut session_id = 0;
+                let packets_to_send = ChatRequest::create_packet(&fragments, route.clone(), session_id);
+                
                 for packet in packets_to_send.clone() {
-                    session_id = packet.session_id;
                     if let Some(next_hop) = route.get(1){
                         self.send_packet(next_hop, packet);
                     }else { println!("No next hop found") }
                 }
-                // println!("session id saved: {}, session id on self {}",session_id, self.session_id_packet);
                 self.packet_sent.insert(session_id, (id_server, packets_to_send));
                 println!("Sent request to register this client to the server {}", id_server);
 
@@ -215,20 +213,22 @@ impl ChatClient {
             return;
         }
         let request = ChatRequest::GetListClients;
-        self.fragments_sent = ChatRequest::fragment_message(&request);
+        
+        let session_id = self.session_id_packet;
+        self.session_id_packet += 1;
+
+        let fragments = ChatRequest::fragment_message(&request);
+        self.fragments_sent.insert(session_id, fragments.clone());
 
         match self.find_best_route(&id_server){
             Ok(route) => {
-                let packets_to_send = ChatRequest::create_packet(&self.fragments_sent, route.clone(), & mut self.session_id_packet);
-
-                let mut session_id = 0;
+                let packets_to_send = ChatRequest::create_packet(&fragments, route.clone(), session_id);
+                
                 for packet in packets_to_send.clone() {
-                    session_id = packet.session_id;
                     if let Some(next_hop) = route.get(1){
                         self.send_packet(next_hop, packet);
                     }else { println!("No next hop found") }
                 }
-                // println!("session id saved: {}, session id on self {}",session_id, self.session_id_packet);
                 self.packet_sent.insert(session_id, (id_server, packets_to_send));
                 println!("sent request to get list clients of registered servers to server: {}", id_server);
 
@@ -243,20 +243,22 @@ impl ChatClient {
         }
 
         let request = ChatRequest::SendMessage(message, id_server);
-        self.fragments_sent = ChatRequest::fragment_message(&request);
+        
+        let session_id = self.session_id_packet;
+        self.session_id_packet += 1;
+
+        let fragments = ChatRequest::fragment_message(&request);
+        self.fragments_sent.insert(session_id, fragments.clone());
 
         match self.find_best_route(&id_server){
             Ok(route) => {
-                let packets_to_send = ChatRequest::create_packet(&self.fragments_sent, route.clone(), & mut self.session_id_packet);
-
-                let mut session_id = 0;
+                let packets_to_send = ChatRequest::create_packet(&fragments, route.clone(), session_id);
+                
                 for packet in packets_to_send.clone() {
-                    session_id = packet.session_id;
                     if let Some(next_hop) = route.get(1){
                         self.send_packet(next_hop, packet);
                     }else { println!("No next hop found") }
                 }
-                // println!("session id saved: {}, session id on self {}",session_id, self.session_id_packet);
                 self.packet_sent.insert(session_id, (id_server, packets_to_send));
             }
             Err(_) => {println!("No route found for the destination client")}
@@ -271,21 +273,23 @@ impl ChatClient {
         }
 
         let request = ChatRequest::EndChat(self.config.id.clone());
-        self.fragments_sent = ChatRequest::fragment_message(&request);
+        
+        let session_id = self.session_id_packet;
+        self.session_id_packet += 1;
+
+        let fragments = ChatRequest::fragment_message(&request);
+        self.fragments_sent.insert(session_id, fragments.clone());
 
         match self.find_best_route(&id_server){
             Ok(route) => {
-                let packets_to_send = ChatRequest::create_packet(&self.fragments_sent, route.clone(),  & mut self.session_id_packet);
-
-                let mut session_id = 0;
+                let packets_to_send = ChatRequest::create_packet(&fragments, route.clone(),  session_id);
+                
                 for packet in packets_to_send.clone() {
-                    session_id = packet.session_id;
                     if let Some(next_hop) = route.get(1){
                         self.send_packet(next_hop, packet);
                     }else { println!("No next hop found") }
                 }
-
-                // println!("session id saved: {}, session id on self {}",session_id, self.session_id_packet);
+                
                 self.packet_sent.insert(session_id, (id_server, packets_to_send));
                 println!("Sent request to end chat to server: {}", id_server);
             }
@@ -411,8 +415,14 @@ impl ChatClient {
     
     pub fn resend_fragment_lost(& mut self, packet: Packet){
         if let PacketType::Nack(nack) = packet.pack_type{
+            let fragments_session = if let Some(fragments_session) = self.fragments_sent.get(&packet.session_id){
+                fragments_session
+            }else { 
+                println!("no fragments found for this session id");
+                return;
+            };
             
-            let fragment_lost = if let Some(fragment_lost) = self.fragments_sent.get(&nack.fragment_index){
+            let fragment_lost = if let Some(fragment_lost) = fragments_session.get(&nack.fragment_index){
                 fragment_lost.clone()
             }else {
                 return;
