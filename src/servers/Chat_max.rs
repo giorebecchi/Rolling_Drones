@@ -19,9 +19,10 @@ pub struct Server{
     pub packet_send: HashMap<NodeId, Sender<Packet>>,
     already_visited: HashSet<(NodeId, u64)>,
     registered_clients: Vec<NodeId>,
+    rcv_flood: Receiver<BackGroundFlood>
 }
 impl Server {
-    pub fn new(id: NodeId, packet_recv: Receiver<Packet>, packet_send: HashMap<NodeId, Sender<Packet>>) -> Self {
+    pub fn new(id: NodeId, packet_recv: Receiver<Packet>, packet_send: HashMap<NodeId, Sender<Packet>>, rcv_flood: Receiver<BackGroundFlood>) -> Self {
         let mut links: Vec<NodeId> = Vec::new();
         for i in packet_send.clone() {
             links.push(i.0.clone());
@@ -37,6 +38,7 @@ impl Server {
             packet_send,
             already_visited: HashSet::new(),
             registered_clients: Vec::new(),
+            rcv_flood
         }
     }
     pub fn run(&mut self) {
@@ -51,6 +53,11 @@ impl Server {
                             break
                         }
                     },
+                    recv(self.rcv_flood) -> flood => {
+                        if let Ok(_) = flood {
+                         self.floading();
+                        }
+                    }
                 }
         }
     }
