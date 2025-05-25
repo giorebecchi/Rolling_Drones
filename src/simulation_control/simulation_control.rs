@@ -30,7 +30,7 @@ use crate::GUI::shared_info_plugin::SHARED_STATE;
 use crate::servers::ChatServer::Server;
 use crate::clients::chat_client::ChatClient;
 use crate::clients::web_browser::WebBrowser;
-use crate::common_things::common::{BackGroundFlood, ChatClientEvent, ChatEvent, ChatRequest, ChatResponse, ClientType, CommandChat, ContentCommands, ContentType, ServerType, WebBrowserEvents};
+use crate::common_things::common::{BackGroundFlood, ChatClientEvent, ChatEvent, ChatRequest, ChatResponse, ClientType, CommandChat, ContentCommands, ContentType, ServerCommands, ServerEvent, ServerType, WebBrowserEvents};
 use crate::common_things::common::ServerType::CommunicationServer;
 use crate::servers::Text_max::Server as TextMax;
 use crate::servers::Chat_max::Server as ChatMax;
@@ -50,6 +50,7 @@ impl Default for SimulationController{
         let (sender, receiver) = unbounded();
         let (_, chat_recv)=unbounded();
         let (_, web_recv)=unbounded();
+        let (_, server_recv)=unbounded();
         Self {
             node_event_send: sender,
             node_event_recv: receiver,
@@ -58,13 +59,14 @@ impl Default for SimulationController{
             neighbours: HashMap::new(),
             client:  HashMap::new(),
             web_client: HashMap::new(),
-            text_servers: Vec::new(),
-            media_servers: Vec::new(),
-            chat_servers: Vec::new(),
+            text_server: HashMap::new(),
+            media_server: HashMap::new(),
+            chat_server: HashMap::new(),
             seen_floods: HashSet::new(),
             client_list: HashMap::new(),
             chat_event: chat_recv,
             web_event: web_recv,
+            server_event: server_recv,
             messages: HashMap::new(),
             incoming_message: HashMap::new(),
             register_success : HashMap::new(),
@@ -340,6 +342,101 @@ impl SimulationController {
                         }
                     }
                 },
+                recv(self.server_event) -> event =>{
+                    if let Ok(server_event) = event {
+                        match server_event{
+                            ServerEvent::Graph(id, graph) =>{
+                                if let Ok(mut state) = SHARED_LOG.write(){
+                                    state.server_graph.insert(id, graph);
+                                    state.is_updated=true;
+                                }
+                            }
+                            ServerEvent::WebPacketInfo(server_id, server_type, web_type, session_id)=>{
+                                web_hash.insert((server_id, session_id), web_type.clone());
+                                match web_type{
+                                    ContentType::TextServerList(size)=>{
+                                        if let Ok(mut state)= SHARED_LOG.write(){
+                                            state.msg_log.insert((server_type.clone(), server_id), (session_id, format!("{:?}: {} sent list of Text Servers\n the message was made of {} fragments\n", server_type, server_id, size)));
+                                            state.is_updated=true;
+                                        }
+                                    }
+                                    ContentType::MediaServerList(size)=>{
+                                         if let Ok(mut state)= SHARED_LOG.write(){
+                                            state.msg_log.insert((server_type.clone(), server_id), (session_id, format!("{:?}: {} sent list of Media Servers\n the message was made of {} fragments\n", server_type, server_id, size)));
+                                            state.is_updated=true;
+                                        }
+                                    }
+                                    ContentType::FileList(size)=>{
+                                        if let Ok(mut state)= SHARED_LOG.write(){
+                                            state.msg_log.insert((server_type.clone(), server_id), (session_id, format!("{:?}: {} sent File List\n the message was made of {} fragments\n",server_type, server_id, size)));
+                                            state.is_updated=true;
+                                        }
+                                    }
+                                    ContentType::MediaPosition(size)=>{
+                                        if let Ok(mut state)= SHARED_LOG.write(){
+                                            state.msg_log.insert((server_type.clone(), server_id), (session_id, format!("{:?}: {} sent Media Position\n the message was made of {} fragments\n",server_type, server_id, size)));
+                                            state.is_updated=true;
+                                        }
+                                    }
+                                    ContentType::SavedText(size)=>{
+                                        if let Ok(mut state)= SHARED_LOG.write(){
+                                            state.msg_log.insert((server_type.clone(), server_id), (session_id, format!("{:?}: {} sent Text File\n the message was made of {} fragments\n", server_type,server_id, size)));
+                                            state.is_updated=true;
+                                        }
+                                    }
+                                    ContentType::SavedMedia(size)=>{
+                                        if let Ok(mut state)= SHARED_LOG.write(){
+                                            state.msg_log.insert((server_type.clone(), server_id), (session_id, format!("{:?}: {} sent Media\n the message was made of {} fragments\n", server_type, server_id, size)));
+                                            state.is_updated=true;
+                                        }
+                                    }
+                                }
+                            },
+                            ServerEvent::ChatPacketInfo(server_id, server_type, chat_type, session_id)=>{
+                                msg_hash.insert((server_id, session_id), chat_type.clone());
+                                match chat_type{
+                                    ChatEvent::ClientList(size)=>{
+                                        if let Ok(mut state)= SHARED_LOG.write(){
+                                            state.msg_log.insert(
+                                                (server_type, server_id),
+                                                (session_id,
+                                                format!(
+                                                    "ChatServer {}: sent list of Chat Clients\n the message was made of {} fragments\n", server_id, size
+                                                ))
+                                            );
+                                            state.is_updated=true;
+                                        }
+                                    },
+                                    ChatEvent::IncomingMessage(size) => {
+                                        if let Ok(mut state)= SHARED_LOG.write(){
+                                            state.msg_log.insert(
+                                                (server_type, server_id),
+                                                (session_id,
+                                                format!(
+                                                    "ChatServer {}: forwarded a message\n the message was made of {} fragments\n", server_id, size
+                                                ))
+                                            );
+                                            state.is_updated=true;
+                                        }
+                                    },
+                                    ChatEvent::RegisteredSuccess(size) => {
+                                        if let Ok(mut state)= SHARED_LOG.write(){
+                                            state.msg_log.insert(
+                                                (server_type, server_id),
+                                                (session_id,
+                                                format!(
+                                                    "ChatServer {}: client was successfully registered\n the message was made of {} fragments\n", server_id, size
+                                                ))
+                                            );
+                                            state.is_updated=true;
+                                        }
+                                    }
+                                    _=>{}
+                                }
+                            }
+                        }
+                    }
+                }
             recv(self.node_event_recv) -> command =>{
                 if let Ok(drone_event) = command {
                      match drone_event{
@@ -352,9 +449,9 @@ impl SimulationController {
                                             }else if self.web_client.contains_key(&flood_req.initiator_id){
                                                 MyNodeType::WebBrowser
                                             }
-                                            else if self.text_servers.contains(&flood_req.initiator_id){
+                                            else if self.text_server.contains_key(&flood_req.initiator_id){
                                                 MyNodeType::TextServer
-                                            }else if self.media_servers.contains(&flood_req.initiator_id){
+                                            }else if self.media_server.contains_key(&flood_req.initiator_id){
                                                 MyNodeType::MediaServer
                                             }else{
                                                 MyNodeType::ChatServer
@@ -380,12 +477,12 @@ impl SimulationController {
                                             }else{
                                                 let routes = vec![packet.routing_header.hops.clone()];
                                                 state.route_attempt.insert((node,packet.session_id), routes);
+
                                             }
+                                            state.is_updated=true;
                                         }
 
                                     }
-                                    Nack(nack)=>{
-                                       }
                                     _=>{}
                                 }
                             }
@@ -459,7 +556,6 @@ impl SimulationController {
 
                                 }
 
-                            println!("Simulation control: drone dropped packet");
                         }
                         DroneEvent::ControllerShortcut(ref controller_shortcut) => {
 
@@ -499,16 +595,32 @@ impl SimulationController {
         }
 
     }
-    pub fn ask_topology_graph(&self,client: NodeId, client_type: NodeType){
-        match client_type {
+    pub fn ask_topology_graph(&self,node: NodeId, node_type: NodeType){
+        match node_type {
             NodeType::ChatClient=> {
-                if let Some(sender) = self.client.get(&client) {
+                if let Some(sender) = self.client.get(&node) {
                     sender.send(CommandChat::SendTopologyGraph).unwrap();
                 }
             }
             NodeType::WebBrowser=>{
-                if let Some(sender) = self.web_client.get(&client) {
+                if let Some(sender) = self.web_client.get(&node) {
                     sender.send(ContentCommands::SendTopologyGraph).unwrap();
+                }
+            }
+            NodeType::ChatServer=>{
+                if let Some(sender) = self.chat_server.get(&node){
+                    sender.send(ServerCommands::SendTopologyGraph).unwrap();
+                }
+            }
+            NodeType::TextServer=>{
+                if let Some(sender) = self.text_server.get(&node){
+                    sender.send(ServerCommands::SendTopologyGraph).unwrap();
+                }
+
+            }
+            NodeType::MediaServer=>{
+                if let Some(sender) = self.media_server.get(&node){
+                    sender.send(ServerCommands::SendTopologyGraph).unwrap();
                 }
             }
             _=>{
@@ -685,11 +797,12 @@ pub fn start_simulation(
     check_full_duplex_connections(&config);
 
     let (packet_channels, command_chat_channel,
-        command_web_channel, background_flooding) =
+        command_web_channel, background_flooding, server_commands) =
         setup_communication_channels(&config);
 
     let (chat_event_send, chat_event_recv) = unbounded();
     let (web_event_send, web_event_recv) = unbounded();
+    let (server_event_send, server_event_recv) = unbounded();
 
     let neighbours = create_neighbours_map(&config);
 
@@ -699,9 +812,9 @@ pub fn start_simulation(
     let node_event_recv = simulation_controller.node_event_recv.clone();
     let mut client = simulation_controller.client.clone();
     let mut web_client = simulation_controller.web_client.clone();
-    let mut text_servers = simulation_controller.text_servers.clone();
-    let mut media_servers = simulation_controller.media_servers.clone();
-    let mut chat_servers = simulation_controller.chat_servers.clone();
+    let mut text_servers = simulation_controller.text_server.clone();
+    let mut media_servers = simulation_controller.media_server.clone();
+    let mut chat_servers = simulation_controller.chat_server.clone();
     let mut background_flood = simulation_controller.background_flooding.clone();
 
     spawn_drones(
@@ -718,8 +831,10 @@ pub fn start_simulation(
             &packet_channels,
             &background_flooding,
             &mut background_flood,
+            &server_commands,
             &mut text_servers,
-            &mut chat_servers
+            &mut chat_servers,
+            server_event_send.clone(),
         );
     }
     #[cfg(not(feature = "max"))]
@@ -729,9 +844,11 @@ pub fn start_simulation(
             &packet_channels,
             &background_flooding,
             &mut background_flood,
+            &server_commands,
             &mut text_servers,
             &mut media_servers,
-            &mut chat_servers
+            &mut chat_servers,
+            server_event_send.clone(),
         );
     }
 
@@ -767,7 +884,8 @@ pub fn start_simulation(
         node_event_send,
         simulation_controller,
         chat_event_recv,
-        web_event_recv
+        web_event_recv,
+        server_event_recv
     );
 
     thread::spawn(move || {
@@ -779,12 +897,14 @@ fn setup_communication_channels(config: &Config) -> (
     HashMap<NodeId, (Sender<Packet>, Receiver<Packet>)>,
     HashMap<NodeId, (Sender<CommandChat>, Receiver<CommandChat>)>,
     HashMap<NodeId, (Sender<ContentCommands>, Receiver<ContentCommands>)>,
-    HashMap<NodeId, (Sender<BackGroundFlood>, Receiver<BackGroundFlood>)>
+    HashMap<NodeId, (Sender<BackGroundFlood>, Receiver<BackGroundFlood>)>,
+    HashMap<NodeId, (Sender<ServerCommands>, Receiver<ServerCommands>)>
 ) {
     let mut packet_channels = HashMap::new();
     let mut command_chat_channel = HashMap::new();
     let mut command_web_channel = HashMap::new();
     let mut background_flood=HashMap::new();
+    let mut server_commands = HashMap::new();
 
     for node_id in config.drone.iter().map(|d| d.id)
         .chain(config.client.iter().map(|c| c.id))
@@ -798,10 +918,11 @@ fn setup_communication_channels(config: &Config) -> (
         background_flood.insert(client.id, unbounded());
     }
     for server in &config.server{
+        server_commands.insert(server.id, unbounded());
         background_flood.insert(server.id, unbounded());
     }
 
-    (packet_channels, command_chat_channel, command_web_channel, background_flood)
+    (packet_channels, command_chat_channel, command_web_channel, background_flood, server_commands)
 }
 
 fn create_neighbours_map(config: &Config) -> HashMap<NodeId, Vec<NodeId>> {
@@ -881,9 +1002,11 @@ fn spawn_servers_baia(
     packet_channels: &HashMap<NodeId, (Sender<Packet>, Receiver<Packet>)>,
     background_flood: &HashMap<NodeId, (Sender<BackGroundFlood>, Receiver<BackGroundFlood>)>,
     flooding: &mut HashMap<NodeId, Sender<BackGroundFlood>>,
-    text_servers: &mut Vec<NodeId>,
-    media_servers: &mut Vec<NodeId>,
-    chat_servers: &mut Vec<NodeId>
+    server_commands: &HashMap<NodeId, (Sender<ServerCommands>, Receiver<ServerCommands>)>,
+    text_servers: &mut HashMap<NodeId, Sender<ServerCommands>>,
+    media_servers: &mut HashMap<NodeId, Sender<ServerCommands>>,
+    chat_servers: &mut HashMap<NodeId, Sender<ServerCommands>>,
+    server_event_send: Sender<ServerEvent>
 ) {
     for (i, cfg_server) in config.server.iter().cloned().enumerate() {
         if cfg_server.connected_drone_ids.is_empty(){
@@ -896,13 +1019,15 @@ fn spawn_servers_baia(
         let rcv_flood= background_flood[&cfg_server.id].1.clone();
         flooding.insert(cfg_server.id, background_flood[&cfg_server.id].0.clone());
 
+        let rcv_command = server_commands[&cfg_server.id].1.clone();
+
         match i {
             0 => {
-                let mut server_baia = Server::new(cfg_server.id, rcv, packet_send, rcv_flood);
+                let mut server_baia = Server::new(cfg_server.id, rcv, packet_send, rcv_flood, rcv_command.clone(), server_event_send.clone());
                 thread::spawn(move || {
                     server_baia.run();
                 });
-                chat_servers.push(cfg_server.id);
+                chat_servers.insert(cfg_server.id, server_commands[&cfg_server.id].0.clone());
                 set_node_types(MyNodeType::ChatServer, config.server.len(), cfg_server.id);
             },
             1 => {
@@ -911,12 +1036,14 @@ fn spawn_servers_baia(
                     rcv,
                     packet_send,
                     rcv_flood,
+                    rcv_command.clone(),
+                    server_event_send.clone(),
                     "assets/multimedia/paths/text_server1.txt"
                 );
                 thread::spawn(move || {
                     text_server_baia.run();
                 });
-                text_servers.push(cfg_server.id);
+                text_servers.insert(cfg_server.id, server_commands[&cfg_server.id].0.clone());
                 set_node_types(MyNodeType::TextServer, config.server.len(), cfg_server.id);
 
             },
@@ -926,12 +1053,14 @@ fn spawn_servers_baia(
                     rcv,
                     packet_send,
                     rcv_flood,
+                    rcv_command.clone(),
+                    server_event_send.clone(),
                     "assets/multimedia/paths/media_server1.txt"
                 );
                 thread::spawn(move || {
                     media_server_baia.run();
                 });
-                media_servers.push(cfg_server.id);
+                media_servers.insert(cfg_server.id, server_commands[&cfg_server.id].0.clone());
                 set_node_types(MyNodeType::MediaServer, config.server.len(), cfg_server.id);
             },
             3 => {
@@ -940,12 +1069,14 @@ fn spawn_servers_baia(
                     rcv,
                     packet_send,
                     rcv_flood,
+                    rcv_command.clone(),
+                    server_event_send.clone(),
                     "assets/multimedia/paths/media_serverr2.txt"
                 );
                 thread::spawn(move || {
                     media_server_baia.run();
                 });
-                media_servers.push(cfg_server.id);
+                media_servers.insert(cfg_server.id, server_commands[&cfg_server.id].0.clone());
                 set_node_types(MyNodeType::MediaServer, config.server.len(), cfg_server.id);
             },
             _=>{}
@@ -1055,9 +1186,9 @@ fn update_simulation_controller(
     packet_channel: HashMap<NodeId, Sender<Packet>>,
     client: HashMap<NodeId, Sender<CommandChat>>,
     web_client: HashMap<NodeId, Sender<ContentCommands>>,
-    text_servers: Vec<NodeId>,
-    media_servers: Vec<NodeId>,
-    chat_servers: Vec<NodeId>,
+    text_servers: HashMap<NodeId, Sender<ServerCommands>>,
+    media_servers: HashMap<NodeId, Sender<ServerCommands>>,
+    chat_servers: HashMap<NodeId, Sender<ServerCommands>>,
     background_flooding : HashMap<NodeId, Sender<BackGroundFlood>>
 ) {
     simulation_controller.node_event_send = node_event_send.clone();
@@ -1067,9 +1198,9 @@ fn update_simulation_controller(
     simulation_controller.packet_channel = packet_channel;
     simulation_controller.client = client;
     simulation_controller.web_client = web_client;
-    simulation_controller.text_servers = text_servers;
-    simulation_controller.media_servers = media_servers;
-    simulation_controller.chat_servers = chat_servers;
+    simulation_controller.text_server = text_servers;
+    simulation_controller.media_server = media_servers;
+    simulation_controller.chat_server = chat_servers;
     simulation_controller.background_flooding= background_flooding;
 }
 
@@ -1077,7 +1208,8 @@ fn create_simulation_controller(
     node_event_send: Sender<DroneEvent>,
     simulation_controller: ResMut<SimulationController>,
     chat_event_recv: Receiver<ChatClientEvent>,
-    web_event_recv: Receiver<WebBrowserEvents>
+    web_event_recv: Receiver<WebBrowserEvents>,
+    server_event_recv: Receiver<ServerEvent>
 ) -> SimulationController {
     SimulationController {
         node_event_send,
@@ -1087,13 +1219,14 @@ fn create_simulation_controller(
         packet_channel: simulation_controller.packet_channel.clone(),
         client: simulation_controller.client.clone(),
         web_client: simulation_controller.web_client.clone(),
-        text_servers: Vec::new(),
-        media_servers: Vec::new(),
-        chat_servers: Vec::new(),
+        text_server: simulation_controller.text_server.clone(),
+        media_server: simulation_controller.media_server.clone(),
+        chat_server: simulation_controller.chat_server.clone(),
         seen_floods: HashSet::new(),
         client_list: HashMap::new(),
         chat_event: chat_event_recv,
         web_event: web_event_recv,
+        server_event: server_event_recv,
         incoming_message: HashMap::new(),
         messages: HashMap::new(),
         register_success: HashMap::new(),
@@ -1106,8 +1239,10 @@ fn spawn_servers_max(
     packet_channels: &HashMap<NodeId, (Sender<Packet>, Receiver<Packet>)>,
     background_flood: &HashMap<NodeId, (Sender<BackGroundFlood>, Receiver<BackGroundFlood>)>,
     flooding: &mut HashMap<NodeId, Sender<BackGroundFlood>>,
-    text_servers: &mut Vec<NodeId>,
-    chat_servers: &mut Vec<NodeId>
+    server_commands: &HashMap<NodeId, (Sender<ServerCommands>, Receiver<ServerCommands>)>,
+    text_servers: &mut HashMap<NodeId, Sender<ServerCommands>>,
+    chat_servers: &mut HashMap<NodeId, Sender<ServerCommands>>,
+    server_event_send: Sender<ServerEvent>
 ) {
     for (i, cfg_server) in config.server.iter().cloned().enumerate() {
         if cfg_server.connected_drone_ids.is_empty(){
@@ -1123,13 +1258,15 @@ fn spawn_servers_max(
         let rcv_flood= background_flood[&cfg_server.id].1.clone();
         flooding.insert(cfg_server.id, background_flood[&cfg_server.id].0.clone());
 
+        let rcv_command = server_commands[&cfg_server.id].1.clone();
+
         match i {
             0 => {
-                let mut server_max = ChatMax::new(cfg_server.id, rcv, packet_send, rcv_flood);
+                let mut server_max = ChatMax::new(cfg_server.id, rcv, packet_send, rcv_flood, rcv_command.clone(), server_event_send.clone());
                 thread::spawn(move || {
                     server_max.run();
                 });
-                chat_servers.push(cfg_server.id);
+                chat_servers.insert(cfg_server.id, server_commands[&cfg_server.id].0.clone());
                 set_node_types(MyNodeType::ChatServer, config.server.len(), cfg_server.id);
             },
             _ => {
@@ -1137,13 +1274,15 @@ fn spawn_servers_max(
                     cfg_server.id,
                     rcv,
                     packet_send,
+                    rcv_command.clone(),
+                    server_event_send.clone(),
                     "assets/multimedia/paths/text_server1.txt",
                     rcv_flood
                 );
                 thread::spawn(move || {
                     text_server_max.run();
                 });
-                text_servers.push(cfg_server.id);
+                text_servers.insert(cfg_server.id, server_commands[&cfg_server.id].0.clone());
                 set_node_types(MyNodeType::TextServer, config.server.len(), cfg_server.id);
             }
 

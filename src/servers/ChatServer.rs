@@ -13,6 +13,7 @@ use wg_2024::packet;
 use wg_2024::packet::{Ack, FloodRequest, FloodResponse, Fragment, Nack, NackType, NodeType, Packet, PacketType};
 use crate::common_things::common::*;
 use crate::servers::assembler::*;
+use crate::simulation_control::simulation_control::MyNodeType;
 
 #[derive(Serialize, Clone, Debug)]
 pub struct drops{
@@ -35,11 +36,13 @@ pub struct Server{
     pub packet_send: HashMap<NodeId, Sender<Packet>>,
     fragments_recv : HashMap<(NodeId,u64),Vec<Fragment>>,
     fragments_send : HashMap<u64,(NodeId,NodeType,Vec<Fragment>)>,
-    rcv_flood: Receiver<BackGroundFlood>
+    rcv_flood: Receiver<BackGroundFlood>,
+    rcv_command: Receiver<ServerCommands>,
+    send_event: Sender<ServerEvent>
 }
 
 impl Server{
-    pub fn new(id:NodeId, packet_recv: Receiver<Packet>, packet_send: HashMap<NodeId,Sender<Packet>>, rcv_flood: Receiver<BackGroundFlood>)->Self{
+    pub fn new(id:NodeId, packet_recv: Receiver<Packet>, packet_send: HashMap<NodeId,Sender<Packet>>, rcv_flood: Receiver<BackGroundFlood>, rcv_command: Receiver<ServerCommands>, send_event: Sender<ServerEvent>)->Self{
         Self{
             server_id:id,
             server_type: ServerType::CommunicationServer,
@@ -53,7 +56,9 @@ impl Server{
             packet_send:packet_send,
             fragments_recv : HashMap::new(),
             fragments_send : HashMap::new(),
-            rcv_flood
+            rcv_flood,
+            rcv_command,
+            send_event
         }
     }
     pub(crate) fn run(&mut self) {
@@ -70,8 +75,20 @@ impl Server{
                         self.flooding();
                     }
                 }
+                recv(self.rcv_command) -> sc_command => {
+                    if let Ok(command) = sc_command {
+                        match command {
+                            ServerCommands::SendTopologyGraph=>{
+                                self.send_topology_graph();
+                            }
+                        }
+                    }
+                }
             }
         }
+    }
+    fn send_topology_graph(&self){
+        self.send_event.send(ServerEvent::Graph(self.server_id, self.neigh_map.clone())).unwrap();
     }
     pub fn handle_packet(&mut self, p:Packet){
         match p.clone().pack_type {
@@ -145,6 +162,8 @@ impl Server{
                                 println!("Register client request received from client: {:?}!", p.routing_header.hops.clone()[0]);
                                 self.registered_clients.push(n);
                                 self.send_packet(ChatResponse::RegisterClient(true), p.routing_header.hops[0], NodeType::Client);
+                                //Esempio su come usare ChatPacketInfo
+                                self.send_event.send(ServerEvent::ChatPacketInfo(self.server_id, MyNodeType::ChatServer, ChatEvent::RegisteredSuccess(fragment.total_n_fragments),p.session_id)).unwrap();
                             }
                             ChatRequest::GetListClients => {
                                 println!("Get client list request received from client: {:?}!", p.routing_header.hops.clone()[0]);
