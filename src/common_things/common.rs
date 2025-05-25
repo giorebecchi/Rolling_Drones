@@ -1,11 +1,12 @@
 use std::fmt::{Display, Formatter};
+use petgraph::Graph;
 use petgraph::prelude::UnGraphMap;
 use serde::{Deserialize, Serialize};
 use wg_2024::network::NodeId;
 use wg_2024::packet::Packet;
 use crate::GUI::login_window::NodeType;
 use crate::servers::Text_max::Server;
-
+use crate::simulation_control::simulation_control::MyNodeType;
 
 //comandi sim_control
 #[derive(Clone)]
@@ -38,6 +39,16 @@ pub enum ChatEvent{
     RegisteredSuccess(u64),
     ChatServers(u64),
     ClientType(u64)
+}
+
+pub enum ServerCommands{
+    SendTopologyGraph,
+}
+pub enum ServerEvent{
+    Graph(NodeId, Graph<(NodeId, wg_2024::packet::NodeType), f64, petgraph::Directed>),
+    WebPacketInfo(NodeId, MyNodeType, ContentType, u64), //(id server, server_type (ChatServer, TextServer,...), type of message, session_id)
+    ChatPacketInfo(NodeId, MyNodeType, ChatEvent, u64)  //(id server, server_type (ChatServer, TextServer,...), type of message, session_id)
+
 }
 
 //comandi da client a server
@@ -149,8 +160,8 @@ pub enum WebBrowserEvents{ //not complete
 }
 #[derive(Clone)]
 pub enum ContentType{
-    TextServerList(u64),
-    MediaServerList(u64),
+    TextServerList(u64), //client sends to SC when {ContentType} is asked to server (u64 is #fragments)
+    MediaServerList(u64),//server sends to SC when {ContentType} is sent back to client (u64 is #fragments)
     FileList(u64),
     MediaPosition(u64),
     SavedMedia(u64),

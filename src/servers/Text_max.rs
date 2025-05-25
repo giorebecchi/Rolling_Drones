@@ -29,12 +29,14 @@ pub struct Server{
     media_others: HashMap<NodeId, Vec<MediaId>>,
     others : HashMap<NodeId, Vec<NodeId>>,
     already_visited: HashSet<(NodeId, u64)>,
-    rcv_flood: Receiver<BackGroundFlood>
+    rcv_flood: Receiver<BackGroundFlood>,
+    rcv_command: Receiver<ServerCommands>,
+    send_event: Sender<ServerEvent>
 }
 
 
 impl Server {
-    pub fn new(server_id: NodeId, packet_recv: Receiver<Packet>, packet_send: HashMap<NodeId, Sender<Packet>>, file_path: &str, rcv_flood: Receiver<BackGroundFlood>) -> Self {
+    pub fn new(server_id: NodeId, packet_recv: Receiver<Packet>, packet_send: HashMap<NodeId, Sender<Packet>>,rcv_command: Receiver<ServerCommands>, send_event: Sender<ServerEvent>, file_path: &str, rcv_flood: Receiver<BackGroundFlood>) -> Self {
         let mut links: Vec<NodeId> = Vec::new();
         for i in packet_send.clone() {
             links.push(i.0.clone());
@@ -54,7 +56,9 @@ impl Server {
             media_others: HashMap::new(),
             others: HashMap::new(),
             already_visited: HashSet::new(),
-            rcv_flood
+            rcv_flood,
+            rcv_command,
+            send_event
         }
     }
     pub fn run(&mut self) {

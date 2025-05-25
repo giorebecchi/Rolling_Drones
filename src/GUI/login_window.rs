@@ -15,11 +15,12 @@ use egui::widgets::TextEdit;
 use wg_2024::controller::{DroneCommand, DroneEvent};
 use wg_2024::packet::{Ack, FloodRequest, FloodResponse, Fragment, Nack, Packet};
 use std::fmt::{Display, Formatter};
-use crate::common_things::common::{BackGroundFlood, ChatClientEvent, ClientType, CommandChat, ContentCommands, WebBrowserEvents};
+use crate::common_things::common::{BackGroundFlood, ChatClientEvent, ClientType, CommandChat, ContentCommands, WebBrowserEvents, ServerCommands, ServerEvent};
 use bevy_framepace::{FramepacePlugin, FramepaceSettings, Limiter};
 use std::sync::{Arc};
 use egui::{Color32, RichText};
 use once_cell::sync::Lazy;
+use petgraph::Graph;
 use petgraph::prelude::UnGraphMap;
 use crate::GUI::chat_windows::ChatSystemPlugin;
 use crate::GUI::shared_info_plugin::{BackendBridgePlugin, SeenClients};
@@ -98,13 +99,14 @@ pub struct SimulationController {
     pub neighbours: HashMap<NodeId, Vec<NodeId>>,
     pub client : HashMap<NodeId, Sender<CommandChat>>,
     pub web_client : HashMap<NodeId, Sender<ContentCommands>>,
-    pub text_servers: Vec<NodeId>,
-    pub media_servers: Vec<NodeId>,
-    pub chat_servers: Vec<NodeId>,
+    pub text_server: HashMap<NodeId, Sender<ServerCommands>>,
+    pub chat_server: HashMap<NodeId, Sender<ServerCommands>>,
+    pub media_server: HashMap<NodeId, Sender<ServerCommands>>,
     pub seen_floods: HashSet<(NodeId,u64,NodeId)>,
     pub client_list: HashMap<(NodeId, NodeId), Vec<NodeId>>,
     pub chat_event: Receiver<ChatClientEvent>,
     pub web_event : Receiver<WebBrowserEvents>,
+    pub server_event: Receiver<ServerEvent>,
     pub messages: HashMap<(NodeId,NodeId),Vec<String>>,
     pub incoming_message: HashMap<(NodeId,NodeId,NodeId), Vec<String>>,
     pub register_success: HashMap<(NodeId,NodeId),bool>,
@@ -803,6 +805,7 @@ pub struct DisplayableLog{
     pub route_attempt: HashMap<(NodeId,u64) , Vec<Vec<NodeId>>>,
     pub nack_log: HashMap<(MyNodeType, NodeId), String>,
     pub graph : HashMap<NodeId,UnGraphMap<NodeId, u32>>,
+    pub server_graph : HashMap<NodeId, Graph<(NodeId,wg_2024::packet::NodeType), f64, petgraph::Directed>>,
 }
 
 #[derive(Resource, Default)]
@@ -817,6 +820,7 @@ pub struct SimLog{
     pub route_attempt: HashMap<(NodeId,u64), Vec<Vec<NodeId>>>,
     pub nack_log: HashMap<(MyNodeType,NodeId), String>,
     pub graph : HashMap<NodeId,UnGraphMap<NodeId, u32>>,
+    pub server_graph : HashMap<NodeId, Graph<(NodeId,wg_2024::packet::NodeType), f64, petgraph::Directed>>,
     pub is_updated: bool,
 }
 fn sync_log(
@@ -834,6 +838,7 @@ fn sync_log(
             displayable_log.route_attempt = state.route_attempt.clone();
             displayable_log.nack_log=state.nack_log.clone();
             displayable_log.graph=state.graph.clone();
+            displayable_log.server_graph=state.server_graph.clone();
 
             if let Ok(mut state) = SHARED_LOG.try_write() {
                 state.is_updated = false;

@@ -131,9 +131,7 @@ fn sync_backend_to_frontend(
             topology.node_connection=state.wrong_connections.clone();
             topology.incomplete_connections=state.incomplete_connections.clone();
             topology.wrong_pdr=state.wrong_pdr.clone();
-            println!("node_connection: {:?}",topology.node_connection);
-            println!("incomplete_connection: {:?}",topology.incomplete_connections);
-            println!("wong pdr: {:?}",topology.wrong_pdr);
+
 
 
             drop(state);

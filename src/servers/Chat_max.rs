@@ -19,10 +19,12 @@ pub struct Server{
     pub packet_send: HashMap<NodeId, Sender<Packet>>,
     already_visited: HashSet<(NodeId, u64)>,
     registered_clients: Vec<NodeId>,
-    rcv_flood: Receiver<BackGroundFlood>
+    rcv_flood: Receiver<BackGroundFlood>,
+    rcv_command: Receiver<ServerCommands>,
+    send_event: Sender<ServerEvent>
 }
 impl Server {
-    pub fn new(id: NodeId, packet_recv: Receiver<Packet>, packet_send: HashMap<NodeId, Sender<Packet>>, rcv_flood: Receiver<BackGroundFlood>) -> Self {
+    pub fn new(id: NodeId, packet_recv: Receiver<Packet>, packet_send: HashMap<NodeId, Sender<Packet>>, rcv_flood: Receiver<BackGroundFlood>, rcv_command: Receiver<ServerCommands>, send_event: Sender<ServerEvent>) -> Self {
         let mut links: Vec<NodeId> = Vec::new();
         for i in packet_send.clone() {
             links.push(i.0.clone());
@@ -38,7 +40,9 @@ impl Server {
             packet_send,
             already_visited: HashSet::new(),
             registered_clients: Vec::new(),
-            rcv_flood
+            rcv_flood,
+            rcv_command,
+            send_event
         }
     }
     pub fn run(&mut self) {
@@ -57,10 +61,20 @@ impl Server {
                         if let Ok(_) = flood {
                          self.floading();
                         }
+                    },
+                    recv(self.rcv_command) -> sc_command => {
+                        if let Ok(command) = sc_command {
+                            match command {
+                                ServerCommands::SendTopologyGraph=>{
+                                   // self.send_topology_graph();
+                                }
+                            }
+                        }
                     }
                 }
         }
     }
+
     fn handle_packet(&mut self, packet: Packet) {
         let p = packet.clone();
         match packet.pack_type {

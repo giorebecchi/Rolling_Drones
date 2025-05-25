@@ -43,11 +43,13 @@ pub struct Server{
     pub packet_send: HashMap<NodeId, Sender<Packet>>,
     fragments_recv : HashMap<(NodeId,u64),Vec<Fragment>>,
     fragments_send : HashMap<u64,(NodeId,NodeType,Vec<Fragment>)>,
-    rcv_flood: Receiver<BackGroundFlood>
+    rcv_flood: Receiver<BackGroundFlood>,
+    rcv_command: Receiver<ServerCommands>,
+    send_event: Sender<ServerEvent>
 }
 
 impl Server{
-    pub fn new(id:NodeId, packet_recv: Receiver<Packet>, packet_send: HashMap<NodeId,Sender<Packet>>, rcv_flood: Receiver<BackGroundFlood>, file_path:&str)->Self{
+    pub fn new(id:NodeId, packet_recv: Receiver<Packet>, packet_send: HashMap<NodeId,Sender<Packet>>, rcv_flood: Receiver<BackGroundFlood>,  rcv_command: Receiver<ServerCommands>, send_event: Sender<ServerEvent>, file_path:&str)->Self{
         let path = Path::new(file_path);
         let file = File::open(path).unwrap();
         let reader = io::BufReader::new(file);
@@ -82,7 +84,9 @@ impl Server{
             packet_send:packet_send,
             fragments_recv : HashMap::new(),
             fragments_send : HashMap::new(),
-            rcv_flood
+            rcv_flood,
+            rcv_command,
+            send_event
         }
     }
     pub(crate) fn run(&mut self) {
@@ -98,9 +102,21 @@ impl Server{
                     if let Ok(_) = flood {
                         self.flooding();
                     }
+                },
+                 recv(self.rcv_command) -> sc_command => {
+                    if let Ok(command) = sc_command {
+                        match command {
+                            ServerCommands::SendTopologyGraph=>{
+                                self.send_topology_graph();
+                            }
+                        }
+                    }
                 }
             }
         }
+    }
+    fn send_topology_graph(&self){
+        self.send_event.send(ServerEvent::Graph(self.server_id, self.neigh_map.clone())).unwrap();
     }
     pub fn handle_packet(&mut self, p:Packet){
         match p.clone().pack_type {
