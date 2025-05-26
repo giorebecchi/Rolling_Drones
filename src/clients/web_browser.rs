@@ -1,4 +1,4 @@
-use crate::common_things::common::{BackGroundFlood, ContentType};
+use crate::common_things::common::{BackGroundFlood, ContentRequest, ContentType};
 use std::collections::{HashMap, HashSet};
 use std::fs;
 use base64::Engine;
@@ -171,6 +171,11 @@ impl WebBrowser {
                 let packets_to_send = ChatRequest::create_packet(&fragments, route.clone(), session_id);
                 
                 for packet in packets_to_send.clone() {
+                    if let PacketType::MsgFragment(fragment) = packet.pack_type.clone(){
+                        if let Err(_) = self.send_event.send(WebBrowserEvents::InfoRequest(self.config.id, ContentRequest::AskTypes(fragment.total_n_fragments), packet.session_id )){
+                            println!("web browser failed to notify SC about ask types request")
+                        }
+                    }
                     if let Some(next_hop) = route.get(1) {
                         self.send_messages(next_hop, packet);
                     } else { println!("No next hop found") }
@@ -202,6 +207,11 @@ impl WebBrowser {
                 let packets_to_send = ChatRequest::create_packet(&fragments, route.clone(), session_id);
                 
                 for packet in packets_to_send.clone() {
+                    if let PacketType::MsgFragment(fragment) = packet.pack_type.clone(){
+                        if let Err(_) = self.send_event.send(WebBrowserEvents::InfoRequest(self.config.id, ContentRequest::GetList(fragment.total_n_fragments), packet.session_id )){
+                            println!("web browser failed to notify SC about get list request")
+                        }
+                    }
                     if let Some(next_hop) = route.get(1) {
                         self.send_messages(next_hop, packet);
                     } else { println!("No next hop found") }
@@ -232,6 +242,11 @@ impl WebBrowser {
                 let packets_to_send = ChatRequest::create_packet(&fragments, route.clone(), session_id);
                 
                 for packet in packets_to_send.clone() {
+                    if let PacketType::MsgFragment(fragment) = packet.pack_type.clone(){
+                        if let Err(_) = self.send_event.send(WebBrowserEvents::InfoRequest(self.config.id, ContentRequest::GetPosition(fragment.total_n_fragments), packet.session_id )){
+                            println!("web browser failed to notify SC about get position request")
+                        }
+                    }
                     if let Some(next_hop) = route.get(1) {
                         self.send_messages(next_hop, packet);
                     } else { println!("No next hop found") }
@@ -263,6 +278,11 @@ impl WebBrowser {
                 let packets_to_send = ChatRequest::create_packet(&fragments, route.clone(), session_id);
                 
                 for packet in packets_to_send.clone() {
+                    if let PacketType::MsgFragment(fragment) = packet.pack_type.clone(){
+                        if let Err(_) = self.send_event.send(WebBrowserEvents::InfoRequest(self.config.id, ContentRequest::GetMedia(fragment.total_n_fragments), packet.session_id )){
+                            println!("web browser failed to notify SC about get media request")
+                        }
+                    }
                     if let Some(next_hop) = route.get(1) {
                         self.send_messages(next_hop, packet);
                     } else { println!("No next hop found") }
@@ -292,6 +312,11 @@ impl WebBrowser {
                 let packets_to_send = ChatRequest::create_packet(&fragments, route.clone(), session_id);
                 
                 for packet in packets_to_send.clone() {
+                    if let PacketType::MsgFragment(fragment) = packet.pack_type.clone(){
+                        if let Err(_) = self.send_event.send(WebBrowserEvents::InfoRequest(self.config.id, ContentRequest::GetText(fragment.total_n_fragments), packet.session_id )){
+                            println!("web browser failed to notify SC about get text request")
+                        }
+                    }
                     if let Some(next_hop) = route.get(1) {
                         self.send_messages(next_hop, packet);
                     } else { println!("No next hop found") }

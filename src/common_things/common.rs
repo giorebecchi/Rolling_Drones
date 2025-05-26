@@ -30,6 +30,7 @@ pub enum ChatClientEvent{
     ChatServers(NodeId, Vec<NodeId>),
     ClientType(ClientType,NodeId),
     PacketInfo(NodeId, ChatEvent, u64),
+    InfoRequest(NodeId, RequestEvent, u64),
     Graph(NodeId, UnGraphMap<NodeId, u32>)
 }
 #[derive(Debug,Clone)]
@@ -39,6 +40,14 @@ pub enum ChatEvent{
     RegisteredSuccess(u64),
     ChatServers(u64),
     ClientType(u64)
+}
+
+#[derive(Debug)]
+pub enum RequestEvent{
+    AskType(u64),
+    Register(u64),
+    GetList(u64),
+    SendMessage(u64),
 }
 
 pub enum ServerCommands{
@@ -156,6 +165,7 @@ pub enum WebBrowserEvents{ //not complete
     SavedTextFile(NodeId, String), //node id client, path to file saved in SC folder in multimedia
     SavedMedia(NodeId, String), //node id client, path to correct file save in SC folder in multimedia
     PacketInfo(NodeId, ContentType, u64),
+    InfoRequest(NodeId, ContentRequest,  u64),
     Graph(NodeId, UnGraphMap<NodeId, u32>)
 }
 #[derive(Clone)]
@@ -166,6 +176,14 @@ pub enum ContentType{
     MediaPosition(u64),
     SavedMedia(u64),
     SavedText(u64),
+}
+
+pub enum ContentRequest{
+    AskTypes(u64),
+    GetList(u64),
+    GetPosition(u64),
+    GetMedia(u64),
+    GetText(u64)
 }
 impl Display for ContentType{
     fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
