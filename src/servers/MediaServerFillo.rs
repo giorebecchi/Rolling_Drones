@@ -19,6 +19,7 @@ use wg_2024::packet;
 use wg_2024::packet::{Ack, FloodRequest, FloodResponse, Fragment, Nack, NackType, NodeType, Packet, PacketType};
 use crate::common_things::common::*;
 use crate::servers::assembler::*;
+use crate::simulation_control::simulation_control::MyNodeType;
 
 #[derive(Serialize, Clone, Debug)]
 pub struct drops{
@@ -214,12 +215,16 @@ impl Server{
                                 if self.paths.contains_key(&media_id){
                                     let path = self.paths.get(&media_id).unwrap().clone();
                                     self.send_image(path.as_str(),p.routing_header.hops[0],NodeType::Client);
+                                    //da scommentare per gio 
+                                    // self.send_event.send(ServerEvent::MediaPacketInfo(self.server_id, MyNodeType::TextServer, MediaServerEvent::SendingMedia(fragment.total_n_fragments),p.session_id)).unwrap();
                                 }
                             }
                             WebBrowserCommands::GetText(_) => {println!("I shouldn't receive this command");}
                             WebBrowserCommands::GetServerType => {
                                 println!("problems in sending servertype");
                                 self.send_packet(MediaServer::ServerTypeMedia(self.clone().server_type), p.routing_header.hops[0], NodeType::Client);
+                                //da scommentare per gio 
+                                // self.send_event.send(ServerEvent::MediaPacketInfo(self.server_id, MyNodeType::TextServer, MediaServerEvent::SendingServerTypeMedia(fragment.total_n_fragments),p.session_id)).unwrap();
                             }
                         }
                     }else {
@@ -233,10 +238,14 @@ impl Server{
                                     TextServer::ServerTypeReq => {
                                         // println!("sono il media {:?} e sto mandando il mio servertype {:?} al text {:?}",self.server_id,self.server_type,p.routing_header.hops[0]);
                                         self.send_packet(MediaServer::ServerTypeMedia(self.clone().server_type), p.routing_header.hops[0], NodeType::Server);
+                                        // da scommentare per gio 
+                                        // self.send_event.send(ServerEvent::MediaPacketInfo(self.server_id, MyNodeType::TextServer, MediaServerEvent::SendingServerTypeMedia(fragment.total_n_fragments),p.session_id)).unwrap();
                                     }
                                     TextServer::PathResolution => {
                                         //println!("sono il media {:?} e sto mandando il mio pathres {:?} al text {:?}",self.server_id,self.server_type,p.routing_header.hops[0]);
                                         self.send_packet(MediaServer::SendPath(self.clone().images_ids),p.routing_header.hops[0], NodeType::Server);
+                                        // da scommentare per gio 
+                                        // self.send_event.send(ServerEvent::MediaPacketInfo(self.server_id, MyNodeType::TextServer, MediaServerEvent::SendingPathRes(fragment.total_n_fragments),p.session_id)).unwrap();
                                     }
                                     _ => {println!("I shouldn't receive these commands");}
                                 }
@@ -292,7 +301,7 @@ impl Server{
                         self.forward_packet(pack);
                         break;
                     }else {
-                        println!("there isn't a route to reach the packet destination (shouldn't happen)");
+                        println!("i am the media {:?} there isn't a route to reach the packet destination (shouldn't happen)", self.server_id);
                     }
                 }
             }
@@ -309,7 +318,14 @@ impl Server{
             match nack.clone().nack_type{
                 NackType::ErrorInRouting(crashed_id) => {
                     // self.neigh_map.remove_node(self.find_node(crashed_id,NodeType::Drone).unwrap());
-                    self.neigh_map.remove_edge(self.neigh_map.find_edge(self.find_node(crashed_id,NodeType::Drone).unwrap_or_default(), self.find_node(packet.routing_header.hops[0], NodeType::Drone).unwrap_or_default()).unwrap_or_default());
+                    // println!("sono il media {:?} ho ricevuto un errorinrouting with route {:?}, the drone that crashed is {:?}", self.server_id, packet.routing_header.hops, crashed_id.clone());
+                    let node1 = self.find_node(crashed_id, NodeType::Drone).unwrap_or_default();
+                    let edges: Vec<_> = self.neigh_map.edges_directed(node1, Incoming).map(|e| e.id()).collect();
+                    // println!("all the edges incoming into node1 {:?}", edges);
+                    for i in edges.clone(){
+                        self.neigh_map.remove_edge(i.clone());
+                    }
+                    // println!("graph del media {:?} dopo aver tolto gli edges del drone crashato {:?}",self.server_id, self.neigh_map);
                     self.packet_recover(s_id, nack.fragment_index);
                 }
                 NackType::DestinationIsDrone => {

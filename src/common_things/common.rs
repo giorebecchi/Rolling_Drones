@@ -53,12 +53,42 @@ pub enum RequestEvent{
 pub enum ServerCommands{
     SendTopologyGraph,
 }
+
 pub enum ServerEvent{
     Graph(NodeId, Graph<(NodeId, wg_2024::packet::NodeType), f64, petgraph::Directed>),
     WebPacketInfo(NodeId, MyNodeType, ContentType, u64), //(id server, server_type (ChatServer, TextServer,...), type of message, session_id)
     ChatPacketInfo(NodeId, MyNodeType, ChatEvent, u64)  //(id server, server_type (ChatServer, TextServer,...), type of message, session_id)
-
 }
+
+// pub enum ServerEvent{
+//     Graph(NodeId, Graph<(NodeId, wg_2024::packet::NodeType), f64, petgraph::Directed>),
+//     TextPacketInfo(NodeId, MyNodeType, TextServerEvent, u64), //(id server, server_type (ChatServer, TextServer,...), type of message, session_id)
+//     MediaPacketInfo(NodeId, MyNodeType, MediaServerEvent, u64), //(id server, server_type (ChatServer, TextServer,...), type of message, session_id)
+//     ChatPacketInfo(NodeId, MyNodeType, ChatServerEvent, u64)  //(id server, server_type (ChatServer, TextServer,...), type of message, session_id)
+// }
+// #[derive(Debug,Clone)]
+// pub enum ChatServerEvent{
+//     SendingServerTypeChat(u64),
+//     ClientRegistration(u64),
+//     SendingClientList(u64),
+//     ForwardingMessage(u64),
+//     ClientElimination(u64),
+// }
+// #[derive(Debug,Clone)]
+// pub enum TextServerEvent{
+//     SendingFileList(u64),
+//     SendingPosition(u64),
+//     SendingText(u64),
+//     SendingServerTypeText(u64),
+//     SendingServerTypeReq(u64),
+//     AskingForPathRes(u64),
+// }
+// #[derive(Debug,Clone)]
+// pub enum MediaServerEvent{
+//     SendingServerTypeMedia(u64),
+//     SendingPathRes(u64), //send paths to the text server
+//     SendingMedia(u64)
+// }
 
 //comandi da client a server
 #[derive(Serialize, Deserialize, Debug)]
