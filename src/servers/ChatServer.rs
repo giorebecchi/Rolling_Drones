@@ -157,17 +157,22 @@ impl Server{
                             ChatRequest::ServerType => {
                                 println!("Server type request received from client: {:?}!", p.routing_header.hops.clone()[0]);
                                 self.send_packet(ChatResponse::ServerTypeChat(self.clone().server_type), p.routing_header.hops[0], NodeType::Client);
+                                //da scommentare per gio 
+                                // self.send_event.send(ServerEvent::ChatPacketInfo(self.server_id, MyNodeType::ChatServer, ChatServerEvent::SendingServerTypeChat(fragment.total_n_fragments),p.session_id)).unwrap();
                             }
                             ChatRequest::RegisterClient(n) => {
                                 println!("Register client request received from client: {:?}!", p.routing_header.hops.clone()[0]);
                                 self.registered_clients.push(n);
                                 self.send_packet(ChatResponse::RegisterClient(true), p.routing_header.hops[0], NodeType::Client);
                                 //Esempio su come usare ChatPacketInfo
-                                self.send_event.send(ServerEvent::ChatPacketInfo(self.server_id, MyNodeType::ChatServer, ChatEvent::RegisteredSuccess(fragment.total_n_fragments),p.session_id)).unwrap();
+                                //da scommentare per gio 
+                                // self.send_event.send(ServerEvent::ChatPacketInfo(self.server_id, MyNodeType::ChatServer, ChatServerEvent::ClientRegistration(fragment.total_n_fragments),p.session_id)).unwrap();
                             }
                             ChatRequest::GetListClients => {
                                 println!("Get client list request received from client: {:?}!", p.routing_header.hops.clone()[0]);
                                 self.send_packet(ChatResponse::RegisteredClients(self.clone().registered_clients), p.routing_header.hops[0], NodeType::Client);
+                                //da scommentare per gio 
+                                // self.send_event.send(ServerEvent::ChatPacketInfo(self.server_id, MyNodeType::ChatServer, ChatServerEvent::SendingClientList(fragment.total_n_fragments),p.session_id)).unwrap();
                             }
                             ChatRequest::SendMessage(mc, _) => {
                                 println!("Send message request received from client: {:?}!", p.routing_header.hops.clone()[0]);
@@ -178,11 +183,15 @@ impl Server{
                                 }else {
                                     self.send_packet(ChatResponse::SendMessage(Err("Error with the registration of the two involved clients".to_string())), p.routing_header.hops[0], NodeType::Client);
                                 }
+                                //da scommentare per gio 
+                                // self.send_event.send(ServerEvent::ChatPacketInfo(self.server_id, MyNodeType::ChatServer, ChatServerEvent::ForwardingMessage(fragment.total_n_fragments),p.session_id)).unwrap();
                             }
                             ChatRequest::EndChat(n) => {
                                 println!("end chat request received from client: {:?}!", p.routing_header.hops.clone()[0]);
                                 self.registered_clients.retain(|x| *x != n);
                                 self.send_packet(ChatResponse::EndChat(true), p.routing_header.hops[0], NodeType::Client);
+                                //da scommentare per gio 
+                                // self.send_event.send(ServerEvent::ChatPacketInfo(self.server_id, MyNodeType::ChatServer, ChatServerEvent::ClientElimination(fragment.total_n_fragments),p.session_id)).unwrap();
                             }
                         }
                     }else {
@@ -258,8 +267,14 @@ impl Server{
         if let PacketType::Nack(nack) = packet.pack_type{
             match nack.clone().nack_type{
                 NackType::ErrorInRouting(crashed_id) => {
-                    // self.neigh_map.remove_node(self.find_node(crashed_id,NodeType::Drone).unwrap());
-                    self.neigh_map.remove_edge(self.neigh_map.find_edge(self.find_node(crashed_id,NodeType::Drone).unwrap_or_default(), self.find_node(packet.routing_header.hops[0], NodeType::Drone).unwrap_or_default()).unwrap_or_default());
+                    // println!("sono il chat {:?} ho ricevuto un errorinrouting with route {:?}, the drone that crashed is {:?}", self.server_id, packet.routing_header.hops, crashed_id.clone());
+                    let node1 = self.find_node(crashed_id, NodeType::Drone).unwrap_or_default();
+                    let edges: Vec<_> = self.neigh_map.edges_directed(node1, Incoming).map(|e| e.id()).collect();
+                    // println!("all the edges incoming into node1 {:?}", edges);
+                    for i in edges.clone(){
+                        self.neigh_map.remove_edge(i.clone());
+                    }
+                    // println!("graph del chat dopo aver tolto gli edges del drone crashato {:?}", self.neigh_map);
                     self.packet_recover(s_id, nack.fragment_index);
                 }
                 NackType::DestinationIsDrone => {

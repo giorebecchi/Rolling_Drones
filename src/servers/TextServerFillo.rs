@@ -9,6 +9,7 @@ use std::fs::File;
 use std::io::{self, BufRead};
 use std::path::Path;
 use base64::Engine;
+use bevy::ui::debug::print_ui_layout_tree;
 use crossbeam_channel::{select_biased, Receiver, Sender};
 use petgraph::data::Build;
 use petgraph::Incoming;
@@ -19,6 +20,7 @@ use wg_2024::packet;
 use wg_2024::packet::{Ack, FloodRequest, FloodResponse, Fragment, Nack, NackType, NodeType, Packet, PacketType};
 use crate::common_things::common::*;
 use crate::servers::assembler::*;
+use crate::simulation_control::simulation_control::MyNodeType;
 
 #[derive(Serialize, Clone, Debug)]
 pub struct drops{
@@ -233,13 +235,17 @@ impl Server{
                                     total_list.push(i);
                                 }
                                 self.send_packet(TextServer::SendFileList(total_list),p.routing_header.hops[0],NodeType::Client);
+                                // da scommentare per gio
+                                // self.send_event.send(ServerEvent::TextPacketInfo(self.server_id, MyNodeType::TextServer, TextServerEvent::SendingFileList(fragment.total_n_fragments),p.session_id)).unwrap();
                             }
                             WebBrowserCommands::GetPosition(media_id) => {
                                 for i in self.media_info.clone(){
                                     if i.1.contains(&media_id){
                                         println!("il media si trova qui {:?}", i.0);
                                         self.send_packet(TextServer::PositionMedia(i.0),p.routing_header.hops[0],NodeType::Client);
-                                    }
+                                        //da scommentare per gio 
+                                        // self.send_event.send(ServerEvent::TextPacketInfo(self.server_id, MyNodeType::TextServer, TextServerEvent::SendingPosition(fragment.total_n_fragments),p.session_id)).unwrap();
+                                    }                                 
                                 }
                             }
                             WebBrowserCommands::GetMedia(_) => {println!("I shouldn't receive this command");}
@@ -247,10 +253,14 @@ impl Server{
                                 if self.paths.contains_key(&text_id){
                                     let path = self.paths.get(&text_id).unwrap().clone();
                                     self.send_text(path.as_str(),p.routing_header.hops[0],NodeType::Client);
+                                    //da scommentare per gio 
+                                    // self.send_event.send(ServerEvent::TextPacketInfo(self.server_id, MyNodeType::TextServer, TextServerEvent::SendingText(fragment.total_n_fragments),p.session_id)).unwrap();
                                 }
                             }
                             WebBrowserCommands::GetServerType => {
                                 self.send_packet(TextServer::ServerTypeText(self.clone().server_type), p.routing_header.hops[0], NodeType::Client);
+                                //da scommentare per gio 
+                                // self.send_event.send(ServerEvent::TextPacketInfo(self.server_id, MyNodeType::TextServer, TextServerEvent::SendingServerTypeText(fragment.total_n_fragments),p.session_id)).unwrap();
                             }
                         }
                     }else {
@@ -268,6 +278,8 @@ impl Server{
                                         //println!("sono il text {:?} e ho scoperto che {:?} è un media",self.server_id,p.routing_header.hops[0]);
                                         self.media_servers.push(p.routing_header.hops[0]);
                                         self.send_packet(TextServer::PathResolution,p.routing_header.hops[0],NodeType::Server);
+                                        //da scommentare per gio 
+                                        // self.send_event.send(ServerEvent::TextPacketInfo(self.server_id, MyNodeType::TextServer, TextServerEvent::AskingForPathRes(fragment.total_n_fragments),p.session_id)).unwrap();
                                     }
                                     MediaServer::SendPath(path) => {
                                         //println!("sono il text {:?} e ho ricevuto la path res di {:?}",self.server_id,p.routing_header.hops[0]);
@@ -314,9 +326,12 @@ impl Server{
     fn packet_recover(&mut self, s_id: u64, lost_fragment_index: u64){
         if self.fragments_send.contains_key(&s_id){
             let info = self.fragments_send.get(&s_id).unwrap();
+            //println!("i have to recover the packet because something wrong happened, resending to {:?} {:?} the number of packet i have to send is {:?}", info.1, info.0, info.2.clone().len());
+            //println!("graph del text prima di fare la recovery {:?}", self.neigh_map);
             for i in info.2.clone().iter(){
                 if i.fragment_index==lost_fragment_index{
                     if let Some(srh) = self.best_path_custom_cost(info.0.clone(),info.1.clone()){
+                        //println!("new route {:?}",srh.clone());
                         let pack = Packet{
                             routing_header: srh,
                             session_id: s_id.clone(),
@@ -325,7 +340,7 @@ impl Server{
                         self.forward_packet(pack);
                         break;
                     }else {
-                        println!("there isn't a route to reach the packet destination (shouldn't happen)");
+                        println!("i am the text {:?} there isn't a route to reach the packet destination (shouldn't happen)",self.server_id);
                     }
                 }
             }
@@ -341,8 +356,14 @@ impl Server{
         if let PacketType::Nack(nack) = packet.pack_type{
             match nack.clone().nack_type{
                 NackType::ErrorInRouting(crashed_id) => {
-                    // self.neigh_map.remove_node(self.find_node(crashed_id,NodeType::Drone).unwrap());
-                    self.neigh_map.remove_edge(self.neigh_map.find_edge(self.find_node(crashed_id,NodeType::Drone).unwrap_or_default(), self.find_node(packet.routing_header.hops[0], NodeType::Drone).unwrap_or_default()).unwrap_or_default());
+                    // println!("sono il text {:?} ho ricevuto un errorinrouting with route {:?}, the drone that crashed is {:?}", self.server_id, packet.routing_header.hops, crashed_id.clone());
+                    let node1 = self.find_node(crashed_id, NodeType::Drone).unwrap_or_default();
+                    let edges: Vec<_> = self.neigh_map.edges_directed(node1, Incoming).map(|e| e.id()).collect();
+                    // println!("all the edges incoming into node1 {:?}", edges);
+                    for i in edges.clone(){
+                        self.neigh_map.remove_edge(i.clone());
+                    }
+                    // println!("graph del text dopo aver tolto gli edges del drone crashato {:?}", self.neigh_map);
                     self.packet_recover(s_id, nack.fragment_index);
                 }
                 NackType::DestinationIsDrone => {
@@ -387,6 +408,7 @@ impl Server{
                             None => {}
                         }
                     }
+                   // println!("calling packet_recover because a drone dropped");
                     self.packet_recover(s_id, nack.fragment_index);
                 }
                 NackType::UnexpectedRecipient(_) => {
@@ -494,7 +516,10 @@ impl Server{
                     match k.clone() {
                         NodeType::Server => {
                             // println!("io sono il text {:?} sto chiedendo servertype a {:?}", self.server_id,j.clone());
-                            self.send_packet(TextServer::ServerTypeReq, j.clone(), k.clone())},
+                            self.send_packet(TextServer::ServerTypeReq, j.clone(), k.clone());
+                            //da scommentare per gio 
+                            // self.send_event.send(ServerEvent::TextPacketInfo(self.server_id, MyNodeType::TextServer, TextServerEvent::SendingServerTypeReq(1),p.session_id)).unwrap();
+                        },
                         _ => {}
                     }
                 }
@@ -673,7 +698,7 @@ impl Server{
                 }
             }
         }
-
+        println!("i was trying to reache {:?} {:?} but there is no route for that", nt,id);
         None
     }
 
