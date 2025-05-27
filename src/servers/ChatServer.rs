@@ -158,7 +158,7 @@ impl Server{
                                 println!("Server type request received from client: {:?}!", p.routing_header.hops.clone()[0]);
                                 self.send_packet(ChatResponse::ServerTypeChat(self.clone().server_type), p.routing_header.hops[0], NodeType::Client);
                                 //da scommentare per gio 
-                                // self.send_event.send(ServerEvent::ChatPacketInfo(self.server_id, MyNodeType::ChatServer, ChatServerEvent::SendingServerTypeChat(fragment.total_n_fragments),p.session_id)).unwrap();
+                                 self.send_event.send(ServerEvent::ChatPacketInfo(self.server_id, MyNodeType::ChatServer, ChatServerEvent::SendingServerTypeChat(fragment.total_n_fragments),p.session_id)).unwrap();
                             }
                             ChatRequest::RegisterClient(n) => {
                                 println!("Register client request received from client: {:?}!", p.routing_header.hops.clone()[0]);
@@ -166,13 +166,13 @@ impl Server{
                                 self.send_packet(ChatResponse::RegisterClient(true), p.routing_header.hops[0], NodeType::Client);
                                 //Esempio su come usare ChatPacketInfo
                                 //da scommentare per gio 
-                                // self.send_event.send(ServerEvent::ChatPacketInfo(self.server_id, MyNodeType::ChatServer, ChatServerEvent::ClientRegistration(fragment.total_n_fragments),p.session_id)).unwrap();
+                                self.send_event.send(ServerEvent::ChatPacketInfo(self.server_id, MyNodeType::ChatServer, ChatServerEvent::ClientRegistration(fragment.total_n_fragments),p.session_id)).unwrap();
                             }
                             ChatRequest::GetListClients => {
                                 println!("Get client list request received from client: {:?}!", p.routing_header.hops.clone()[0]);
                                 self.send_packet(ChatResponse::RegisteredClients(self.clone().registered_clients), p.routing_header.hops[0], NodeType::Client);
                                 //da scommentare per gio 
-                                // self.send_event.send(ServerEvent::ChatPacketInfo(self.server_id, MyNodeType::ChatServer, ChatServerEvent::SendingClientList(fragment.total_n_fragments),p.session_id)).unwrap();
+                                self.send_event.send(ServerEvent::ChatPacketInfo(self.server_id, MyNodeType::ChatServer, ChatServerEvent::SendingClientList(fragment.total_n_fragments),p.session_id)).unwrap();
                             }
                             ChatRequest::SendMessage(mc, _) => {
                                 println!("Send message request received from client: {:?}!", p.routing_header.hops.clone()[0]);
@@ -184,14 +184,14 @@ impl Server{
                                     self.send_packet(ChatResponse::SendMessage(Err("Error with the registration of the two involved clients".to_string())), p.routing_header.hops[0], NodeType::Client);
                                 }
                                 //da scommentare per gio 
-                                // self.send_event.send(ServerEvent::ChatPacketInfo(self.server_id, MyNodeType::ChatServer, ChatServerEvent::ForwardingMessage(fragment.total_n_fragments),p.session_id)).unwrap();
+                                self.send_event.send(ServerEvent::ChatPacketInfo(self.server_id, MyNodeType::ChatServer, ChatServerEvent::ForwardingMessage(fragment.total_n_fragments),p.session_id)).unwrap();
                             }
                             ChatRequest::EndChat(n) => {
                                 println!("end chat request received from client: {:?}!", p.routing_header.hops.clone()[0]);
                                 self.registered_clients.retain(|x| *x != n);
                                 self.send_packet(ChatResponse::EndChat(true), p.routing_header.hops[0], NodeType::Client);
                                 //da scommentare per gio 
-                                // self.send_event.send(ServerEvent::ChatPacketInfo(self.server_id, MyNodeType::ChatServer, ChatServerEvent::ClientElimination(fragment.total_n_fragments),p.session_id)).unwrap();
+                                self.send_event.send(ServerEvent::ChatPacketInfo(self.server_id, MyNodeType::ChatServer, ChatServerEvent::ClientElimination(fragment.total_n_fragments),p.session_id)).unwrap();
                             }
                         }
                     }else {
