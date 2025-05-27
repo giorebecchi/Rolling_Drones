@@ -236,7 +236,7 @@ impl Server{
                                 }
                                 self.send_packet(TextServer::SendFileList(total_list),p.routing_header.hops[0],NodeType::Client);
                                 // da scommentare per gio
-                                // self.send_event.send(ServerEvent::TextPacketInfo(self.server_id, MyNodeType::TextServer, TextServerEvent::SendingFileList(fragment.total_n_fragments),p.session_id)).unwrap();
+                                // self.send_event.send(ServerEvent::TextPacketInfo(self.server_id, MyNodeType::TextServer, TextServerEvent::SendingFileList(fragment.total_n_fragments),self.session_id-1)).unwrap();
                             }
                             WebBrowserCommands::GetPosition(media_id) => {
                                 for i in self.media_info.clone(){
@@ -244,7 +244,7 @@ impl Server{
                                         println!("il media si trova qui {:?}", i.0);
                                         self.send_packet(TextServer::PositionMedia(i.0),p.routing_header.hops[0],NodeType::Client);
                                         //da scommentare per gio 
-                                        self.send_event.send(ServerEvent::TextPacketInfo(self.server_id, MyNodeType::TextServer, TextServerEvent::SendingPosition(fragment.total_n_fragments),p.session_id)).unwrap();
+                                        self.send_event.send(ServerEvent::TextPacketInfo(self.server_id, MyNodeType::TextServer, TextServerEvent::SendingPosition(fragment.total_n_fragments),self.session_id-1)).unwrap();
                                     }                                 
                                 }
                             }
@@ -254,13 +254,13 @@ impl Server{
                                     let path = self.paths.get(&text_id).unwrap().clone();
                                     self.send_text(path.as_str(),p.routing_header.hops[0],NodeType::Client);
                                     //da scommentare per gio 
-                                    self.send_event.send(ServerEvent::TextPacketInfo(self.server_id, MyNodeType::TextServer, TextServerEvent::SendingText(fragment.total_n_fragments),p.session_id)).unwrap();
+                                    self.send_event.send(ServerEvent::TextPacketInfo(self.server_id, MyNodeType::TextServer, TextServerEvent::SendingText(fragment.total_n_fragments),self.session_id-1)).unwrap();
                                 }
                             }
                             WebBrowserCommands::GetServerType => {
                                 self.send_packet(TextServer::ServerTypeText(self.clone().server_type), p.routing_header.hops[0], NodeType::Client);
                                 //da scommentare per gio
-                                self.send_event.send(ServerEvent::TextPacketInfo(self.server_id, MyNodeType::TextServer, TextServerEvent::SendingServerTypeText(fragment.total_n_fragments),p.session_id)).unwrap();
+                                self.send_event.send(ServerEvent::TextPacketInfo(self.server_id, MyNodeType::TextServer, TextServerEvent::SendingServerTypeText(fragment.total_n_fragments),self.session_id-1)).unwrap();
                             }
                         }
                     }else {
@@ -279,7 +279,7 @@ impl Server{
                                         self.media_servers.push(p.routing_header.hops[0]);
                                         self.send_packet(TextServer::PathResolution,p.routing_header.hops[0],NodeType::Server);
                                         //da scommentare per gio 
-                                        self.send_event.send(ServerEvent::TextPacketInfo(self.server_id, MyNodeType::TextServer, TextServerEvent::AskingForPathRes(fragment.total_n_fragments),p.session_id)).unwrap();
+                                        self.send_event.send(ServerEvent::TextPacketInfo(self.server_id, MyNodeType::TextServer, TextServerEvent::AskingForPathRes(fragment.total_n_fragments),self.session_id-1)).unwrap();
                                     }
                                     MediaServer::SendPath(path) => {
                                         //println!("sono il text {:?} e ho ricevuto la path res di {:?}",self.server_id,p.routing_header.hops[0]);
@@ -518,7 +518,7 @@ impl Server{
                             // println!("io sono il text {:?} sto chiedendo servertype a {:?}", self.server_id,j.clone());
                             self.send_packet(TextServer::ServerTypeReq, j.clone(), k.clone());
                             //da scommentare per gio 
-                            self.send_event.send(ServerEvent::TextPacketInfo(self.server_id, MyNodeType::TextServer, TextServerEvent::SendingServerTypeReq(1),p.session_id)).unwrap();
+                            self.send_event.send(ServerEvent::TextPacketInfo(self.server_id, MyNodeType::TextServer, TextServerEvent::SendingServerTypeReq(1),self.session_id-1)).unwrap();
                         },
                         _ => {}
                     }
