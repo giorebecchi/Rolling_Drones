@@ -67,12 +67,6 @@ impl ChatClient {
 
         loop{
             select_biased! {
-                recv(self.receiver_commands) -> command =>{
-                    if let Ok(command) = command {
-                        self.build_topology();
-                        self.handle_sim_command(command);
-                    }
-                }
                 recv(self.receiver_msg) -> message =>{
                     if let Ok(message) = message {
                         self.build_topology();
@@ -84,6 +78,14 @@ impl ChatClient {
                         self.initiate_flooding();
                     }
                 }
+                
+                recv(self.receiver_commands) -> command =>{
+                    if let Ok(command) = command {
+                        self.build_topology();
+                        self.handle_sim_command(command);
+                    }
+                }
+                
             }
 
         }
@@ -159,8 +161,9 @@ impl ChatClient {
         match self.find_best_route(&id_server) {
             Ok(route) => {
                 let packets_to_send = ChatRequest::create_packet(&fragments, route.clone(), session_id);
+                self.packet_sent.insert(session_id, (id_server, packets_to_send.clone()));
                 
-                for packet in packets_to_send.clone() {
+                for packet in packets_to_send {
                     if let PacketType::MsgFragment(fragment) = packet.pack_type.clone(){
                         if let Err(_) = self.event_send.send(ChatClientEvent::InfoRequest(self.config.id, RequestEvent::AskType(fragment.total_n_fragments), packet.session_id )){
                             println!("chat client failed to notify SC about ask types request")
@@ -170,7 +173,6 @@ impl ChatClient {
                         self.send_packet(next_hop, packet);
                     }else { println!("No next hop found") }
                 }
-                self.packet_sent.insert(session_id, (id_server, packets_to_send));
 
                 println!("Sent request to get the server type to server {} by client: {}", id_server, self.config.id);
 
@@ -194,8 +196,9 @@ impl ChatClient {
         match self.find_best_route(&id_server) {
             Ok(route) => {
                 let packets_to_send = ChatRequest::create_packet(&fragments, route.clone(), session_id);
+                self.packet_sent.insert(session_id, (id_server, packets_to_send.clone()));
                 
-                for packet in packets_to_send.clone() {
+                for packet in packets_to_send {
                     if let PacketType::MsgFragment(fragment) = packet.pack_type.clone(){
                         if let Err(_) = self.event_send.send(ChatClientEvent::InfoRequest(self.config.id, RequestEvent::Register(fragment.total_n_fragments), packet.session_id )){
                             println!("chat client failed to notify SC about register request")
@@ -205,7 +208,6 @@ impl ChatClient {
                         self.send_packet(next_hop, packet);
                     }else { println!("No next hop found") }
                 }
-                self.packet_sent.insert(session_id, (id_server, packets_to_send));
                 println!("Sent request to register this client to the server {}", id_server);
 
             }
@@ -229,8 +231,8 @@ impl ChatClient {
         match self.find_best_route(&id_server){
             Ok(route) => {
                 let packets_to_send = ChatRequest::create_packet(&fragments, route.clone(), session_id);
-                
-                for packet in packets_to_send.clone() {
+                self.packet_sent.insert(session_id, (id_server, packets_to_send.clone()));
+                for packet in packets_to_send {
                     if let PacketType::MsgFragment(fragment) = packet.pack_type.clone(){
                         if let Err(_) = self.event_send.send(ChatClientEvent::InfoRequest(self.config.id, RequestEvent::GetList(fragment.total_n_fragments), packet.session_id )){
                             println!("chat client failed to notify SC about get list request")
@@ -240,7 +242,6 @@ impl ChatClient {
                         self.send_packet(next_hop, packet);
                     }else { println!("No next hop found") }
                 }
-                self.packet_sent.insert(session_id, (id_server, packets_to_send));
                 println!("sent request to get list clients of registered servers to server: {}", id_server);
 
             }
@@ -264,8 +265,8 @@ impl ChatClient {
         match self.find_best_route(&id_server) {
             Ok(route) => {
                 let packets_to_send = ChatRequest::create_packet(&fragments, route.clone(), session_id);
-
-                for packet in packets_to_send.clone() {
+                self.packet_sent.insert(session_id, (id_server, packets_to_send.clone()));
+                for packet in packets_to_send {
                     if let PacketType::MsgFragment(fragment) = packet.pack_type.clone(){
                         if let Err(_) = self.event_send.send(ChatClientEvent::InfoRequest(self.config.id, RequestEvent::SendMessage(fragment.total_n_fragments), packet.session_id )){
                             println!("chat client failed to notify SC about send message request")
@@ -275,7 +276,6 @@ impl ChatClient {
                         self.send_packet(next_hop, packet);
                     } else { println!("No next hop found") }
                 }
-                self.packet_sent.insert(session_id, (id_server, packets_to_send));
             }
             Err(_) => { println!("No route found for the destination client") }
         }
@@ -312,27 +312,27 @@ impl ChatClient {
                             if let Err(err) = self.event_send.send(ChatClientEvent::ChatServers(self.config.id.clone(), self.chat_servers.clone())) {
                                 println!("Failed to notify SC about server list: {}", err);
                             }
-                            if let Err(err) = self.event_send.send(ChatClientEvent::PacketInfo(self.config.id, ChatEvent::ChatServers(fragment.total_n_fragments), packet.session_id )) {
-                                println!("Failed to notify SC about server list: {}", err);
-                            }
+                            //if let Err(err) = self.event_send.send(ChatClientEvent::PacketInfo(self.config.id, ChatEvent::ChatServers(fragment.total_n_fragments), packet.session_id )) {
+                            //    println!("Failed to notify SC about server list: {}", err);
+                            //}
 
 
-                    },
-                    ChatResponse::EndChat(response) =>{
-
+                        },
+                        ChatResponse::EndChat(response) =>{
                             if response {
                                 println!("chat ended");
                             }else { println!("error in the request: end the chat") }
-                        },
+                        }, 
+                        
                         ChatResponse::RegisterClient(response) => {
                             if response{
                                 println!("registered successfully");
                                 if let Err(_) = self.event_send.send(RegisteredSuccess((self.config.id.clone(), src_id.clone()), Ok(()))){
                                     println!("could not send to simulation control");
                                 }
-                                if let Err(err) = self.event_send.send(ChatClientEvent::PacketInfo(self.config.id, ChatEvent::RegisteredSuccess(fragment.total_n_fragments), packet.session_id )) {
-                                    println!("Failed to notify SC about server list: {}", err);
-                                }
+                                //if let Err(err) = self.event_send.send(ChatClientEvent::PacketInfo(self.config.id, ChatEvent::RegisteredSuccess(fragment.total_n_fragments), packet.session_id )) {
+                                //    println!("Failed to notify SC about server list: {}", err);
+                                //}
                             }else {
                                 println!("not registered successfully");
                                 if let Err(_) = self.event_send.send(RegisteredSuccess((self.config.id.clone(), src_id.clone()), Err("registration not successful".to_string()))){
@@ -351,9 +351,9 @@ impl ChatClient {
                             if let Err(_) = self.event_send.send(ClientList((self.config.id.clone(), src_id.clone()), registered_clients)){
                                 println!("failed to send the registered clients to sc");
                             }
-                            if let Err(err) = self.event_send.send(ChatClientEvent::PacketInfo(self.config.id, ChatEvent::ClientList(fragment.total_n_fragments), packet.session_id )) {
-                                println!("Failed to notify SC about server list: {}", err);
-                            }
+                            //if let Err(err) = self.event_send.send(ChatClientEvent::PacketInfo(self.config.id, ChatEvent::ClientList(fragment.total_n_fragments), packet.session_id )) {
+                            //    println!("Failed to notify SC about server list: {}", err);
+                            //}
                         },
                         ChatResponse::ForwardMessage(message_chat) =>{
                             let sender = message_chat.from_id;
@@ -361,9 +361,9 @@ impl ChatClient {
                             if let Err(str) = self.event_send.send(IncomingMessage((self.config.id.clone(), src_id.clone(), sender), message_chat.content)){
                                 println!("failed to send message to simulation control: {}", str);
                             }
-                            if let Err(err) = self.event_send.send(ChatClientEvent::PacketInfo(self.config.id, ChatEvent::IncomingMessage(fragment.total_n_fragments), packet.session_id )) {
-                                println!("Failed to notify SC about server list: {}", err);
-                            }
+                            //if let Err(err) = self.event_send.send(ChatClientEvent::PacketInfo(self.config.id, ChatEvent::IncomingMessage(fragment.total_n_fragments), packet.session_id )) {
+                            //    println!("Failed to notify SC about server list: {}", err);
+                            //}
                         }
                     }
 
@@ -377,7 +377,6 @@ impl ChatClient {
         if let PacketType::Nack(nack) = packet.clone().pack_type{
             match nack.nack_type{
                 NackType::ErrorInRouting(id) => {
-                    println!("received nack ErrorInRouting");
                     if !self.problematic_nodes.contains(&id){
                         self.problematic_nodes.push(id);
                     }
@@ -421,7 +420,7 @@ impl ChatClient {
 
             match self.find_best_route(&destination_id) {
                 Ok(route) => {
-                    println!("route re-computed: {:?}", route);
+                    //println!("route re-computed: {:?}", route);
                     let packet_to_send = Packet::new_fragment(
                         SourceRoutingHeader::new(route.clone(), 0),
                         packet.session_id,
