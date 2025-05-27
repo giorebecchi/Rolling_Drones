@@ -148,65 +148,65 @@ impl SimulationController {
                                 }
                             }
                             ChatClientEvent::PacketInfo(client, event, session) => {
-                                match event{
-                                    ChatEvent::ChatServers(size)=>{
-                                        if let Ok(mut state)= SHARED_LOG.write(){
+                                match event {
+                                    ChatEvent::ChatServers(size) => {
+                                        if let Ok(mut state) = SHARED_LOG.write() {
                                             state.msg_log.insert(
-                                                (MyNodeType::ChatClient, client),
-                                                (session,
+                                                (client, session),
                                                 format!(
-                                                    "Chat Client {}: asked for list of Chat Servers\n the message was made of {} fragments\n", client, size
-                                                ))
+                                                    "Chat Client {}: asked for list of Chat Servers\nThe message was made of {} fragments",
+                                                    client, size
+                                                )
                                             );
-                                            state.is_updated=true;
+                                            state.is_updated = true;
                                         }
                                     },
-                                    ChatEvent::ClientList(size)=>{
-                                        if let Ok(mut state)= SHARED_LOG.write(){
+                                    ChatEvent::ClientList(size) => {
+                                        if let Ok(mut state) = SHARED_LOG.write() {
                                             state.msg_log.insert(
-                                                (MyNodeType::ChatClient, client),
-                                                (session,
+                                                (client, session),
                                                 format!(
-                                                    "Chat Client {}: asked for list of Chat Clients\n the message was made of {} fragments\n", client, size
-                                                ))
+                                                    "Chat Client {}: asked for list of Chat Clients\nThe message was made of {} fragments",
+                                                    client, size
+                                                )
                                             );
-                                            state.is_updated=true;
+                                            state.is_updated = true;
                                         }
                                     },
                                     ChatEvent::IncomingMessage(size) => {
-                                        if let Ok(mut state)= SHARED_LOG.write(){
+                                        if let Ok(mut state) = SHARED_LOG.write() {
                                             state.msg_log.insert(
-                                                (MyNodeType::ChatClient, client),
-                                                (session,
+                                                (client, session),
                                                 format!(
-                                                    "Chat Client {}: received a message\n the message was made of {} fragments\n", client, size
-                                                ))
+                                                    "Chat Client {}: received a message\nThe message was made of {} fragments",
+                                                    client, size
+                                                )
                                             );
-                                            state.is_updated=true;
+                                            state.is_updated = true;
                                         }
                                     },
                                     ChatEvent::RegisteredSuccess(size) => {
-                                        if let Ok(mut state)= SHARED_LOG.write(){
+                                        if let Ok(mut state) = SHARED_LOG.write() {
                                             state.msg_log.insert(
-                                                (MyNodeType::ChatClient, client),
-                                                (session,
+                                                (client, session),
                                                 format!(
-                                                    "Chat Client {}: registered successfully\n the message was made of {} fragments\n", client, size
-                                                ))
+                                                    "Chat Client {}: registered successfully\nThe message was made of {} fragments",
+                                                    client, size
+                                                )
                                             );
-                                            state.is_updated=true;
+                                            state.is_updated = true;
                                         }
                                     },
-                                    ChatEvent::ClientType(size)=> {
-                                        if let Ok(mut state)= SHARED_LOG.write(){
+                                    ChatEvent::ClientType(size) => {
+                                        if let Ok(mut state) = SHARED_LOG.write() {
                                             state.msg_log.insert(
-                                                (MyNodeType::ChatClient, client),
-                                                (session,
+                                                (client, session),
                                                 format!(
-                                                    "Chat Client {}: revealed its type\n the message was made of {} fragments\n", client, size
-                                                ))
+                                                    "Chat Client {}: revealed its type\nThe message was made of {} fragments",
+                                                    client, size
+                                                )
                                             );
-                                            state.is_updated=true;
+                                            state.is_updated = true;
                                         }
                                     }
                                 }
@@ -267,7 +267,6 @@ impl SimulationController {
                                 }
                             }
                             WebBrowserEvents::SavedMedia(client, actual_media)=>{
-                                println!("saved_media: {}",actual_media);
                                 if let Ok(mut state)=SHARED_STATE.write(){
                                     if let Some(current_path)=state.actual_media_path.get_mut(&client){
                                         let _=std::mem::replace(current_path, actual_media);
@@ -291,37 +290,37 @@ impl SimulationController {
                                 match packet_info{
                                     ContentType::TextServerList(size)=>{
                                         if let Ok(mut state)= SHARED_LOG.write(){
-                                            state.msg_log.insert((MyNodeType::WebBrowser, client), (session_id, format!("Web browser: {} asked for list of Text Servers\n the message was made of {} fragments\n", client, size)));
+                                            state.msg_log.insert((client, session_id), format!("Web browser: {} asked for list of Text Servers\n the message was made of {} fragments\n", client, size));
                                             state.is_updated=true;
                                         }
                                     }
                                     ContentType::MediaServerList(size)=>{
                                          if let Ok(mut state)= SHARED_LOG.write(){
-                                            state.msg_log.insert((MyNodeType::WebBrowser, client), (session_id, format!("Web browser: {} asked for list of Media Servers\n the message was made of {} fragments\n", client, size)));
+                                            state.msg_log.insert((client,session_id), format!("Web browser: {} asked for list of Media Servers\n the message was made of {} fragments\n", client, size));
                                             state.is_updated=true;
                                         }
                                     }
                                     ContentType::FileList(size)=>{
                                         if let Ok(mut state)= SHARED_LOG.write(){
-                                            state.msg_log.insert((MyNodeType::WebBrowser, client), (session_id, format!("Web browser: {} asked for File List\n the message was made of {} fragments\n", client, size)));
+                                            state.msg_log.insert((client,session_id), format!("Web browser: {} asked for File List\n the message was made of {} fragments\n", client, size));
                                             state.is_updated=true;
                                         }
                                     }
                                     ContentType::MediaPosition(size)=>{
                                         if let Ok(mut state)= SHARED_LOG.write(){
-                                            state.msg_log.insert((MyNodeType::WebBrowser, client), (session_id, format!("Web browser: {} asked for Media Position\n the message was made of {} fragments\n", client, size)));
+                                            state.msg_log.insert((client,session_id), format!("Web browser: {} asked for Media Position\n the message was made of {} fragments\n", client, size));
                                             state.is_updated=true;
                                         }
                                     }
                                     ContentType::SavedText(size)=>{
                                         if let Ok(mut state)= SHARED_LOG.write(){
-                                            state.msg_log.insert((MyNodeType::WebBrowser, client), (session_id, format!("Web browser: {} asked for a Text File\n the message was made of {} fragments\n", client, size)));
+                                            state.msg_log.insert((client,session_id), format!("Web browser: {} asked for a Text File\n the message was made of {} fragments\n", client, size));
                                             state.is_updated=true;
                                         }
                                     }
                                     ContentType::SavedMedia(size)=>{
                                         if let Ok(mut state)= SHARED_LOG.write(){
-                                            state.msg_log.insert((MyNodeType::WebBrowser, client), (session_id, format!("Web browser: {} asked for a Media\n the message was made of {} fragments\n", client, size)));
+                                            state.msg_log.insert((client,session_id), format!("Web browser: {} asked for a Media\n the message was made of {} fragments\n", client, size));
                                             state.is_updated=true;
                                         }
                                     }
@@ -352,60 +351,54 @@ impl SimulationController {
                                     TextServerEvent::SendingServerTypeText(size)=>{
                                         if let Ok(mut state)=SHARED_LOG.write(){
                                             state.msg_log.insert(
-                                                (server_type.clone(), server_id),
-                                                (session_id,
+                                                (server_id, session_id),
                                                 format!("{:?} {}: sent server type to client\nthe message was made of {} fragments\n", server_type, server_id, size
-                                                ))
+                                                )
                                             );
                                         }
                                     },
                                     TextServerEvent::SendingServerTypeReq(size)=>{
                                         if let Ok(mut state)=SHARED_LOG.write(){
                                             state.msg_log.insert(
-                                                (server_type.clone(), server_id),
-                                                (session_id,
+                                                (server_id, session_id),
                                                 format!("{:?} {}: asked server type to other servers\nthe message was made of {} fragments\n", server_type, server_id, size
-                                                ))
+                                                )
                                             );
                                         }
                                     },
                                     TextServerEvent::SendingFileList(size)=>{
                                         if let Ok(mut state)=SHARED_LOG.write(){
                                             state.msg_log.insert(
-                                                (server_type.clone(), server_id),
-                                                (session_id,
+                                                (server_id, session_id),
                                                 format!("{:?} {}: sent file list to client\nthe message was made of {} fragments\n", server_type, server_id, size
-                                                ))
+                                                )
                                             );
                                         }
                                     },
                                     TextServerEvent::AskingForPathRes(size)=>{
                                         if let Ok(mut state)=SHARED_LOG.write(){
                                             state.msg_log.insert(
-                                                (server_type.clone(), server_id),
-                                                (session_id,
+                                                (server_id, session_id),
                                                 format!("{:?} {}: asked media server for list of medias\nthe message was made of {} fragments\n", server_type, server_id, size
-                                                ))
+                                                )
                                             );
                                         }
                                     },
                                     TextServerEvent::SendingPosition(size)=>{
                                         if let Ok(mut state)=SHARED_LOG.write(){
                                             state.msg_log.insert(
-                                                (server_type.clone(), server_id),
-                                                (session_id,
+                                                (server_id, session_id),
                                                 format!("{:?} {}: sent media position to client\nthe message was made of {} fragments\n", server_type, server_id, size
-                                                ))
+                                                )
                                             );
                                         }
                                     },
                                     TextServerEvent::SendingText(size)=>{
                                         if let Ok(mut state)=SHARED_LOG.write(){
                                             state.msg_log.insert(
-                                                (server_type.clone(), server_id),
-                                                (session_id,
+                                                (server_id, session_id),
                                                 format!("{:?} {}: sent text to client\nthe message was made of {} fragments\n", server_type, server_id, size
-                                                ))
+                                                )
                                             );
                                         }
                                     }
@@ -416,30 +409,27 @@ impl SimulationController {
                                     MediaServerEvent::SendingServerTypeMedia(size)=>{
                                         if let Ok(mut state)=SHARED_LOG.write(){
                                             state.msg_log.insert(
-                                                (server_type.clone(), server_id),
-                                                (session_id,
+                                                (server_id, session_id),
                                                 format!("{:?} {}: sent its type\nthe message was made of {} fragments\n", server_type, server_id, size
-                                                ))
+                                                )
                                             );
                                         }
                                     },
                                     MediaServerEvent::SendingPathRes(size)=>{
                                         if let Ok(mut state)=SHARED_LOG.write(){
                                             state.msg_log.insert(
-                                                (server_type.clone(), server_id),
-                                                (session_id,
+                                                (server_id, session_id),
                                                 format!("{:?} {}: sent its medias to text server\nthe message was made of {} fragments\n", server_type, server_id, size
-                                                ))
+                                                )
                                             );
                                         }
                                     },
                                     MediaServerEvent::SendingMedia(size)=>{
                                         if let Ok(mut state)=SHARED_LOG.write(){
                                             state.msg_log.insert(
-                                                (server_type.clone(), server_id),
-                                                (session_id,
+                                                (server_id, session_id),
                                                 format!("{:?} {}: sent media to client\nthe message was made of {} fragments\n", server_type, server_id, size
-                                                ))
+                                                )
                                             );
                                         }
                                     }
@@ -450,45 +440,45 @@ impl SimulationController {
                                     ChatServerEvent::SendingServerTypeChat(size)=>{
                                         if let Ok(mut state)=SHARED_LOG.write(){
                                             state.msg_log.insert(
-                                                (server_type.clone(), server_id),
-                                                (session_id,format!("{:?} {}: sent its type to client\nthe message was made of {} fragments\n", server_type, server_id, size
-                                                ))
+                                                (server_id, session_id),
+                                                    format!("{:?} {}: sent its type to client\nthe message was made of {} fragments\n", server_type, server_id, size
+                                                )
                                             );
                                         }
                                     },
                                     ChatServerEvent::ClientRegistration(size)=>{
                                         if let Ok(mut state)=SHARED_LOG.write(){
                                             state.msg_log.insert(
-                                                (server_type.clone(), server_id),
-                                                (session_id,format!("{:?} {}: sent registration success to client\nthe message was made of {} fragments\n", server_type, server_id, size
-                                                ))
+                                                (server_id, session_id),
+                                                format!("{:?} {}: sent registration success to client\nthe message was made of {} fragments\n", server_type, server_id, size
+                                                )
                                             );
                                         }
                                     },
                                     ChatServerEvent::SendingClientList(size)=>{
                                         if let Ok(mut state)=SHARED_LOG.write(){
                                             state.msg_log.insert(
-                                                (server_type.clone(), server_id),
-                                                (session_id,format!("{:?} {}: sent registered client list to client\nthe message was made of {} fragments\n", server_type, server_id, size
-                                                ))
+                                                (server_id, session_id),
+                                                format!("{:?} {}: sent registered client list to client\nthe message was made of {} fragments\n", server_type, server_id, size
+                                                )
                                             );
                                         }
                                     },
                                     ChatServerEvent::ForwardingMessage(size)=>{
                                         if let Ok(mut state)=SHARED_LOG.write(){
                                             state.msg_log.insert(
-                                                (server_type.clone(), server_id),
-                                                (session_id,format!("{:?} {}: forwarded a chat message\nthe message was made of {} fragments\n", server_type, server_id, size
-                                                ))
+                                                (server_id, session_id),
+                                                format!("{:?} {}: forwarded a chat message\nthe message was made of {} fragments\n", server_type, server_id, size
+                                                )
                                             );
                                         }
                                     },
                                     ChatServerEvent::ClientElimination(size)=>{
                                         if let Ok(mut state)=SHARED_LOG.write(){
                                             state.msg_log.insert(
-                                                (server_type.clone(), server_id),
-                                                (session_id,format!("{:?} {}: unregistered a client\nthe message was made of {} fragments\n", server_type, server_id, size
-                                                ))
+                                                (server_id, session_id),
+                                                format!("{:?} {}: unregistered a client\nthe message was made of {} fragments\n", server_type, server_id, size
+                                                )
                                             );
                                         }
                                     }
@@ -530,16 +520,17 @@ impl SimulationController {
                                     },
                                     MsgFragment(_)=>{
                                         if let Ok(mut state)=SHARED_LOG.write(){
-                                            let node=packet.routing_header.hops[0];
+                                            let initiator_node=packet.routing_header.hops[0];
+                                            let session_id = packet.session_id;
 
-                                            if let Some(routes)=state.route_attempt.get_mut(&(node,packet.session_id)){
+                                            if let Some(routes)=state.route_attempt.get_mut(&(initiator_node,session_id)){
                                                 if !routes.contains(&packet.routing_header.hops){
                                                     routes.push(packet.routing_header.hops.clone());
                                                 }
 
                                             }else{
                                                 let routes = vec![packet.routing_header.hops.clone()];
-                                                state.route_attempt.insert((node,packet.session_id), routes);
+                                                state.route_attempt.insert((initiator_node,session_id), routes);
 
                                             }
                                             state.is_updated=true;

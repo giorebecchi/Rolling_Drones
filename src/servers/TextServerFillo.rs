@@ -259,7 +259,7 @@ impl Server{
                             }
                             WebBrowserCommands::GetServerType => {
                                 self.send_packet(TextServer::ServerTypeText(self.clone().server_type), p.routing_header.hops[0], NodeType::Client);
-                                //da scommentare per gio 
+                                //da scommentare per gio
                                 self.send_event.send(ServerEvent::TextPacketInfo(self.server_id, MyNodeType::TextServer, TextServerEvent::SendingServerTypeText(fragment.total_n_fragments),p.session_id)).unwrap();
                             }
                         }

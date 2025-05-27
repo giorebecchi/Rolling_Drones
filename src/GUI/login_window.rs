@@ -751,7 +751,7 @@ fn ui_settings(
                         }
                     }
 
-                    for (_, (_,node_content)) in sim_log.msg_log.iter(){
+                    for ((_,_), node_content) in sim_log.msg_log.iter(){
                         client_log.push_str(node_content);
                     }
 
@@ -796,7 +796,7 @@ pub struct SimWindows{
 #[derive(Resource, Clone, Default)]
 pub struct DisplayableLog{
     pub flooding_log: HashMap<(MyNodeType, NodeId), String>,
-    pub msg_log: HashMap<(MyNodeType, NodeId), (u64,String)>,
+    pub msg_log: HashMap<(NodeId, u64), String>,
     pub lost_msg: HashMap<(NodeId, u64), Vec<Fragment>>,
     pub lost_ack: HashMap<(NodeId, u64), Vec<Ack>>,
     pub lost_flood_req: HashMap<(NodeId, u64), Vec<FloodRequest>>,
@@ -811,7 +811,7 @@ pub struct DisplayableLog{
 #[derive(Resource, Default)]
 pub struct SimLog{
     pub flooding_log: HashMap<(MyNodeType,NodeId), String>,
-    pub msg_log: HashMap<(MyNodeType,NodeId), (u64,String)>,
+    pub msg_log: HashMap<(NodeId, u64), String>,
     pub lost_msg: HashMap<(NodeId, u64), Vec<Fragment>>,
     pub lost_ack: HashMap<(NodeId, u64), Vec<Ack>>,
     pub lost_flood_req: HashMap<(NodeId, u64), Vec<FloodRequest>>,
