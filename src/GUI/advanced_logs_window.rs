@@ -2,9 +2,7 @@ use std::collections::HashMap;
 use bevy::prelude::*;
 use bevy_egui::{EguiContexts, egui};
 use wg_2024::network::NodeId;
-use wg_2024::packet::{Fragment};
 use crate::GUI::login_window::{AppState, DisplayableLog, NodeConfig, NodeType, NodesConfig, SimWindows, SimulationController};
-use crate::simulation_control::simulation_control::MyNodeType;
 use petgraph::visit::{EdgeRef, IntoEdgeReferences, IntoNodeIdentifiers};
 
 pub struct AdvancedLogsPlugin;
@@ -15,6 +13,7 @@ impl Plugin for AdvancedLogsPlugin{
             .add_systems(Update, log_window.run_if(in_state(AppState::InGame)));
     }
 }
+
 fn log_window(
     mut contexts: EguiContexts,
     nodes: Res<NodesConfig>,
@@ -35,10 +34,11 @@ fn log_window(
 
         window.show(ctx, |ui| {
             ui.label("Node: ");
-            let current_selected_client= match log_info.selected_node.clone(){
-                Some((id,node_type))=>format!("{:?} :{}",node_type,id),
-                None=>"Select Node".to_string()
+            let current_selected_client = match log_info.selected_node.clone() {
+                Some((id, node_type)) => format!("{:?} :{}", node_type, id),
+                None => "Select Node".to_string()
             };
+
             egui::ComboBox::from_id_salt("msg_select")
                 .selected_text(current_selected_client)
                 .show_ui(ui, |ui| {
@@ -48,19 +48,19 @@ fn log_window(
 
                     for node in nodes {
                         let selected = log_info.selected_node == Some((node.id, node.node_type.clone()));
-                        if ui.selectable_label(selected,format!("{:?} {}", node.node_type, node.id)).clicked() {
-                            log_info.selected_node=Some((node.id, node.node_type.clone()));
+                        if ui.selectable_label(selected, format!("{:?} {}", node.node_type, node.id)).clicked() {
+                            log_info.selected_node = Some((node.id, node.node_type.clone()));
                         }
                     }
                 });
-            if let Some(node)=log_info.selected_node.clone(){
-                if ui.button(format!("Connections found by {:?}: {}",node.1, node.0)).clicked(){
-                    sim.ask_topology_graph(node.0, node.1);
+
+            if let Some(node) = log_info.selected_node.clone() {
+                if ui.button(format!("Connections found by {:?}: {}", node.1, node.0)).clicked() {
+                    sim.ask_topology_graph(node.0, node.1.clone());
                     log_info.show_graph = true;
                 }
 
                 if log_info.show_graph {
-                    // Check which graph contains the selected node and render accordingly
                     let has_ungraph = sim_log.graph.get(&node.0).is_some();
                     let has_server_graph = sim_log.server_graph.get(&node.0).is_some();
 
@@ -77,12 +77,11 @@ fn log_window(
                         let painter = ui.painter_at(graph_response.rect);
 
                         if let Some(graph) = sim_log.graph.get(&node.0) {
-                            // Handle UnGraphMap<NodeId, u32>
                             let mut all_nodes = Vec::new();
                             let mut connections = Vec::new();
 
-                            for node in graph.node_identifiers() {
-                                all_nodes.push(node);
+                            for node_id in graph.node_identifiers() {
+                                all_nodes.push(node_id);
                             }
 
                             for edge in graph.edge_references() {
@@ -93,7 +92,6 @@ fn log_window(
                             render_graph_visualization(&painter, &graph_response.rect, all_nodes, connections);
 
                         } else if let Some(graph) = sim_log.server_graph.get(&node.0) {
-                            // Handle Graph<(NodeId, NodeType), f64>
                             let mut all_nodes = Vec::new();
                             let mut connections = Vec::new();
 
@@ -123,70 +121,170 @@ fn log_window(
                     }
                 }
 
-                ui.label("last sent message: ");
-                let msg:Vec<(&(MyNodeType, NodeId), &(u64,String))> = sim_log.msg_log.iter().filter(|(id, _)| id.1==node.0).collect();
+                ui.separator();
+                ui.label("Last sent message:");
 
-                if !msg.is_empty() {
-                    ui.label(format!("{}", msg[0].1.1));
+                let mut node_messages: Vec<_> = sim_log.msg_log.iter()
+                    .filter(|((initiator_id, _), _)| *initiator_id == node.0)
+                    .map(|((node_id, session_id), msg)| (*node_id, *session_id, msg))
+                    .collect();
 
-                    egui::ScrollArea::vertical()
-                        .max_height(200.)
-                        .show(ui, |ui| {
-                            ui.label("fragments dropped: ");
-                            for (_, (msg_session, _)) in msg.iter() {
-                                let fragments: Vec<(&(NodeId, u64), &Vec<Fragment>)> = sim_log.lost_msg.iter().filter(|session_id| session_id.0.1 == msg_session.clone()).collect();
-                                for (&(id, session), fragment) in fragments.clone() {
-                                    for fragment_info in fragment {
-                                        ui.label(format!("fragment: {} was dropped by {}", fragment_info.fragment_index, id));
-                                    }
+                node_messages.sort_by(|a, b| b.1.cmp(&a.1));
+
+                if let Some((_, session_id, msg_content)) = node_messages.first() {
+                    ui.group(|ui| {
+                        ui.label(format!("Session ID: {}", session_id));
+                        ui.label(msg_content.to_string());
+                    });
+
+                    ui.separator();
+
+                    ui.collapsing("Debug Info", |ui| {
+                        ui.label(format!("Looking for routes with key: ({}, {})", node.0, session_id));
+                        ui.label("All route_attempt entries:");
+
+                        let mut route_entries: Vec<_> = sim_log.route_attempt.iter().collect();
+                        route_entries.sort_by_key(|((node, session), _)| (*node, *session));
+
+                        for ((node_id, session), routes) in route_entries.iter().take(10) {
+                            ui.label(format!("  Node {}, Session {}: {} routes", node_id, session, routes.len()));
+                        }
+
+                        let node_routes: Vec<_> = sim_log.route_attempt.iter()
+                            .filter(|((n, _), _)| *n == node.0)
+                            .collect();
+
+                        ui.label(format!("Routes for node {}: {}", node.0, node_routes.len()));
+                        for ((_, session), routes) in node_routes {
+                            ui.label(format!("  Session {}: {} routes", session, routes.len()));
+                        }
+                    });
+
+                    ui.group(|ui| {
+                        ui.label("Routes taken:");
+
+                        if let Some(routes) = sim_log.route_attempt.get(&(node.0, *session_id)) {
+                            if routes.is_empty() {
+                                ui.label("  No route information available");
+                            } else {
+                                for (idx, route) in routes.iter().enumerate() {
+                                    ui.horizontal(|ui| {
+                                        ui.label(format!("  Route {}:", idx + 1));
+
+                                        let route_str = route.iter()
+                                            .map(|node| format!("{}", node))
+                                            .collect::<Vec<_>>()
+                                            .join(" → ");
+
+                                        ui.monospace(route_str);
+                                    });
                                 }
                             }
-                            ui.label("route attempts:");
-                            for (_, (session_id, _)) in msg.iter() {
-                                for ((id, session), route) in sim_log.route_attempt.iter() {
-                                    if session_id == session  {
-                                        ui.label(format!("routes chosen {:?}\n", route));
-                                    }
-                                }
-                            }
+                        } else {
+                            ui.label("  No route information recorded");
+                        }
+                    });
 
-                        });
+                    ui.separator();
+
+                    ui.group(|ui| {
+                        ui.label("Fragments dropped:");
+
+                        let lost_fragments: Vec<_> = sim_log.lost_msg.iter()
+                            .filter(|((_, session), _)| *session == *session_id)
+                            .collect();
+
+                        if lost_fragments.is_empty() {
+                            ui.label("  No fragments were lost");
+                        } else {
+                            egui::ScrollArea::vertical()
+                                .max_height(150.0)
+                                .show(ui, |ui| {
+                                    for ((drone_id, _), fragments) in lost_fragments {
+                                        for fragment in fragments {
+                                            ui.label(format!(
+                                                "  Fragment {} was dropped by Drone {}",
+                                                fragment.fragment_index, drone_id
+                                            ));
+                                        }
+                                    }
+                                });
+                        }
+                    });
+
+                    ui.separator();
+                    ui.collapsing("Other errors for this session", |ui| {
+                        let lost_nacks = sim_log.lost_nack.iter()
+                            .filter(|((_, session), _)| *session == *session_id)
+                            .map(|((node_id, _), nacks)| {
+                                format!("Lost NACK at Drone {}: {:?}", node_id, nacks)
+                            })
+                            .collect::<Vec<_>>()
+                            .join("\n");
+
+                        if !lost_nacks.is_empty() {
+                            ui.label("Lost NACKs:");
+                            ui.label(lost_nacks);
+                        }
+
+                        let lost_acks = sim_log.lost_ack.iter()
+                            .filter(|((_, session), _)| *session == *session_id)
+                            .map(|((node_id, _), acks)| {
+                                format!("Lost ACK at Drone {}: {:?}", node_id, acks)
+                            })
+                            .collect::<Vec<_>>()
+                            .join("\n");
+
+                        if !lost_acks.is_empty() {
+                            ui.label("Lost ACKs:");
+                            ui.label(lost_acks);
+                        }
+
+                        let lost_flood_req = sim_log.lost_flood_req.iter()
+                            .filter(|((_, session), _)| *session == *session_id)
+                            .map(|((node_id, _), reqs)| {
+                                format!("Lost FloodReq at Drone {}: {:?}", node_id, reqs)
+                            })
+                            .collect::<Vec<_>>()
+                            .join("\n");
+
+                        if !lost_flood_req.is_empty() {
+                            ui.label("Lost Flood Requests:");
+                            ui.label(lost_flood_req);
+                        }
+
+                        let lost_flood_resp = sim_log.lost_flood_resp.iter()
+                            .filter(|((_, session), _)| *session == *session_id)
+                            .map(|((node_id, _), resps)| {
+                                format!("Lost FloodResp at Drone {}: {:?}", node_id, resps)
+                            })
+                            .collect::<Vec<_>>()
+                            .join("\n");
+
+                        if !lost_flood_resp.is_empty() {
+                            ui.label("Lost Flood Responses:");
+                            ui.label(lost_flood_resp);
+                        }
+                    });
+
+                } else {
+                    ui.label("No messages sent by this node found.");
                 }
-                ui.label("Other errors:");
-                let lost_nack = sim_log.lost_nack.clone()
-                    .into_iter()
-                    .map(|((node_id, seq), nacks)| format!("Lost nack, (drone:{:?} session:{}) nack:{:?}", node_id, seq, nacks))
-                    .collect::<Vec<String>>()
-                    .join("\n");
-                ui.label(lost_nack);
-                let lost_flood_resp = sim_log.lost_flood_resp.clone()
-                    .into_iter()
-                    .map(|((node_id, session), flood)| format!("Lost FloodResp, (drone:{:?} session:{}) response:{:?}", node_id, session, flood))
-                    .collect::<Vec<String>>()
-                    .join("\n");
-                ui.label(lost_flood_resp);
-                let lost_ack = sim_log.lost_ack.clone()
-                    .into_iter()
-                    .map(|((node_id, session), ack)| format!("Lost Ack, (drone:{:?} session:{}) ack:{:?}", node_id, session, ack))
-                    .collect::<Vec<String>>()
-                    .join("\n");
-                ui.label(lost_ack);
-                let lost_flood_resp = sim_log.lost_flood_req.clone()
-                    .into_iter()
-                    .map(|((node_id, session), flood_req) | format!("Lost FloodReq, (drone:{:?} session:{}): request:{:?}", node_id, session,flood_req ))
-                    .collect::<Vec<String>>()
-                    .join("\n");
-                ui.label(lost_flood_resp);
-
-
             }
-            if ui.button("Close Window").clicked(){
-                open.advanced_logs=false;
+
+            if ui.button("Close Window").clicked() {
+                open.advanced_logs = false;
             }
         });
     }
 }
-// Helper function to render the graph visualization
+
+#[derive(Resource, Default)]
+struct LogInfo {
+    selected_node: Option<(NodeId, NodeType)>,
+    drop_rate: HashMap<NodeId, (u64, usize)>,
+    show_graph: bool
+}
 fn render_graph_visualization(
     painter: &egui::Painter,
     rect: &egui::Rect,
@@ -207,7 +305,6 @@ fn render_graph_visualization(
             node_positions.insert(*node_id, egui::pos2(x, y));
         }
 
-        // Draw connections
         for (source, target) in &connections {
             if let (Some(start_pos), Some(end_pos)) = (node_positions.get(source), node_positions.get(target)) {
                 painter.line_segment(
@@ -216,8 +313,6 @@ fn render_graph_visualization(
                 );
             }
         }
-
-        // Draw nodes
         for (node_id, pos) in &node_positions {
             painter.circle(
                 *pos,
@@ -234,10 +329,4 @@ fn render_graph_visualization(
             );
         }
     }
-}
-#[derive(Resource, Default)]
-struct LogInfo{
-    selected_node: Option<(NodeId, NodeType)>,
-    drop_rate: HashMap<NodeId, (u64,usize)>,
-    show_graph: bool
 }
