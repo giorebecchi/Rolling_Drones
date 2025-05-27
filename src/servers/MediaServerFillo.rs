@@ -216,7 +216,7 @@ impl Server{
                                     let path = self.paths.get(&media_id).unwrap().clone();
                                     self.send_image(path.as_str(),p.routing_header.hops[0],NodeType::Client);
                                     //da scommentare per gio 
-                                    // self.send_event.send(ServerEvent::MediaPacketInfo(self.server_id, MyNodeType::TextServer, MediaServerEvent::SendingMedia(fragment.total_n_fragments),p.session_id)).unwrap();
+                                    self.send_event.send(ServerEvent::MediaPacketInfo(self.server_id, MyNodeType::MediaServer, MediaServerEvent::SendingMedia(fragment.total_n_fragments),p.session_id)).unwrap();
                                 }
                             }
                             WebBrowserCommands::GetText(_) => {println!("I shouldn't receive this command");}
@@ -224,7 +224,7 @@ impl Server{
                                 println!("problems in sending servertype");
                                 self.send_packet(MediaServer::ServerTypeMedia(self.clone().server_type), p.routing_header.hops[0], NodeType::Client);
                                 //da scommentare per gio 
-                                // self.send_event.send(ServerEvent::MediaPacketInfo(self.server_id, MyNodeType::TextServer, MediaServerEvent::SendingServerTypeMedia(fragment.total_n_fragments),p.session_id)).unwrap();
+                                self.send_event.send(ServerEvent::MediaPacketInfo(self.server_id, MyNodeType::MediaServer, MediaServerEvent::SendingServerTypeMedia(fragment.total_n_fragments),p.session_id)).unwrap();
                             }
                         }
                     }else {
@@ -245,7 +245,7 @@ impl Server{
                                         //println!("sono il media {:?} e sto mandando il mio pathres {:?} al text {:?}",self.server_id,self.server_type,p.routing_header.hops[0]);
                                         self.send_packet(MediaServer::SendPath(self.clone().images_ids),p.routing_header.hops[0], NodeType::Server);
                                         // da scommentare per gio 
-                                        // self.send_event.send(ServerEvent::MediaPacketInfo(self.server_id, MyNodeType::TextServer, MediaServerEvent::SendingPathRes(fragment.total_n_fragments),p.session_id)).unwrap();
+                                        self.send_event.send(ServerEvent::MediaPacketInfo(self.server_id, MyNodeType::MediaServer, MediaServerEvent::SendingPathRes(fragment.total_n_fragments),p.session_id)).unwrap();
                                     }
                                     _ => {println!("I shouldn't receive these commands");}
                                 }

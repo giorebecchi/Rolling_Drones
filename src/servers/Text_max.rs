@@ -66,7 +66,7 @@ impl Server {
         self.load_files_from_directory(Path::new(&path));
         println!("{:?}", self.file_list);
         println!("{:?}", self.media_list);
-        //self.floading();
+        self.floading();
 
 
         loop {
@@ -191,12 +191,14 @@ impl Server {
     fn handle_flood_request(&mut self, packet: Packet) {
         if let PacketType::FloodRequest(mut flood) = packet.pack_type {
             if self.already_visited.contains(&(flood.initiator_id, flood.flood_id)) {
+                flood.path_trace.push((self.server_id, NodeType::Server));
                 let response = FloodRequest::generate_response(&flood, packet.session_id);
                 self.send_packet(response);
                 return;
             } else {
                 self.already_visited.insert((flood.initiator_id, flood.flood_id));
                 if self.packet_send.len() == 1 {
+                    flood.path_trace.push((self.server_id, NodeType::Server));
                     let response = FloodRequest::generate_response(&flood, packet.session_id);
                     self.send_packet(response);
                 } else {
@@ -551,18 +553,21 @@ impl Server {
 
 
                     match path.extension().and_then(|ext| ext.to_str()).map(|s| s.to_lowercase()) {
-                        Some(ext) if ext == "txt" => {
-                            if let Some(file_name) = path.file_name().and_then(|n| n.to_str()) {
-                                self.file_list.push((file_name.to_string(), path_str.clone()));
-                            }
-                        }
-                        Some(ext) if ext == "jpg" || ext == "jpeg" => {
-                            if let Some(file_name) = path.file_name().and_then(|n| n.to_str()) {
-                                self.media_list.push((file_name.to_string(), path_str.clone()));
+                        Some(ext)=>{
+                            if ext == "txt" {
+                                if let Some(file_name) = path.file_name().and_then(|n| n.to_str()) {
+                                    self.file_list.push((file_name.to_string(), path_str.clone()));
+                                }
+                            }else{
+                                if let Some(file_name) = path.file_name().and_then(|n| n.to_str()) {
+                                    self.media_list.push((file_name.to_string(), path_str.clone()));
+                                }else{
+                                    println!("Estensione non supportata");
+                                }
                             }
                         }
                         _ => {
-                            // Estensione non supportata
+
                         }
                     }
                 }

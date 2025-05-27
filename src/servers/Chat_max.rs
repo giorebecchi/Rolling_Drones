@@ -179,12 +179,14 @@ impl Server {
     fn handle_flood_request(&mut self, packet: Packet) {
         if let PacketType::FloodRequest(mut flood) = packet.pack_type {
             if self.already_visited.contains(&(flood.initiator_id, flood.flood_id)) {
+                flood.path_trace.push((self.server_id, NodeType::Server));
                 let response = FloodRequest::generate_response(&flood, packet.session_id);
                 self.send_packet(response);
                 return;
             } else {
                 self.already_visited.insert((flood.initiator_id, flood.flood_id));
                 if self.packet_send.len() == 1 {
+                    flood.path_trace.push((self.server_id, NodeType::Server));
                     let response = FloodRequest::generate_response(&flood, packet.session_id);
                     self.send_packet(response);
                 } else {

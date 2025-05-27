@@ -144,10 +144,8 @@ fn log_window(
                             ui.label("route attempts:");
                             for (_, (session_id, _)) in msg.iter() {
                                 for ((id, session), route) in sim_log.route_attempt.iter() {
-                                    if session_id == session {
-                                        if node.0 == id.clone() {
-                                            ui.label(format!("routes chosen {:?}\n", route));
-                                        }
+                                    if session_id == session  {
+                                        ui.label(format!("routes chosen {:?}\n", route));
                                     }
                                 }
                             }

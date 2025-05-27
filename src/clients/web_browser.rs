@@ -146,7 +146,9 @@ impl WebBrowser {
     }
 
     pub fn search_type_servers(& mut self) {
+        println!("Asked server type");
         for server in self.servers.clone() {
+            println!("Asked server type to server{}",server);
             self.ask_type(server);
         }
     }
