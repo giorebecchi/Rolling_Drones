@@ -32,7 +32,7 @@ impl Server {
         let n = NodeType::Server;
         Server {
             server_id: id,
-            server_type: ServerType::TextServer,
+            server_type: ServerType::CommunicationServer,
             nodes_map: vec![(id,n, links)],
             fragment_recv: HashMap::new(),
             fragment_send: HashMap::new(),
@@ -414,6 +414,7 @@ impl Server {
         }
     }
     fn send_response(&mut self, id: NodeId, response: Risposta, session: &u64) {
+        println!{"risposta: {:#?}", response}
         match response {
             Risposta::Chat(chat) => {
                 let dati = serialize(&chat);
