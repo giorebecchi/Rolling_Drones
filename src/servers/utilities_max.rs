@@ -8,7 +8,7 @@ use wg_2024::packet::{Ack, Packet, PacketType};
 
 
 
-use serde::Serialize;
+use serde::{Deserialize, Serialize};
 use crate::common_things::common::{ChatRequest, ChatResponse, MediaServer, TextServer, WebBrowserCommands};
 
 
@@ -119,16 +119,19 @@ pub fn deserialize_comando_chat(input: Box<[([u8; 128], u8)]>) -> ComandoChat {
 
 //----------------------------------------------------------------------------------------------------
 
-
+#[derive(Deserialize)]
 pub enum ComandoChat{
     Client(ChatRequest),
     Text(TextServer),
 }
+
+#[derive(Debug, Serialize)]
 pub enum Risposta{
     Text(TextServer),
     Media(MediaServer),
     Chat(ChatResponse)
 }
+#[derive(Deserialize)]
 pub enum ComandoText{
     Media(MediaServer),
     Text(TextServer),
