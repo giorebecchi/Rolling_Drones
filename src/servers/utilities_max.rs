@@ -1,6 +1,7 @@
 use std::cmp::Ordering;
 use std::fs;
 use std::path::Path;
+use bevy::log::error;
 use bincode;
 use wg_2024::network::{NodeId, SourceRoutingHeader};
 use wg_2024::packet::{Ack, Packet, PacketType};
@@ -9,6 +10,7 @@ use wg_2024::packet::{Ack, Packet, PacketType};
 
 
 use serde::{Deserialize, Serialize};
+use serde::de::Error;
 use crate::common_things::common::{ChatRequest, ChatResponse, MediaServer, TextServer, WebBrowserCommands};
 
 
@@ -74,9 +76,13 @@ pub fn deserialize_comando_text(input: Box<[([u8; 128], u8)]>) -> ComandoText {
         return ComandoText::Client(client);
     }
 
+    if let Ok(req) = serde_json::from_str::<ChatRequest>(&serialized_string) {
+        return ComandoText::ChatClient(req);
+    }
 
     panic!("Errore: Nessuna delle deserializzazioni ha avuto successo per ComandoText.");
 }
+
 pub fn deserialize_comando_chat(input: Box<[([u8; 128], u8)]>) -> ComandoChat {
     let total_length: usize = input.iter().map(|(_, len)| *len as usize).sum();
     let mut all_bytes = Vec::with_capacity(total_length);
@@ -101,15 +107,16 @@ pub fn deserialize_comando_chat(input: Box<[([u8; 128], u8)]>) -> ComandoChat {
         return ComandoChat::Text(text);
     }
 
-
-
-
     if let Ok(client ) = serde_json::from_str::<ChatRequest>(&serialized_string) {
         return ComandoChat::Client(client);
     }
 
+    if let Ok(web) = serde_json::from_str::<WebBrowserCommands>(&serialized_string) {
+        return ComandoChat::WebBrowser(web);
+    }
 
-    panic!("Errore: Nessuna delle deserializzazioni ha avuto successo per ComandoText.");
+
+    panic!("Errore: Nessuna delle deserializzazioni ha avuto successo per ComandoChat.");
 }
 
 
@@ -123,6 +130,7 @@ pub fn deserialize_comando_chat(input: Box<[([u8; 128], u8)]>) -> ComandoChat {
 pub enum ComandoChat{
     Client(ChatRequest),
     Text(TextServer),
+    WebBrowser(WebBrowserCommands),
 }
 
 #[derive(Debug, Serialize)]
@@ -136,7 +144,8 @@ pub enum ComandoText{
     Media(MediaServer),
     Text(TextServer),
     Chat(ChatResponse),
-    Client(WebBrowserCommands)
+    Client(WebBrowserCommands),
+    ChatClient(ChatRequest)
 }
 #[derive(Eq, PartialEq)]
 pub(crate) struct State {

@@ -13,7 +13,7 @@ use wg_2024::network::{NodeId, SourceRoutingHeader};
 use wg_2024::packet::{Ack, FloodRequest, FloodResponse, Fragment, Nack, NackType, NodeType, Packet, PacketType};
 use bevy::utils::HashSet;
 use rand::Rng;
-
+use serde_json::Error;
 
 pub struct Server{
     server_id: NodeId,
@@ -384,7 +384,7 @@ impl Server {
     fn handle_command(&mut self, session: &u64) {
         let data = self.fragment_recv.get(session).unwrap();
         let d = data.dati.clone();
-        let command: ComandoText = deserialize_comando_text(d);
+        let command = deserialize_comando_text(d);
         let id_client = data.who_ask;
         match command {
             ComandoText::Media(media) => {
@@ -475,7 +475,18 @@ impl Server {
                     WebBrowserCommands::GetServerType => {
                         let response = Risposta::Text(TextServer::ServerTypeText(self.server_type.clone()));
                         self.send_response(id_client, response, session);
+                        let response = Risposta::Text(TextServer::ServerTypeText(ServerType::MediaServer));
+                        self.send_response(id_client, response, session);
                     }
+                }
+            }
+            ComandoText::ChatClient(req) => {
+                match req{
+                    ChatRequest::ServerType => {
+                        //let response = Risposta::Text(TextServer::ServerTypeText(self.server_type.clone()));
+                        //self.send_response(id_client, response, session);
+                    },
+                    _ => {}
                 }
             }
         }

@@ -404,6 +404,15 @@ impl Server {
                     _ => {unreachable!()}
                 }
             }
+            ComandoChat::WebBrowser(req) => {
+                match req {
+                    WebBrowserCommands::GetServerType => {
+                        //let response = Risposta::Chat(ChatResponse::ServerTypeChat(self.server_type.clone()));
+                        //self.send_response(id_client, response, session);
+                    }
+                    _ => {}
+                }
+            }
         }
     }
     fn is_present(&self, receiver: NodeId, sender: NodeId) -> Result<String, String> {
