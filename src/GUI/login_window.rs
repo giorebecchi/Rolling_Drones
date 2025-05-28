@@ -26,6 +26,7 @@ use crate::GUI::chat_windows::ChatSystemPlugin;
 use crate::GUI::shared_info_plugin::{BackendBridgePlugin, SeenClients};
 use crate::GUI::web_media_plugin::WebMediaPlugin;
 use crate::GUI::advanced_logs_window::AdvancedLogsPlugin;
+use crate::GUI::simulation_commands::SimulationCommandsPlugin;
 
 #[derive(Component)]
 struct InputText;
@@ -70,7 +71,7 @@ pub struct SimState{
     pub state: Arc<Mutex<SharedSimState>>
 }
 #[derive(Resource, Default, Debug)]
-struct NodeEntities(pub Vec<Entity>);
+pub struct NodeEntities(pub Vec<Entity>);
 
 #[derive(Default,Debug,Clone,PartialEq)]
 pub enum NodeType{
@@ -149,6 +150,7 @@ pub fn main() {
         .add_plugins(AdvancedLogsPlugin)
         .add_plugins(FramepacePlugin)
         .add_plugins(ChatSystemPlugin)
+        .add_plugins(SimulationCommandsPlugin)
         .insert_resource(FramepaceSettings {
             limiter: Limiter::Auto,
         })
@@ -478,236 +480,12 @@ fn ui_settings(
                             next_state.set(AppState::Menu);
                         }
                     });
-                    ui.menu_button("Simulation Commands", |ui| {
-                        if ui.button("Crash Drone").clicked() {
-                            simulation_commands.show_crash_window = true;
-                        }
-                        if ui.button("Add Sender").clicked() {
-                            simulation_commands.show_add_sender_window=true;
-                        }
-                        if ui.button("Remove Sender").clicked(){
-                            simulation_commands.show_remove_sender_window=true;
-                        }
-                        if ui.button("Set Pdr").clicked(){
-                            simulation_commands.show_set_pdr_window=true;
-                        }
-                        if ui.button("Spawn New Drone").clicked(){
-                            simulation_commands.show_spawn_new_drone=true;
-                        }
-                    });
+                    if ui.button("Simulation Commands").clicked() {
+                        sim_windows.simulation_commands = true;
+                    }
                 });
-                if simulation_commands.show_crash_window {
-                    egui::Window::new("Crash")
-                        .open(&mut simulation_commands.show_crash_window.clone())
-                        .show(ctx, |ui| {
-                            ui.label("Choose which drone to crash");
-                            ui.add(TextEdit::singleline(&mut (*simulation_commands).crash_drone));
-                            ui.horizontal(|ui|{
-
-                                if ui.button("Confirm").clicked() {
-                                    let id=parse_id(simulation_commands.crash_drone.clone());
-
-                                    sim.crash(id);
-                                    let mut crashed=nodes.0.iter_mut().position(|node| node.id==id).map(|index| nodes.0.remove(index));
-                                    if let Some(mut crash)=crashed{
-                                        crash.connected_node_ids.clear();
-                                    }
-
-                                }
 
 
-                                if ui.button("Exit").clicked(){
-                                    simulation_commands.show_crash_window=false;
-                                }
-                            });
-                        });
-                }
-                if simulation_commands.show_add_sender_window{
-                    egui::Window::new("Add Sender")
-                        .open(&mut simulation_commands.show_add_sender_window.clone())
-                        .show(ctx, |ui|{
-                            ui.label("Choose the drone to be added");
-                            ui.add(TextEdit::singleline(&mut (*simulation_commands).target_sender));
-                            ui.label("Insert all IDs with a '-' between them");
-                            ui.add(TextEdit::singleline(&mut (*simulation_commands).sender_neighbours));
-                            ui.horizontal(|ui|{
-
-                                if ui.button("Confirm").clicked(){
-                                    let target_id=parse_id(simulation_commands.target_sender.clone());
-                                    let possible_ids:Vec<String>=simulation_commands.sender_neighbours.split('-').map(String::from).collect();
-                                    for possible_id in possible_ids{
-
-                                        let id=parse_id(possible_id.clone());
-
-                                        sim.add_sender(target_id,id);
-                                        for mut node in &mut nodes.0{
-                                            if node.id==id{
-                                                node.connected_node_ids.push(target_id);
-                                            }
-                                        }
-
-                                    }
-
-                                }
-                                if ui.button("Exit").clicked(){
-                                    simulation_commands.show_add_sender_window=false;
-                                }
-                            });
-
-
-                        });
-                }
-                if simulation_commands.show_remove_sender_window{
-                    egui::Window::new("Remove Sender")
-                        .open(&mut simulation_commands.show_remove_sender_window.clone())
-                        .show(ctx, |ui|{
-                            ui.label("Insert the ID of the drone");
-                            ui.add(TextEdit::singleline(&mut simulation_commands.target_remove));
-                            ui.label("Insert the ID(s) of the neighbours you want to be removed\nwith a '-' between them");
-                            ui.add(TextEdit::singleline(&mut simulation_commands.remove_neighbours));
-                            ui.horizontal(|ui|{
-                                if ui.button("Confirm")
-                                    .clicked(){
-                                    let target_id=parse_id(simulation_commands.target_remove.clone());
-                                    let possible_ids:Vec<String>=simulation_commands.remove_neighbours.split('-').map(String::from).collect();
-                                    for possible_id in possible_ids{
-                                        let id=parse_id(possible_id);
-                                        sim.remove_sender(target_id,id);
-                                        for mut node in &mut nodes.0{
-                                            if node.id==target_id{
-                                                for i in 0..node.connected_node_ids.len(){
-                                                    if node.connected_node_ids[i]==id{
-                                                        node.connected_node_ids.remove(i);
-                                                        break;
-                                                    }
-                                                }
-                                            }
-                                        }
-                                    }
-                                }
-                                if ui.button("Exit")
-                                    .clicked(){
-                                    simulation_commands.show_remove_sender_window=false;
-                                }
-                            })
-                    });
-                }
-                if simulation_commands.show_set_pdr_window{
-                    egui::Window::new("Change PDR")
-                        .open(&mut simulation_commands.show_set_pdr_window.clone())
-                        .show(ctx, |ui|{
-                            ui.label("Insert the ID of the drone");
-                            ui.add(TextEdit::singleline(&mut simulation_commands.pdr_drone));
-                            ui.label("Insert the pdr as a float");
-                            ui.add(TextEdit::singleline(&mut simulation_commands.pdr));
-                            ui.horizontal(|ui| {
-                                if ui.button("Confirm")
-                                    .clicked() {
-                                    let id = parse_id(simulation_commands.pdr_drone.clone());
-                                    let pdr = simulation_commands.pdr.parse::<f32>().unwrap_or_else(|_| 0.);
-                                    sim.pdr(id, pdr);
-                                }
-                                if ui.button("Exit")
-                                    .clicked() {
-                                    simulation_commands.show_set_pdr_window=false;
-                                }
-                            });
-                        });
-                }
-                if simulation_commands.show_spawn_new_drone{
-                    egui::Window::new("Spawn New Drone")
-                        .open(&mut simulation_commands.show_spawn_new_drone.clone())
-                        .show(ctx, |ui|{
-                            ui.horizontal(|ui|{
-                                //ui.label("Please choose which drone to spawn");
-                                //menu::bar(ui, |ui|{
-                                //    ui.menu_button("New Drone",|ui|{
-                                //        if ui.button("LockHeedRustin")
-                                //            .clicked(){
-                                //            simulation_commands.type_new_drone=DroneBrand::LockHeedRustin;
-//
-//
-                                //        }
-                                //        else if ui.button("BagelBomber")
-                                //            .clicked(){
-                                //            simulation_commands.type_new_drone=DroneBrand::BagelBomber;
-//
-                                //        }
-                                //        else if ui.button("FungiDrone")
-                                //            .clicked(){
-                                //            simulation_commands.type_new_drone=DroneBrand::FungiDrone;
-//
-                                //        }
-                                //        else if ui.button("SkyLinkDrone")
-                                //            .clicked(){
-                                //            simulation_commands.type_new_drone=DroneBrand::SkyLinkDrone;
-//
-                                //        }
-                                //        else if ui.button("Krusty_C")
-                                //            .clicked(){
-                                //            simulation_commands.type_new_drone=DroneBrand::KrustyC;
-//
-                                //        }
-                                //        else if ui.button("RustDrone")
-                                //            .clicked(){
-                                //            simulation_commands.type_new_drone=DroneBrand::RustDrone;
-//
-                                //        }
-                                //        else if ui.button("Rustafarian")
-                                //            .clicked(){
-                                //            simulation_commands.type_new_drone=DroneBrand::Rustafarian;
-//
-                                //        }
-                                //        else if ui.button("RustBusters")
-                                //            .clicked(){
-                                //            simulation_commands.type_new_drone=DroneBrand::RustBusterDrone;
-//
-                                //        }
-                                //        else if ui.button("LeDroneJames")
-                                //            .clicked(){
-                                //            simulation_commands.type_new_drone=DroneBrand::LeDroneJames;
-//
-                                //        }
-                                //        else if ui.button("Rusteze")
-                                //            .clicked(){
-                                //            simulation_commands.type_new_drone=DroneBrand::RustezeDrone;
-//
-                                //        }
-                                //    });
-                                //})
-                            });
-                            ui.label("Insert the ID of the new drone");
-                            ui.add(TextEdit::singleline(&mut simulation_commands.new_drone_id));
-                            ui.label("Insert the connections of the new drone\nseparated by a '-'");
-                            ui.add(TextEdit::singleline(&mut simulation_commands.new_drone_links));
-                            ui.horizontal(|ui|{
-                                if ui.button("Confirm")
-                                    .clicked(){
-                                    let mut links=Vec::new();
-                                    let possible_ids:Vec<String>=simulation_commands.new_drone_links.split('-').map(String::from).collect();
-                                    for id in possible_ids{
-                                        let link=parse_id(id);
-                                        links.push(link);
-                                    }
-                                    let new_id=parse_id(simulation_commands.new_drone_id.clone());
-                                    for entity in node_entities.0.clone(){
-                                        commands.entity(entity).despawn_recursive();
-                                    }
-                                    node_entities.0.clear();
-                                    sim.spawn_new_drone(links.clone(), new_id);
-                                    event_writer.send(NewDroneSpawned{
-                                        drone: (links,new_id)
-                                    });
-
-                                }
-                                if ui.button("Exit")
-                                    .clicked(){
-                                    simulation_commands.show_spawn_new_drone=false;
-                                }
-                            });
-                        });
-
-                }
 
 
             })
@@ -792,6 +570,7 @@ fn parse_id(id: String)->NodeId{
 #[derive(Resource,Default)]
 pub struct SimWindows{
     pub advanced_logs: bool,
+    pub simulation_commands: bool,
 }
 #[derive(Resource, Clone, Default)]
 pub struct DisplayableLog{
