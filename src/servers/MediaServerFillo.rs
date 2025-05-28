@@ -141,7 +141,7 @@ impl Server{
 
     fn send_packet<T>(&mut self, p:T, id:NodeId, nt:NodeType)where T : Fragmentation+Serialize+Debug{
         // println!("flooding : {:?}", self.flooding); //fa vedere tutte le flood response salvaate nel server
-         println!("graph del media {:?} : {:?}",self.server_id , self.neigh_map); //fa vedere il grafo (tutti i nodi e tutti gli edges)
+        //println!("graph del media {:?} : {:?}",self.server_id , self.neigh_map); //fa vedere il grafo (tutti i nodi e tutti gli edges)
         if let Some(srh) = self.best_path_custom_cost(id,nt){
             println!("srh : {:?}",srh);
             if let Ok(vec) = p.serialize_data(srh,self.session_id){
@@ -428,7 +428,7 @@ impl Server{
     }
 
     fn handle_flood_response(&mut self, p:Packet){
-        println!("media server flood response: {}", p.pack_type);
+        //println!("media server flood response: {}", p.pack_type);
         if let PacketType::FloodResponse(mut flood) = p.pack_type{
             // println!("server {} has received flood response {}", self.server_id,flood.clone());
             let mut safetoadd = true;
