@@ -1,39 +1,16 @@
 
-use crossbeam_channel::{select_biased, unbounded, Receiver, Sender};
+use crossbeam_channel::{select_biased, unbounded, Sender};
 use std::collections::{HashMap, HashSet};
-
-use std::thread;
-use crate::servers::TextServerFillo::Server as TextServerBaia;
-use crate::servers::MediaServerFillo::Server as MediaServerBaia;
-use std::sync::{Arc,Mutex};
-use std::time::Duration;
 use wg_2024::controller::{DroneCommand,DroneEvent};
 use wg_2024::drone::{Drone};
-use wg_2024::network::{NodeId, SourceRoutingHeader};
-use wg_2024::packet::{Fragment, NackType, Packet, PacketType};
-use bevy::prelude::{Res, ResMut};
-use bagel_bomber::BagelBomber;
-use fungi_drone::FungiDrone;
-use skylink::SkyLinkDrone;
-use LeDron_James::Drone as Le_Drone;
-use lockheedrustin_drone::LockheedRustin;
-use wg_2024_rust::drone::RustDrone;
-use rustbusters_drone::RustBustersDrone;
-use rusteze_drone::RustezeDrone;
-use rustafarian_drone::RustafarianDrone;
-use wg_2024::config::Config;
-use wg_2024::packet::PacketType::{FloodRequest, MsgFragment, Nack};
-use crate::clients::assembler::Fragmentation;
-use crate::GUI::login_window::{NodeType, SharedSimState, SimulationController, SHARED_LOG};
-use crate::network_initializer::network_initializer::parse_config;
-use crate::GUI::shared_info_plugin::SHARED_STATE;
-use crate::servers::ChatServer::Server;
-use crate::clients::chat_client::ChatClient;
-use crate::clients::web_browser::WebBrowser;
-use crate::common_things::common::{BackGroundFlood, ChatClientEvent, ChatEvent, ChatRequest, ChatResponse, ChatServerEvent, ClientType, CommandChat, ContentCommands, ContentType, MediaServerEvent, ServerCommands, ServerEvent, ServerType, TextServerEvent, WebBrowserEvents};
-use crate::common_things::common::ServerType::CommunicationServer;
-use crate::servers::Text_max::Server as TextMax;
-use crate::servers::Chat_max::Server as ChatMax;
+use wg_2024::network::{NodeId};
+use wg_2024::packet::{Ack, Fragment, Packet, PacketType};
+use petgraph::Graph;
+use petgraph::graphmap::UnGraphMap;
+use wg_2024::packet::PacketType::{FloodRequest, MsgFragment};
+use crate::gui::login_window::{NodeType, SimulationController, SHARED_LOG};
+use crate::gui::shared_info_plugin::SHARED_STATE;
+use crate::common_things::common::{BackGroundFlood, ChatClientEvent, ChatEvent, ChatServerEvent, ClientType, CommandChat, ContentCommands, ContentRequest, ContentType, MediaServerEvent, RequestEvent, ServerCommands, ServerEvent, TextServerEvent, WebBrowserEvents};
 
 #[derive(Clone,Debug,PartialEq, Eq, Hash)]
 pub enum MyNodeType{
@@ -78,574 +55,690 @@ impl Default for SimulationController{
 
 
 impl SimulationController {
-    fn run(&mut self) {
-        let mut flood_req_hash=HashSet::new();
-        loop{
+    pub(crate) fn run(&mut self) {
+        let mut flood_req_hash = HashSet::new();
+
+        loop {
             select_biased! {
-                recv(self.chat_event) -> event =>{
+                recv(self.chat_event) -> event => {
                     if let Ok(chat_event) = event {
-                        match chat_event {
-                            ChatClientEvent::IncomingMessage((id_client,id_server,id_from),message)=>{
-
-                                if let Ok(mut state)=SHARED_STATE.write(){
-                                    if let Some(mut messages) = state.responses.get_mut(&(id_server,(id_from,id_client))){
-                                        messages.push(message.clone());
-                                    }else{
-                                        let mut messages=Vec::new();
-                                        messages.push(message);
-                                        state.responses.insert((id_server,(id_from,id_client)),messages);
-                                    }
-                                    state.is_updated=true;
-                                }
-
-                            },
-                            ChatClientEvent::ClientList((id_client,id_server), mut registered_clients)=>{
-
-                                if let Ok(mut state)=SHARED_STATE.write(){
-                                    if let Some( current_clients) = state.client_list.get_mut(&(id_client,id_server)) {
-                                        let _=std::mem::replace(current_clients, registered_clients);
-                                    }else{
-                                        state.client_list.insert((id_client,id_server),registered_clients);
-                                    }
-                                    state.is_updated=true;
-                                }
-                            },
-                            ChatClientEvent::RegisteredSuccess((id_client, id_server), result)=>{
-
-                                if let Ok(mut state)=SHARED_STATE.write(){
-                                    match result{
-                                        Ok(_)=>{
-                                            state.registered_clients.insert((id_client, id_server), true);
-                                        },
-                                        Err(_)=>{
-                                            state.registered_clients.insert((id_client, id_server), false);
-
-                                        }
-
-                                    }
-                                    state.is_updated=true;
-                                }
-
-                            },
-                            ChatClientEvent::ChatServers(client_id, chat_servers)=>{
-                                if let Ok(mut state)=SHARED_STATE.write(){
-                                    if let Some( current_chat_servers) = state.chat_servers.get_mut(&client_id) {
-                                        let _=std::mem::replace(current_chat_servers, chat_servers);
-                                    }else{
-                                        state.chat_servers.insert(client_id,chat_servers);
-                                    }
-                                    state.is_updated=true;
-                                }
-
-                            },
-                            ChatClientEvent::ClientType(client_type,node_id)=>{
-                                if let Ok(mut state)=SHARED_STATE.write(){
-                                    match client_type{
-                                        ClientType::ChatClient=>state.chat_clients.push(node_id),
-                                        ClientType::WebBrowser=>state.web_clients.push(node_id),
-                                    }
-                                    state.is_updated=true;
-                                }
-                            }
-                            ChatClientEvent::PacketInfo(client, event, session) => {
-                                match event {
-                                    ChatEvent::ChatServers(size) => {
-                                        if let Ok(mut state) = SHARED_LOG.write() {
-                                            state.msg_log.insert(
-                                                (client, session),
-                                                format!(
-                                                    "Chat Client {}: asked for list of Chat Servers\nThe message was made of {} fragments",
-                                                    client, size
-                                                )
-                                            );
-                                            state.is_updated = true;
-                                        }
-                                    },
-                                    ChatEvent::ClientList(size) => {
-                                        if let Ok(mut state) = SHARED_LOG.write() {
-                                            state.msg_log.insert(
-                                                (client, session),
-                                                format!(
-                                                    "Chat Client {}: asked for list of Chat Clients\nThe message was made of {} fragments",
-                                                    client, size
-                                                )
-                                            );
-                                            state.is_updated = true;
-                                        }
-                                    },
-                                    ChatEvent::IncomingMessage(size) => {
-                                        if let Ok(mut state) = SHARED_LOG.write() {
-                                            state.msg_log.insert(
-                                                (client, session),
-                                                format!(
-                                                    "Chat Client {}: received a message\nThe message was made of {} fragments",
-                                                    client, size
-                                                )
-                                            );
-                                            state.is_updated = true;
-                                        }
-                                    },
-                                    ChatEvent::RegisteredSuccess(size) => {
-                                        if let Ok(mut state) = SHARED_LOG.write() {
-                                            state.msg_log.insert(
-                                                (client, session),
-                                                format!(
-                                                    "Chat Client {}: registered successfully\nThe message was made of {} fragments",
-                                                    client, size
-                                                )
-                                            );
-                                            state.is_updated = true;
-                                        }
-                                    },
-                                    ChatEvent::ClientType(size) => {
-                                        if let Ok(mut state) = SHARED_LOG.write() {
-                                            state.msg_log.insert(
-                                                (client, session),
-                                                format!(
-                                                    "Chat Client {}: revealed its type\nThe message was made of {} fragments",
-                                                    client, size
-                                                )
-                                            );
-                                            state.is_updated = true;
-                                        }
-                                    }
-                                }
-                            },
-                            ChatClientEvent::Graph(id, graph) =>{
-                                if let Ok(mut state) = SHARED_LOG.write(){
-                                    state.graph.insert(id, graph);
-                                }
-                            }
-                            _=>{}
-                        }
+                        self.handle_chat_event(chat_event);
                     }
                 }
-                recv(self.web_event) -> event =>{
-                    if let Ok(web_event) = event{
-                        match web_event {
-                            WebBrowserEvents::MediaServers(client, media_servers)=>{
-                                if let Ok(mut state)=SHARED_STATE.write(){
-                                    println!("media_servers sim: {:?} from client: {}",media_servers,client);
-                                    if let Some(current_media_servers)=state.media_servers.get_mut(&client){
-                                        let _=std::mem::replace(current_media_servers, media_servers);
-                                    }else{
-                                        state.media_servers.insert(client, media_servers);
-                                    }
-                                    state.is_updated=true;
-                                }
-
-                            }
-                            WebBrowserEvents::TextServers(client, text_servers)=>{
-                                if let Ok(mut state)=SHARED_STATE.write(){
-                                    if let Some(current_media_servers)=state.text_servers.get_mut(&client){
-                                        let _=std::mem::replace(current_media_servers, text_servers);
-                                    }else{
-                                        state.text_servers.insert(client, text_servers);
-                                    }
-                                    state.is_updated=true;
-                                }
-
-                            }
-                            WebBrowserEvents::ListFiles(client, media_paths)=>{
-                                if let Ok(mut state)=SHARED_STATE.write(){
-                                    if let Some(current_paths)=state.client_medias.get_mut(&client){
-                                        let _=std::mem::replace(current_paths, media_paths);
-                                    }else{
-                                        state.client_medias.insert(client,media_paths);
-                                    }
-                                    state.is_updated=true;
-                                }
-                            }
-                            WebBrowserEvents::MediaPosition(client, target_media_server)=>{
-                                if let Ok(mut state)=SHARED_STATE.write(){
-                                    if let Some(current_media_server)=state.target_media_server.get_mut(&client){
-                                        let _=std::mem::replace(current_media_server, target_media_server);
-                                    }else{
-                                        state.target_media_server.insert(client, target_media_server);
-                                    }
-                                    state.is_updated=true;
-                                }
-                            }
-                            WebBrowserEvents::SavedMedia(client, actual_media)=>{
-                                if let Ok(mut state)=SHARED_STATE.write(){
-                                    if let Some(current_path)=state.actual_media_path.get_mut(&client){
-                                        let _=std::mem::replace(current_path, actual_media);
-                                    }else{
-                                        state.actual_media_path.insert(client,actual_media);
-                                    }
-                                    state.is_updated=true;
-                                }
-                            }
-                            WebBrowserEvents::SavedTextFile(client, actual_file)=>{
-                                if let Ok(mut state)=SHARED_STATE.write(){
-                                    if let Some(current_path)=state.actual_file_path.get_mut(&client){
-                                        let _=std::mem::replace(current_path, actual_file);
-                                    }else{
-                                        state.actual_file_path.insert(client,actual_file);
-                                    }
-                                    state.is_updated=true;
-                                }
-                            }
-                            WebBrowserEvents::PacketInfo(client, packet_info, session_id)=>{
-                                match packet_info{
-                                    ContentType::TextServerList(size)=>{
-                                        if let Ok(mut state)= SHARED_LOG.write(){
-                                            state.msg_log.insert((client, session_id), format!("Web browser: {} asked for list of Text Servers\n the message was made of {} fragments\n", client, size));
-                                            state.is_updated=true;
-                                        }
-                                    }
-                                    ContentType::MediaServerList(size)=>{
-                                         if let Ok(mut state)= SHARED_LOG.write(){
-                                            state.msg_log.insert((client,session_id), format!("Web browser: {} asked for list of Media Servers\n the message was made of {} fragments\n", client, size));
-                                            state.is_updated=true;
-                                        }
-                                    }
-                                    ContentType::FileList(size)=>{
-                                        if let Ok(mut state)= SHARED_LOG.write(){
-                                            state.msg_log.insert((client,session_id), format!("Web browser: {} asked for File List\n the message was made of {} fragments\n", client, size));
-                                            state.is_updated=true;
-                                        }
-                                    }
-                                    ContentType::MediaPosition(size)=>{
-                                        if let Ok(mut state)= SHARED_LOG.write(){
-                                            state.msg_log.insert((client,session_id), format!("Web browser: {} asked for Media Position\n the message was made of {} fragments\n", client, size));
-                                            state.is_updated=true;
-                                        }
-                                    }
-                                    ContentType::SavedText(size)=>{
-                                        if let Ok(mut state)= SHARED_LOG.write(){
-                                            state.msg_log.insert((client,session_id), format!("Web browser: {} asked for a Text File\n the message was made of {} fragments\n", client, size));
-                                            state.is_updated=true;
-                                        }
-                                    }
-                                    ContentType::SavedMedia(size)=>{
-                                        if let Ok(mut state)= SHARED_LOG.write(){
-                                            state.msg_log.insert((client,session_id), format!("Web browser: {} asked for a Media\n the message was made of {} fragments\n", client, size));
-                                            state.is_updated=true;
-                                        }
-                                    }
-                                }
-                            },
-                            WebBrowserEvents::Graph(id, graph) =>{
-                                if let Ok(mut state) = SHARED_LOG.write(){
-                                    state.graph.insert(id, graph);
-                                }
-                            }
-
-                            _=>{}
-
-                        }
+                recv(self.web_event) -> event => {
+                    if let Ok(web_event) = event {
+                        self.handle_web_event(web_event);
                     }
-                },
-                recv(self.server_event) -> event =>{
+                }
+                recv(self.server_event) -> event => {
                     if let Ok(server_event) = event {
-                        match server_event{
-                            ServerEvent::Graph(id, graph) =>{
-                                if let Ok(mut state) = SHARED_LOG.write(){
-                                    state.server_graph.insert(id, graph);
-                                    state.is_updated=true;
-                                }
-                            }
-                            ServerEvent::TextPacketInfo(server_id, server_type, packet_info, session_id)=>{
-                                match packet_info{
-                                    TextServerEvent::SendingServerTypeText(size)=>{
-                                        if let Ok(mut state)=SHARED_LOG.write(){
-                                            state.msg_log.insert(
-                                                (server_id, session_id),
-                                                format!("{:?} {}: sent server type to client\nthe message was made of {} fragments\n", server_type, server_id, size
-                                                )
-                                            );
-                                        }
-                                    },
-                                    TextServerEvent::SendingServerTypeReq(size)=>{
-                                        if let Ok(mut state)=SHARED_LOG.write(){
-                                            state.msg_log.insert(
-                                                (server_id, session_id),
-                                                format!("{:?} {}: asked server type to other servers\nthe message was made of {} fragments\n", server_type, server_id, size
-                                                )
-                                            );
-                                        }
-                                    },
-                                    TextServerEvent::SendingFileList(size)=>{
-                                        if let Ok(mut state)=SHARED_LOG.write(){
-                                            state.msg_log.insert(
-                                                (server_id, session_id),
-                                                format!("{:?} {}: sent file list to client\nthe message was made of {} fragments\n", server_type, server_id, size
-                                                )
-                                            );
-                                        }
-                                    },
-                                    TextServerEvent::AskingForPathRes(size)=>{
-                                        if let Ok(mut state)=SHARED_LOG.write(){
-                                            state.msg_log.insert(
-                                                (server_id, session_id),
-                                                format!("{:?} {}: asked media server for list of medias\nthe message was made of {} fragments\n", server_type, server_id, size
-                                                )
-                                            );
-                                        }
-                                    },
-                                    TextServerEvent::SendingPosition(size)=>{
-                                        if let Ok(mut state)=SHARED_LOG.write(){
-                                            state.msg_log.insert(
-                                                (server_id, session_id),
-                                                format!("{:?} {}: sent media position to client\nthe message was made of {} fragments\n", server_type, server_id, size
-                                                )
-                                            );
-                                        }
-                                    },
-                                    TextServerEvent::SendingText(size)=>{
-                                        if let Ok(mut state)=SHARED_LOG.write(){
-                                            state.msg_log.insert(
-                                                (server_id, session_id),
-                                                format!("{:?} {}: sent text to client\nthe message was made of {} fragments\n", server_type, server_id, size
-                                                )
-                                            );
-                                        }
-                                    }
-                                }
-                            },
-                            ServerEvent::MediaPacketInfo(server_id, server_type, packet_info, session_id)=>{
-                                match packet_info{
-                                    MediaServerEvent::SendingServerTypeMedia(size)=>{
-                                        if let Ok(mut state)=SHARED_LOG.write(){
-                                            state.msg_log.insert(
-                                                (server_id, session_id),
-                                                format!("{:?} {}: sent its type\nthe message was made of {} fragments\n", server_type, server_id, size
-                                                )
-                                            );
-                                        }
-                                    },
-                                    MediaServerEvent::SendingPathRes(size)=>{
-                                        if let Ok(mut state)=SHARED_LOG.write(){
-                                            state.msg_log.insert(
-                                                (server_id, session_id),
-                                                format!("{:?} {}: sent its medias to text server\nthe message was made of {} fragments\n", server_type, server_id, size
-                                                )
-                                            );
-                                        }
-                                    },
-                                    MediaServerEvent::SendingMedia(size)=>{
-                                        if let Ok(mut state)=SHARED_LOG.write(){
-                                            state.msg_log.insert(
-                                                (server_id, session_id),
-                                                format!("{:?} {}: sent media to client\nthe message was made of {} fragments\n", server_type, server_id, size
-                                                )
-                                            );
-                                        }
-                                    }
-                                }
-                            },
-                            ServerEvent::ChatPacketInfo(server_id, server_type, packet_info, session_id)=>{
-                                match packet_info {
-                                    ChatServerEvent::SendingServerTypeChat(size)=>{
-                                        if let Ok(mut state)=SHARED_LOG.write(){
-                                            state.msg_log.insert(
-                                                (server_id, session_id),
-                                                    format!("{:?} {}: sent its type to client\nthe message was made of {} fragments\n", server_type, server_id, size
-                                                )
-                                            );
-                                        }
-                                    },
-                                    ChatServerEvent::ClientRegistration(size)=>{
-                                        if let Ok(mut state)=SHARED_LOG.write(){
-                                            state.msg_log.insert(
-                                                (server_id, session_id),
-                                                format!("{:?} {}: sent registration success to client\nthe message was made of {} fragments\n", server_type, server_id, size
-                                                )
-                                            );
-                                        }
-                                    },
-                                    ChatServerEvent::SendingClientList(size)=>{
-                                        if let Ok(mut state)=SHARED_LOG.write(){
-                                            state.msg_log.insert(
-                                                (server_id, session_id),
-                                                format!("{:?} {}: sent registered client list to client\nthe message was made of {} fragments\n", server_type, server_id, size
-                                                )
-                                            );
-                                        }
-                                    },
-                                    ChatServerEvent::ForwardingMessage(size)=>{
-                                        if let Ok(mut state)=SHARED_LOG.write(){
-                                            state.msg_log.insert(
-                                                (server_id, session_id),
-                                                format!("{:?} {}: forwarded a chat message\nthe message was made of {} fragments\n", server_type, server_id, size
-                                                )
-                                            );
-                                        }
-                                    },
-                                    ChatServerEvent::ClientElimination(size)=>{
-                                        if let Ok(mut state)=SHARED_LOG.write(){
-                                            state.msg_log.insert(
-                                                (server_id, session_id),
-                                                format!("{:?} {}: unregistered a client\nthe message was made of {} fragments\n", server_type, server_id, size
-                                                )
-                                            );
-                                        }
-                                    }
-
-                                }
-                            }
-
-
-                        }
+                        self.handle_server_event(server_event);
                     }
                 }
-            recv(self.node_event_recv) -> command =>{
-                if let Ok(drone_event) = command {
-                     match drone_event{
-                        DroneEvent::PacketSent(ref packet) => {
-                                match packet.pack_type.clone(){
-                                    FloodRequest(flood_req)=>{
-                                        if flood_req_hash.insert((flood_req.initiator_id,flood_req.flood_id)){
-                                            let node_type = if self.client.contains_key(&flood_req.initiator_id){
-                                                MyNodeType::ChatClient
-                                            }else if self.web_client.contains_key(&flood_req.initiator_id){
-                                                MyNodeType::WebBrowser
-                                            }
-                                            else if self.text_server.contains_key(&flood_req.initiator_id){
-                                                MyNodeType::TextServer
-                                            }else if self.media_server.contains_key(&flood_req.initiator_id){
-                                                MyNodeType::MediaServer
-                                            }else{
-                                                MyNodeType::ChatServer
-                                            };
-                                            if let Ok(mut state)=SHARED_LOG.write(){
-                                                state.flooding_log.insert((node_type,flood_req.initiator_id), format!("{:?} with id {} has initiated a flood with id {}\n",flood_req.path_trace[0].1,flood_req.initiator_id,flood_req.flood_id));
-                                                state.is_updated=true;
-                                            }
-
-
-                                        }
-
-                                    },
-                                    MsgFragment(_)=>{
-                                        if let Ok(mut state)=SHARED_LOG.write(){
-                                            let initiator_node=packet.routing_header.hops[0];
-                                            let session_id = packet.session_id;
-
-                                            if let Some(routes)=state.route_attempt.get_mut(&(initiator_node,session_id)){
-                                                if !routes.contains(&packet.routing_header.hops){
-                                                    routes.push(packet.routing_header.hops.clone());
-                                                }
-
-                                            }else{
-                                                let routes = vec![packet.routing_header.hops.clone()];
-                                                state.route_attempt.insert((initiator_node,session_id), routes);
-
-                                            }
-                                            state.is_updated=true;
-                                        }
-
-                                    }
-                                    _=>{}
-                                }
-                            }
-                        DroneEvent::PacketDropped(ref packet) => {
-                                match packet.pack_type.clone(){
-                                    MsgFragment(fragment)=>{
-                                        if let Ok(mut state) = SHARED_LOG.write(){
-                                            let drone = packet.routing_header.hops[packet.routing_header.hop_index];
-                                            if let Some(mut fragments)=state.lost_msg.get_mut(&(drone, packet.session_id)){
-                                                fragments.push(fragment.clone());
-                                            }else{
-                                                let mut fragments=Vec::new();
-                                                fragments.push(fragment.clone());
-                                                state.lost_msg.insert((drone, packet.session_id), fragments);
-                                            }
-                                            state.is_updated=true;
-                                        }
-                                    },
-                                    PacketType::Ack(ack)=>{
-                                        if let Ok(mut state) = SHARED_LOG.write(){
-                                            let drone = packet.routing_header.hops[packet.routing_header.hop_index];
-                                            if let Some(mut fragments)=state.lost_ack.get_mut(&(drone, packet.session_id)){
-                                                fragments.push(ack.clone());
-                                            }else{
-                                                let mut fragments=Vec::new();
-                                                fragments.push(ack.clone());
-                                                state.lost_ack.insert((drone, packet.session_id), fragments);
-                                            }
-                                            state.is_updated=true;
-                                        }
-                                    },
-                                    PacketType::Nack(nack)=>{
-                                        if let Ok(mut state) = SHARED_LOG.write(){
-                                            let drone = packet.routing_header.hops[packet.routing_header.hop_index];
-                                            if let Some(mut fragments)=state.lost_nack.get_mut(&(drone, packet.session_id)){
-                                            fragments.push(nack.clone());
-                                            }else{
-                                                let mut fragments=Vec::new();
-                                                fragments.push(nack.clone());
-                                                state.lost_nack.insert((drone, packet.session_id), fragments);
-                                            }
-                                            state.is_updated=true;
-                                        }
-                                    },
-                                    PacketType::FloodRequest(flood_req)=>{
-                                        if let Ok(mut state) = SHARED_LOG.write(){
-                                            let drone = packet.routing_header.hops[packet.routing_header.hop_index];
-                                            if let Some(mut fragments)=state.lost_flood_req.get_mut(&(drone, packet.session_id)){
-                                                fragments.push(flood_req.clone());
-                                            }else{
-                                                let mut fragments=Vec::new();
-                                                fragments.push(flood_req.clone());
-                                                state.lost_flood_req.insert((drone, packet.session_id), fragments);
-                                            }
-                                            state.is_updated=true;
-                                        }
-                                    },
-                                    PacketType::FloodResponse(flood_resp)=>{
-                                        if let Ok(mut state) = SHARED_LOG.write(){
-                                            let drone = packet.routing_header.hops[packet.routing_header.hop_index];
-                                            if let Some(mut fragments)=state.lost_flood_resp.get_mut(&(drone, packet.session_id)){
-                                                fragments.push(flood_resp.clone());
-                                            }else{
-                                                let mut fragments=Vec::new();
-                                                fragments.push(flood_resp.clone());
-                                                state.lost_flood_resp.insert((drone, packet.session_id), fragments);
-                                            }
-                                            state.is_updated=true;
-                                        }
-                                    }
-
-                                }
-
-                        }
-                        DroneEvent::ControllerShortcut(ref controller_shortcut) => {
-
-                            println!("Simulation control: packet {:?} sent to destination",controller_shortcut.pack_type);
-                        }
+                recv(self.node_event_recv) -> command => {
+                    if let Ok(drone_event) = command {
+                        self.handle_drone_event(drone_event, &mut flood_req_hash);
                     }
-
-                    self.handle_event(drone_event.clone());
                 }
-
             }
         }
+    }
+
+    fn handle_chat_event(&mut self, chat_event: ChatClientEvent) {
+        match chat_event {
+            ChatClientEvent::IncomingMessage((id_client, id_server, id_from), message) => {
+                self.handle_incoming_message((id_client, id_server, id_from), message);
+            }
+            ChatClientEvent::ClientList((id_client, id_server), registered_clients) => {
+                self.handle_client_list((id_client, id_server), registered_clients);
+            }
+            ChatClientEvent::RegisteredSuccess((id_client, id_server), result) => {
+                self.handle_registration_success((id_client, id_server), result);
+            }
+            ChatClientEvent::ChatServers(client_id, chat_servers) => {
+                self.handle_chat_servers(client_id, chat_servers);
+            }
+            ChatClientEvent::ClientType(client_type, node_id) => {
+                self.handle_client_type(client_type, node_id);
+            }
+            ChatClientEvent::PacketInfo(client, event, session) => {
+                self.handle_chat_packet_info(client, event, session);
+            }
+            ChatClientEvent::Graph(id, graph) => {
+                self.handle_chat_graph(id, graph);
+            }
+            ChatClientEvent::InfoRequest(client, request_type, session) => {
+                self.handle_chat_info_request(client, request_type, session);
+            }
+            _ => {}
         }
-
     }
 
-    fn handle_event(&mut self, command: DroneEvent) {
-
-
+    fn handle_incoming_message(&self, ids: (NodeId, NodeId, NodeId), message: String) {
+        let (id_client, id_server, id_from) = ids;
+        if let Ok(mut state) = SHARED_STATE.write() {
+            if let Some(messages) = state.responses.get_mut(&(id_server, (id_from, id_client))) {
+                messages.push(message.clone());
+            } else {
+                let mut messages = Vec::new();
+                messages.push(message);
+                state.responses.insert((id_server, (id_from, id_client)), messages);
+            }
+            state.is_updated = true;
+        }
     }
-    fn print_packet(&mut self, packet: Packet) {
-        // print!("  source id: {:#?}  |", packet.routing_header.hops[0]);
-        // print!("  destination id: {:#?}  |", packet.routing_header.hops[packet.routing_header.hops.len() - 1]);
-        // print!("  path: [");
-        // for i in 0..packet.routing_header.hops.len()-1 {
-        //     print!("{}, ", packet.routing_header.hops[i]);
-        // }
-        // println!("{}]", packet.routing_header.hops[packet.routing_header.hops.len() - 1]);
+
+    fn handle_client_list(&self, ids: (NodeId, NodeId), registered_clients: Vec<NodeId>) {
+        let (id_client, id_server) = ids;
+        if let Ok(mut state) = SHARED_STATE.write() {
+            if let Some(current_clients) = state.client_list.get_mut(&(id_client, id_server)) {
+                let _ = std::mem::replace(current_clients, registered_clients);
+            } else {
+                state.client_list.insert((id_client, id_server), registered_clients);
+            }
+            state.is_updated = true;
+        }
     }
+
+    fn handle_registration_success(&self, ids: (NodeId, NodeId), result: Result<(), String>) {
+        let (id_client, id_server) = ids;
+        if let Ok(mut state) = SHARED_STATE.write() {
+            match result {
+                Ok(_) => {
+                    state.registered_clients.insert((id_client, id_server), true);
+                }
+                Err(_) => {
+                    state.registered_clients.insert((id_client, id_server), false);
+                }
+            }
+            state.is_updated = true;
+        }
+    }
+
+    fn handle_chat_servers(&self, client_id: NodeId, chat_servers: Vec<NodeId>) {
+        if let Ok(mut state) = SHARED_STATE.write() {
+            if let Some(current_chat_servers) = state.chat_servers.get_mut(&client_id) {
+                let _ = std::mem::replace(current_chat_servers, chat_servers);
+            } else {
+                state.chat_servers.insert(client_id, chat_servers);
+            }
+            state.is_updated = true;
+        }
+    }
+
+    fn handle_client_type(&self, client_type: ClientType, node_id: NodeId) {
+        if let Ok(mut state) = SHARED_STATE.write() {
+            match client_type {
+                ClientType::ChatClient => state.chat_clients.push(node_id),
+                ClientType::WebBrowser => state.web_clients.push(node_id),
+            }
+            state.is_updated = true;
+        }
+    }
+
+    fn handle_chat_packet_info(&self, client: NodeId, event: ChatEvent, session: u64) {
+        let message = match event {
+            ChatEvent::ChatServers(size) => {
+                format!(
+                    "Chat Client {}: asked for list of Chat Servers\nThe message was made of {} fragments\n",
+                    client, size
+                )
+            }
+            ChatEvent::ClientList(size) => {
+                format!(
+                    "Chat Client {}: asked for list of Chat Clients\nThe message was made of {} fragments\n",
+                    client, size
+                )
+            }
+            ChatEvent::IncomingMessage(size) => {
+                format!(
+                    "Chat Client {}: received a message\nThe message was made of {} fragments\n",
+                    client, size
+                )
+            }
+            ChatEvent::RegisteredSuccess(size) => {
+                format!(
+                    "Chat Client {}: registered successfully\nThe message was made of {} fragments\n",
+                    client, size
+                )
+            }
+            ChatEvent::ClientType(size) => {
+                format!(
+                    "Chat Client {}: revealed its type\nThe message was made of {} fragments\n",
+                    client, size
+                )
+            }
+        };
+
+        if let Ok(mut state) = SHARED_LOG.write() {
+            state.msg_log.insert((client, session), message);
+            state.is_updated = true;
+        }
+    }
+
+    fn handle_chat_graph(&self, id: NodeId, graph: UnGraphMap<NodeId, u32>) {
+        if let Ok(mut state) = SHARED_LOG.write() {
+            state.graph.insert(id, graph);
+        }
+    }
+
+    fn handle_chat_info_request(&self, client: NodeId, request_type: RequestEvent, session: u64) {
+        let message = match request_type {
+            RequestEvent::AskType(size) => {
+                format!(
+                    "Chat Client {}: asked server type\nThe message was made of {} fragments\n",
+                    client, size
+                )
+            }
+            RequestEvent::Register(size) => {
+                format!(
+                    "Chat Client {}: made an attempt to register\nThe message was made of {} fragments\n",
+                    client, size
+                )
+            }
+            RequestEvent::GetList(size) => {
+                format!(
+                    "Chat Client {}: asked list of registered clients\nThe message was made of {} fragments\n",
+                    client, size
+                )
+            }
+            RequestEvent::SendMessage(size) => {
+                format!(
+                    "Chat Client {}: sent a text message\nThe message was made of {} fragments\n",
+                    client, size
+                )
+            }
+        };
+
+        if let Ok(mut state) = SHARED_LOG.write() {
+            state.msg_log.insert((client, session), message);
+            state.is_updated = true;
+        }
+    }
+
+    fn handle_web_event(&mut self, web_event: WebBrowserEvents) {
+        match web_event {
+            WebBrowserEvents::MediaServers(client, media_servers) => {
+                self.handle_media_servers(client, media_servers);
+            }
+            WebBrowserEvents::TextServers(client, text_servers) => {
+                self.handle_text_servers(client, text_servers);
+            }
+            WebBrowserEvents::ListFiles(client, media_paths) => {
+                self.handle_list_files(client, media_paths);
+            }
+            WebBrowserEvents::MediaPosition(client, target_media_server) => {
+                self.handle_media_position(client, target_media_server);
+            }
+            WebBrowserEvents::SavedMedia(client, actual_media) => {
+                self.handle_saved_media(client, actual_media);
+            }
+            WebBrowserEvents::SavedTextFile(client, actual_file) => {
+                self.handle_saved_text_file(client, actual_file);
+            }
+            WebBrowserEvents::PacketInfo(client, packet_info, session_id) => {
+                self.handle_web_packet_info(client, packet_info, session_id);
+            }
+            WebBrowserEvents::Graph(id, graph) => {
+                self.handle_web_graph(id, graph);
+            }
+            WebBrowserEvents::InfoRequest(client, request_type, session_id) => {
+                self.handle_web_info_request(client, request_type, session_id);
+            }
+            _ => {}
+        }
+    }
+
+    fn handle_media_servers(&self, client: NodeId, media_servers: Vec<NodeId>) {
+        if let Ok(mut state) = SHARED_STATE.write() {
+            if let Some(current_media_servers) = state.media_servers.get_mut(&client) {
+                let _ = std::mem::replace(current_media_servers, media_servers);
+            } else {
+                state.media_servers.insert(client, media_servers);
+            }
+            state.is_updated = true;
+        }
+    }
+
+    fn handle_text_servers(&self, client: NodeId, text_servers: Vec<NodeId>) {
+        if let Ok(mut state) = SHARED_STATE.write() {
+            if let Some(current_media_servers) = state.text_servers.get_mut(&client) {
+                let _ = std::mem::replace(current_media_servers, text_servers);
+            } else {
+                state.text_servers.insert(client, text_servers);
+            }
+            state.is_updated = true;
+        }
+    }
+
+    fn handle_list_files(&self, client: NodeId, media_paths: Vec<String>) {
+        if let Ok(mut state) = SHARED_STATE.write() {
+            if let Some(current_paths) = state.client_medias.get_mut(&client) {
+                let _ = std::mem::replace(current_paths, media_paths);
+            } else {
+                state.client_medias.insert(client, media_paths);
+            }
+            state.is_updated = true;
+        }
+    }
+
+    fn handle_media_position(&self, client: NodeId, target_media_server: NodeId) {
+        if let Ok(mut state) = SHARED_STATE.write() {
+            if let Some(current_media_server) = state.target_media_server.get_mut(&client) {
+                let _ = std::mem::replace(current_media_server, target_media_server);
+            } else {
+                state.target_media_server.insert(client, target_media_server);
+            }
+            state.is_updated = true;
+        }
+    }
+
+    fn handle_saved_media(&self, client: NodeId, actual_media: String) {
+        if let Ok(mut state) = SHARED_STATE.write() {
+            if let Some(current_path) = state.actual_media_path.get_mut(&client) {
+                let _ = std::mem::replace(current_path, actual_media);
+            } else {
+                state.actual_media_path.insert(client, actual_media);
+            }
+            state.is_updated = true;
+        }
+    }
+
+    fn handle_saved_text_file(&self, client: NodeId, actual_file: String) {
+        if let Ok(mut state) = SHARED_STATE.write() {
+            if let Some(current_path) = state.actual_file_path.get_mut(&client) {
+                let _ = std::mem::replace(current_path, actual_file);
+            } else {
+                state.actual_file_path.insert(client, actual_file);
+            }
+            state.is_updated = true;
+        }
+    }
+
+    fn handle_web_packet_info(&self, client: NodeId, packet_info: ContentType, session_id: u64) {
+        let message = match packet_info {
+            ContentType::TextServerList(size) => {
+                format!(
+                    "Web browser: {} asked for list of Text Servers\n the message was made of {} fragments\n",
+                    client, size
+                )
+            }
+            ContentType::MediaServerList(size) => {
+                format!(
+                    "Web browser: {} asked for list of Media Servers\n the message was made of {} fragments\n",
+                    client, size
+                )
+            }
+            ContentType::FileList(size) => {
+                format!(
+                    "Web browser: {} asked for File List\n the message was made of {} fragments\n",
+                    client, size
+                )
+            }
+            ContentType::MediaPosition(size) => {
+                format!(
+                    "Web browser: {} asked for Media Position\n the message was made of {} fragments\n",
+                    client, size
+                )
+            }
+            ContentType::SavedText(size) => {
+                format!(
+                    "Web browser: {} asked for a Text File\n the message was made of {} fragments\n",
+                    client, size
+                )
+            }
+            ContentType::SavedMedia(size) => {
+                format!(
+                    "Web browser: {} asked for a Media\n the message was made of {} fragments\n",
+                    client, size
+                )
+            }
+        };
+
+        if let Ok(mut state) = SHARED_LOG.write() {
+            state.msg_log.insert((client, session_id), message);
+            state.is_updated = true;
+        }
+    }
+
+    fn handle_web_graph(&self, id: NodeId, graph: UnGraphMap<NodeId, u32>) {
+        if let Ok(mut state) = SHARED_LOG.write() {
+            state.graph.insert(id, graph);
+        }
+    }
+
+    fn handle_web_info_request(&self, client: NodeId, request_type: ContentRequest, session_id: u64) {
+        let message = match request_type {
+            ContentRequest::GetText(size) => {
+                format!(
+                    "Web browser: {} asked for a text file\n the message was made of {} fragments\n",
+                    client, size
+                )
+            }
+            ContentRequest::AskTypes(size) => {
+                format!(
+                    "Web browser: {} asked server types\n the message was made of {} fragments\n",
+                    client, size
+                )
+            }
+            ContentRequest::GetList(size) => {
+                format!(
+                    "Web browser: {} asked for list of files\n the message was made of {} fragments\n",
+                    client, size
+                )
+            }
+            ContentRequest::GetPosition(size) => {
+                format!(
+                    "Web browser: {} asked for the position of a file\n the message was made of {} fragments\n",
+                    client, size
+                )
+            }
+            ContentRequest::GetMedia(size) => {
+                format!(
+                    "Web browser: {} asked for a media file\n the message was made of {} fragments\n",
+                    client, size
+                )
+            }
+        };
+
+        if let Ok(mut state) = SHARED_LOG.write() {
+            state.msg_log.insert((client, session_id), message);
+            state.is_updated = true;
+        }
+    }
+
+    fn handle_server_event(&mut self, server_event: ServerEvent) {
+        match server_event {
+            ServerEvent::Graph(id, graph) => {
+                self.handle_server_graph(id, graph);
+            }
+            ServerEvent::TextPacketInfo(server_id, server_type, packet_info, session_id) => {
+                self.handle_text_packet_info(server_id, server_type, packet_info, session_id);
+            }
+            ServerEvent::MediaPacketInfo(server_id, server_type, packet_info, session_id) => {
+                self.handle_media_packet_info(server_id, server_type, packet_info, session_id);
+            }
+            ServerEvent::ChatPacketInfo(server_id, server_type, packet_info, session_id) => {
+                self.handle_chat_packet_info_server(server_id, server_type, packet_info, session_id);
+            }
+        }
+    }
+
+    fn handle_server_graph(&self, id: NodeId, graph: Graph<(NodeId, wg_2024::packet::NodeType), f64>) {
+        if let Ok(mut state) = SHARED_LOG.write() {
+            state.server_graph.insert(id, graph);
+            state.is_updated = true;
+        }
+    }
+
+    fn handle_text_packet_info(&self, server_id: NodeId, server_type: MyNodeType, packet_info: TextServerEvent, session_id: u64) {
+        let message = match packet_info {
+            TextServerEvent::SendingServerTypeText(size) => {
+                format!(
+                    "{:?} {}: sent server type to client\nthe message was made of {} fragments\n",
+                    server_type, server_id, size
+                )
+            }
+            TextServerEvent::SendingServerTypeReq(size) => {
+                format!(
+                    "{:?} {}: asked server type to other servers\nthe message was made of {} fragments\n",
+                    server_type, server_id, size
+                )
+            }
+            TextServerEvent::SendingFileList(size) => {
+                format!(
+                    "{:?} {}: sent file list to client\nthe message was made of {} fragments\n",
+                    server_type, server_id, size
+                )
+            }
+            TextServerEvent::AskingForPathRes(size) => {
+                format!(
+                    "{:?} {}: asked media server for list of medias\nthe message was made of {} fragments\n",
+                    server_type, server_id, size
+                )
+            }
+            TextServerEvent::SendingPosition(size) => {
+                format!(
+                    "{:?} {}: sent media position to client\nthe message was made of {} fragments\n",
+                    server_type, server_id, size
+                )
+            }
+            TextServerEvent::SendingText(size) => {
+                format!(
+                    "{:?} {}: sent text to client\nthe message was made of {} fragments\n",
+                    server_type, server_id, size
+                )
+            }
+        };
+
+        if let Ok(mut state) = SHARED_LOG.write() {
+            state.msg_log.insert((server_id, session_id), message);
+        }
+    }
+
+    fn handle_media_packet_info(&self, server_id: NodeId, server_type: MyNodeType, packet_info: MediaServerEvent, session_id: u64) {
+        let message = match packet_info {
+            MediaServerEvent::SendingServerTypeMedia(size) => {
+                format!(
+                    "{:?} {}: sent its type\nthe message was made of {} fragments\n",
+                    server_type, server_id, size
+                )
+            }
+            MediaServerEvent::SendingPathRes(size) => {
+                format!(
+                    "{:?} {}: sent its medias to text server\nthe message was made of {} fragments\n",
+                    server_type, server_id, size
+                )
+            }
+            MediaServerEvent::SendingMedia(size) => {
+                format!(
+                    "{:?} {}: sent media to client\nthe message was made of {} fragments\n",
+                    server_type, server_id, size
+                )
+            }
+        };
+
+        if let Ok(mut state) = SHARED_LOG.write() {
+            state.msg_log.insert((server_id, session_id), message);
+        }
+    }
+
+    fn handle_chat_packet_info_server(&self, server_id: NodeId, server_type: MyNodeType, packet_info: ChatServerEvent, session_id: u64) {
+        let message = match packet_info {
+            ChatServerEvent::SendingServerTypeChat(size) => {
+                format!(
+                    "{:?} {}: sent its type to client\nthe message was made of {} fragments\n",
+                    server_type, server_id, size
+                )
+            }
+            ChatServerEvent::ClientRegistration(size) => {
+                format!(
+                    "{:?} {}: sent registration success to client\nthe message was made of {} fragments\n",
+                    server_type, server_id, size
+                )
+            }
+            ChatServerEvent::SendingClientList(size) => {
+                format!(
+                    "{:?} {}: sent registered client list to client\nthe message was made of {} fragments\n",
+                    server_type, server_id, size
+                )
+            }
+            ChatServerEvent::ForwardingMessage(size) => {
+                format!(
+                    "{:?} {}: forwarded a chat message\nthe message was made of {} fragments\n",
+                    server_type, server_id, size
+                )
+            }
+            ChatServerEvent::ClientElimination(size) => {
+                format!(
+                    "{:?} {}: unregistered a client\nthe message was made of {} fragments\n",
+                    server_type, server_id, size
+                )
+            }
+        };
+
+        if let Ok(mut state) = SHARED_LOG.write() {
+            state.msg_log.insert((server_id, session_id), message);
+        }
+    }
+
+    fn handle_drone_event(&mut self, drone_event: DroneEvent, flood_req_hash: &mut HashSet<(NodeId, u64)>) {
+        match drone_event {
+            DroneEvent::PacketSent(ref packet) => {
+                self.handle_packet_sent(packet, flood_req_hash);
+            }
+            DroneEvent::PacketDropped(ref packet) => {
+                self.handle_packet_dropped(packet);
+            }
+            DroneEvent::ControllerShortcut(ref controller_shortcut) => {
+                self.send_to_destination(controller_shortcut.clone());
+            }
+        }
+    }
+
+    fn handle_packet_sent(&self, packet: &Packet, flood_req_hash: &mut HashSet<(NodeId, u64)>) {
+        match packet.pack_type.clone() {
+            FloodRequest(flood_req) => {
+                if flood_req_hash.insert((flood_req.initiator_id, flood_req.flood_id)) {
+                    let node_type = self.determine_node_type(flood_req.initiator_id);
+
+                    if let Ok(mut state) = SHARED_LOG.write() {
+                        state.flooding_log.insert(
+                            (node_type, flood_req.initiator_id),
+                            format!(
+                                "{:?} with id {} has initiated a flood with id {}\n",
+                                flood_req.path_trace[0].1,
+                                flood_req.initiator_id,
+                                flood_req.flood_id
+                            ),
+                        );
+                        state.is_updated = true;
+                    }
+                }
+            }
+            MsgFragment(_) => {
+                self.handle_msg_fragment_sent(packet);
+            }
+            _ => {}
+        }
+    }
+
+    fn determine_node_type(&self, node_id: NodeId) -> MyNodeType {
+        if self.client.contains_key(&node_id) {
+            MyNodeType::ChatClient
+        } else if self.web_client.contains_key(&node_id) {
+            MyNodeType::WebBrowser
+        } else if self.text_server.contains_key(&node_id) {
+            MyNodeType::TextServer
+        } else if self.media_server.contains_key(&node_id) {
+            MyNodeType::MediaServer
+        } else {
+            MyNodeType::ChatServer
+        }
+    }
+
+    fn handle_msg_fragment_sent(&self, packet: &Packet) {
+        if let Ok(mut state) = SHARED_LOG.write() {
+            let initiator_node = packet.routing_header.hops[0];
+            let session_id = packet.session_id;
+
+            if let Some(routes) = state.route_attempt.get_mut(&(initiator_node, session_id)) {
+                if !routes.contains(&packet.routing_header.hops) {
+                    routes.push(packet.routing_header.hops.clone());
+                }
+            } else {
+                let routes = vec![packet.routing_header.hops.clone()];
+                state.route_attempt.insert((initiator_node, session_id), routes);
+            }
+            state.is_updated = true;
+        }
+    }
+
+    fn handle_packet_dropped(&self, packet: &Packet) {
+        let drone = packet.routing_header.hops[packet.routing_header.hop_index];
+
+        match packet.pack_type.clone() {
+            MsgFragment(fragment) => {
+                self.handle_dropped_msg_fragment(drone, packet.session_id, fragment);
+            }
+            PacketType::Ack(ack) => {
+                self.handle_dropped_ack(drone, packet.session_id, ack);
+            }
+            PacketType::Nack(nack) => {
+                self.handle_dropped_nack(drone, packet.session_id, nack);
+            }
+            PacketType::FloodRequest(flood_req) => {
+                self.handle_dropped_flood_request(drone, packet.session_id, flood_req);
+            }
+            PacketType::FloodResponse(flood_resp) => {
+                self.handle_dropped_flood_response(drone, packet.session_id, flood_resp);
+            }
+        }
+    }
+
+    fn handle_dropped_msg_fragment(&self, drone: NodeId, session_id: u64, fragment: Fragment) {
+        if let Ok(mut state) = SHARED_LOG.write() {
+            if let Some(fragments) = state.lost_msg.get_mut(&(drone, session_id)) {
+                fragments.push(fragment);
+            } else {
+                state.lost_msg.insert((drone, session_id), vec![fragment]);
+            }
+            state.is_updated = true;
+        }
+    }
+
+    fn handle_dropped_ack(&self, drone: NodeId, session_id: u64, ack: Ack) {
+        if let Ok(mut state) = SHARED_LOG.write() {
+            if let Some(acks) = state.lost_ack.get_mut(&(drone, session_id)) {
+                acks.push(ack);
+            } else {
+                state.lost_ack.insert((drone, session_id), vec![ack]);
+            }
+            state.is_updated = true;
+        }
+    }
+
+    fn handle_dropped_nack(&self, drone: NodeId, session_id: u64, nack: wg_2024::packet::Nack) {
+        if let Ok(mut state) = SHARED_LOG.write() {
+            if let Some(nacks) = state.lost_nack.get_mut(&(drone, session_id)) {
+                nacks.push(nack);
+            } else {
+                state.lost_nack.insert((drone, session_id), vec![nack]);
+            }
+            state.is_updated = true;
+        }
+    }
+
+    fn handle_dropped_flood_request(&self, drone: NodeId, session_id: u64, flood_req: wg_2024::packet::FloodRequest) {
+        if let Ok(mut state) = SHARED_LOG.write() {
+            if let Some(requests) = state.lost_flood_req.get_mut(&(drone, session_id)) {
+                requests.push(flood_req);
+            } else {
+                state.lost_flood_req.insert((drone, session_id), vec![flood_req]);
+            }
+            state.is_updated = true;
+        }
+    }
+
+    fn handle_dropped_flood_response(&self, drone: NodeId, session_id: u64, flood_resp: wg_2024::packet::FloodResponse) {
+        if let Ok(mut state) = SHARED_LOG.write() {
+            if let Some(responses) = state.lost_flood_resp.get_mut(&(drone, session_id)) {
+                responses.push(flood_resp);
+            } else {
+                state.lost_flood_resp.insert((drone, session_id), vec![flood_resp]);
+            }
+            state.is_updated = true;
+        }
+    }
+
     fn send_to_destination(&mut self, mut packet: Packet) {
         let addr = packet.routing_header.hops[packet.routing_header.hops.len() - 1];
-        self.print_packet(packet.clone());
         packet.routing_header.hop_index = packet.routing_header.hops.len()-1;
 
         if let Some(sender) = self.packet_channel.get(&addr) {
             sender.send(packet).unwrap();
+        }else{
+            println!("SC couldn't send to destination packet: {}",packet);
         }
 
     }
@@ -678,7 +771,7 @@ impl SimulationController {
                 }
             }
             _=>{
-                println!("Error");
+                println!("Tried to ask Topology Graph to unreachable node!");
             }
         }
     }
@@ -689,7 +782,6 @@ impl SimulationController {
     pub fn crash_all(&mut self) {
         for (_, sender) in self.drones.iter() {
             sender.send(DroneCommand::Crash).unwrap();
-            println!("Sent Crash");
         }
     }
     pub fn crash(&mut self, id: NodeId) {
@@ -700,16 +792,12 @@ impl SimulationController {
             }
         }
 
-        // Send the Crash command to the target drone
         if let Some(drone_sender) = self.drones.get(&id) {
             if let Err(err) = drone_sender.send(DroneCommand::Crash) {
                 println!("Failed to send Crash command to drone {}: {:?}", id, err);
-                return;
             }
-           // println!("Sent Crash command to drone {}", id);
         } else {
             println!("No drone with ID {:?}", id);
-            return;
         }
 
     }
@@ -717,38 +805,59 @@ impl SimulationController {
     pub fn pdr(&mut self, id : NodeId, pdr: f32) {
         for (idd, sender) in self.drones.iter() {
             if idd == &id {
-                println!("pdr of drone {idd} changed to {pdr}");
                 sender.send(DroneCommand::SetPacketDropRate(pdr)).unwrap()
             }
         }
     }
-    pub fn add_sender(&mut self, dst_id: NodeId, nghb_id: NodeId) {
-       let sender=self.packet_channel.get(&dst_id).unwrap().clone();
-        if let Some(drone_sender) = self.drones.get(&nghb_id) {
-            if let Err(err) = drone_sender.send(DroneCommand::AddSender(dst_id, sender)) {
-                println!(
-                    "Failed to send AddSender command to drone {}: {:?}",
-                    nghb_id, err
-                );
-            }
+    fn find_sender(&self, id: NodeId) -> Option<AnySender> {
+        if let Some(drone_sender) = self.drones.get(&id) {
+            Some(AnySender::Drone(drone_sender.clone()))
+        } else if let Some(client_sender) = self.client.get(&id) {
+            Some(AnySender::Client(client_sender.clone()))
+        } else if let Some(web_sender) = self.web_client.get(&id) {
+            Some(AnySender::Web(web_sender.clone()))
+        } else if let Some(text_server_sender) = self.text_server.get(&id) {
+            Some(AnySender::TextServer(text_server_sender.clone()))
+        } else if let Some(media_server_sender) = self.media_server.get(&id) {
+            Some(AnySender::MediaServer(media_server_sender.clone()))
+        } else if let Some(chat_server_sender) = self.chat_server.get(&id) {
+            Some(AnySender::ChatServer(chat_server_sender.clone()))
         } else {
-            println!("No drone found with ID {}", nghb_id);
+            None
+        }
+    }
+    fn send_add_sender_to_node(&self, from_id: NodeId, to_id: NodeId) {
+        let sender = self.packet_channel.get(&from_id).unwrap().clone();
+
+        match self.find_sender(to_id) {
+            Some(node_sender) => {
+                if let Err(err) = node_sender.send_add_sender_command(from_id, sender) {
+                    println!("Failed to add sender {} to {}: {:?}", from_id, node_sender.sender_type(), err);
+                }
+            }
+            None => println!("No sender found with ID {}", to_id),
+        }
+    }
+    pub fn add_sender(&mut self, dst_id: NodeId, nghb_id: NodeId) {
+        self.send_add_sender_to_node(dst_id, nghb_id);
+        //(full duplex)
+        self.send_add_sender_to_node(nghb_id, dst_id);
+    }
+    fn remove_sender_to_node(&self, from_id: NodeId, to_id: NodeId){
+        match self.find_sender(from_id){
+            Some(node_sender)=>{
+                if let Err(err) = node_sender.send_remove_sender_command(to_id){
+                    println!("Failed to remove sender {} from {}, {:?}", to_id, from_id, err);
+                }
+            },
+            None=>println!("No sender found with ID {}", from_id),
         }
     }
 
-    pub fn remove_sender(&mut self, drone_id: NodeId, nghb_id: NodeId) {
-        if let Some(drone_sender) = self.drones.get(&drone_id) {
-            if let Err(err) = drone_sender.send(DroneCommand::RemoveSender(nghb_id)) {
-                println!(
-                    "Failed to send RemoveSender command to drone {} for neighbor {}: {:?}",
-                    drone_id, nghb_id, err
-                );
-            } else {
-                println!("Sent RemoveSender command to drone {} for neighbor {}", drone_id, nghb_id);
-            }
-        } else {
-            println!("No drone found with ID {}", drone_id);
-        }
+    pub fn remove_sender(&mut self, dst_id: NodeId, nghb_id: NodeId) {
+        self.remove_sender_to_node(dst_id, nghb_id);
+        //(full duplex)
+        self.remove_sender_to_node(nghb_id, dst_id);
     }
     fn ack(&mut self, mut packet: Packet) {
         let next_hop=packet.routing_header.hops[packet.routing_header.hop_index +1];
@@ -760,44 +869,16 @@ impl SimulationController {
         }
     }
     fn msg_fragment(&mut self, mut packet: Packet){
-        println!("You're tying to send a message fragment");
         let next_hop=packet.routing_header.hops[packet.routing_header.hop_index+1];
         if let Some(sender) = self.packet_channel.get(&next_hop) {
             packet.routing_header.hop_index+=1;
-            println!("Starting from hop_index: {} \n ",packet.routing_header.hop_index);
             sender.send(packet).unwrap();
         }
     }
     pub fn initiate_flood(&self){
-        println!("Initiating a background flooding");
         for (_, sender) in self.background_flooding.iter(){
             sender.send(BackGroundFlood::Start).unwrap();
         }
-    }
-    pub fn spawn_new_drone(&mut self, links: Vec<NodeId>, id: NodeId){
-        let node_event_send_clone=self.node_event_send.clone();
-        let (sender_command, recv_command)=unbounded();
-        self.drones.insert(id, sender_command);
-        let mut packet_channels = HashMap::new();
-        packet_channels.insert(id, unbounded());
-        for id in links.clone(){
-            packet_channels.insert(id, unbounded());
-        }
-        let packet_recv = packet_channels[&id].1.clone();
-        let packet_send = links.iter().map(|nid|(*nid, packet_channels[nid].0.clone())).collect::<HashMap<_,_>>();
-        thread::spawn(move || {
-            let mut drone = create_drone(
-                id,
-                node_event_send_clone,
-                recv_command,
-                packet_recv,
-                packet_send,
-                0.0
-            );
-            if let Some(mut drone) = drone {
-                drone.run();
-            }
-        });
     }
     pub fn send_message(&mut self, message: String, client_id: NodeId, destination_client: NodeId, chat_server: NodeId){
         self.client.get(&client_id).unwrap().send(CommandChat::SendMessage(destination_client, chat_server, message)).unwrap()
@@ -815,7 +896,6 @@ impl SimulationController {
     }
     pub fn get_web_servers(&self){
         for (_,sender) in self.web_client.iter(){
-            println!("sent command searchserver to client");
             sender.send(ContentCommands::SearchTypeServers).unwrap()
         }
     }
@@ -835,586 +915,63 @@ impl SimulationController {
         }
     }
     pub fn get_media_from(&self, web_browser: NodeId, media_server: NodeId, media_path: String){
-        println!("function get_media_from was called");
         if let Some(sender)= self.web_client.get(&web_browser){
             sender.send(ContentCommands::GetMedia(media_server, media_path)).unwrap();
         }
     }
-
-}
-
-pub fn start_simulation(
-    mut simulation_controller: ResMut<SimulationController>
-) {
-    let file_path = "assets/configurations/double_chain.toml";
-    let config = parse_config(file_path);
-    check_full_duplex_connections(&config);
-
-    let (packet_channels, command_chat_channel,
-        command_web_channel, background_flooding, server_commands) =
-        setup_communication_channels(&config);
-
-    let (chat_event_send, chat_event_recv) = unbounded();
-    let (web_event_send, web_event_recv) = unbounded();
-    let (server_event_send, server_event_recv) = unbounded();
-
-    let neighbours = create_neighbours_map(&config);
-
-    let mut controller_drones = HashMap::new();
-    let mut packet_drones = HashMap::new();
-    let node_event_send = simulation_controller.node_event_send.clone();
-    let node_event_recv = simulation_controller.node_event_recv.clone();
-    let mut client = simulation_controller.client.clone();
-    let mut web_client = simulation_controller.web_client.clone();
-    let mut text_servers = simulation_controller.text_server.clone();
-    let mut media_servers = simulation_controller.media_server.clone();
-    let mut chat_servers = simulation_controller.chat_server.clone();
-    let mut background_flood = simulation_controller.background_flooding.clone();
-
-    spawn_drones(
-        &config,
-        &mut controller_drones,
-        &mut packet_drones,
-        &packet_channels,
-        node_event_send.clone()
-    );
-    #[cfg(feature = "max")]
-    {
-        spawn_servers_max(
-            &config,
-            &packet_channels,
-            &background_flooding,
-            &mut background_flood,
-            &server_commands,
-            &mut text_servers,
-            &mut chat_servers,
-            server_event_send.clone(),
-        );
-    }
-    #[cfg(not(feature = "max"))]
-    {
-        spawn_servers_baia(
-            &config,
-            &packet_channels,
-            &background_flooding,
-            &mut background_flood,
-            &server_commands,
-            &mut text_servers,
-            &mut media_servers,
-            &mut chat_servers,
-            server_event_send.clone(),
-        );
-    }
-
-    spawn_clients(
-        &config,
-        &packet_channels,
-        &command_chat_channel,
-        &command_web_channel,
-        &background_flooding,
-        &mut client,
-        &mut web_client,
-        &mut background_flood,
-        chat_event_send.clone(),
-        web_event_send.clone()
-    );
-
-    update_simulation_controller(
-        &mut simulation_controller,
-        node_event_send.clone(),
-        controller_drones,
-        node_event_recv,
-        neighbours,
-        packet_drones,
-        client,
-        web_client,
-        text_servers,
-        media_servers,
-        chat_servers,
-        background_flood
-    );
-
-    let mut controller = create_simulation_controller(
-        node_event_send,
-        simulation_controller,
-        chat_event_recv,
-        web_event_recv,
-        server_event_recv
-    );
-
-    thread::spawn(move || {
-        controller.run();
-    });
-}
-
-fn setup_communication_channels(config: &Config) -> (
-    HashMap<NodeId, (Sender<Packet>, Receiver<Packet>)>,
-    HashMap<NodeId, (Sender<CommandChat>, Receiver<CommandChat>)>,
-    HashMap<NodeId, (Sender<ContentCommands>, Receiver<ContentCommands>)>,
-    HashMap<NodeId, (Sender<BackGroundFlood>, Receiver<BackGroundFlood>)>,
-    HashMap<NodeId, (Sender<ServerCommands>, Receiver<ServerCommands>)>
-) {
-    let mut packet_channels = HashMap::new();
-    let mut command_chat_channel = HashMap::new();
-    let mut command_web_channel = HashMap::new();
-    let mut background_flood=HashMap::new();
-    let mut server_commands = HashMap::new();
-
-    for node_id in config.drone.iter().map(|d| d.id)
-        .chain(config.client.iter().map(|c| c.id))
-        .chain(config.server.iter().map(|s| s.id)) {
-        packet_channels.insert(node_id, unbounded());
-    }
-
-    for client in &config.client {
-        command_chat_channel.insert(client.id, unbounded());
-        command_web_channel.insert(client.id, unbounded());
-        background_flood.insert(client.id, unbounded());
-    }
-    for server in &config.server{
-        server_commands.insert(server.id, unbounded());
-        background_flood.insert(server.id, unbounded());
-    }
-
-    (packet_channels, command_chat_channel, command_web_channel, background_flood, server_commands)
-}
-
-fn create_neighbours_map(config: &Config) -> HashMap<NodeId, Vec<NodeId>> {
-    let mut neighbours = HashMap::new();
-    for drone in &config.drone {
-        neighbours.insert(drone.id, drone.connected_node_ids.clone());
-    }
-    neighbours
-}
-
-fn spawn_drones(
-    config: &Config,
-    controller_drones: &mut HashMap<NodeId, Sender<DroneCommand>>,
-    packet_drones: &mut HashMap<NodeId, Sender<Packet>>,
-    packet_channels: &HashMap<NodeId, (Sender<Packet>, Receiver<Packet>)>,
-    node_event_send: Sender<DroneEvent>
-) {
-    for cfg_drone in config.drone.iter().cloned() {
-        if cfg_drone.pdr>1.0{
-            if let Ok(mut state)= SHARED_STATE.write(){
-                state.wrong_pdr.insert(cfg_drone.id, true);
-                state.is_updated=true;
-            }
+    pub fn change_in_topology(&self){
+        for (_, sender) in self.client.iter(){
+            sender.send(CommandChat::TopologyChanged).unwrap();
         }
-        let (controller_drone_send, controller_drone_recv) = unbounded();
-        controller_drones.insert(cfg_drone.id, controller_drone_send);
-        packet_drones.insert(cfg_drone.id, packet_channels[&cfg_drone.id].0.clone());
-
-        let node_event_send_clone = node_event_send.clone();
-        let packet_recv = packet_channels[&cfg_drone.id].1.clone();
-        let packet_send = cfg_drone.connected_node_ids.iter()
-            .map(|nid| (*nid, packet_channels[nid].0.clone()))
-            .collect::<HashMap<_, _>>();
-
-        thread::spawn(move || {
-            let mut drone = create_drone(
-                cfg_drone.id,
-                node_event_send_clone,
-                controller_drone_recv,
-                packet_recv,
-                packet_send,
-                cfg_drone.pdr,
-            );
-
-            if let Some(mut drone) = drone {
-                drone.run();
-            }
-        });
-    }
-}
-fn create_drone(
-    id: NodeId,
-    node_event_send: Sender<DroneEvent>,
-    controller_drone_recv: Receiver<DroneCommand>,
-    packet_recv: Receiver<Packet>,
-    packet_send: HashMap<u8, Sender<Packet>>,
-    pdr: f32,
-) -> Option<Box<dyn Drone>> {
-    match id % 10 {
-        0 => Some(Box::new(LockheedRustin::new(id, node_event_send, controller_drone_recv, packet_recv, packet_send, pdr))),
-        1 => Some(Box::new(LockheedRustin::new(id, node_event_send, controller_drone_recv, packet_recv, packet_send, pdr))),
-        2 => Some(Box::new(LockheedRustin::new(id, node_event_send, controller_drone_recv, packet_recv, packet_send, pdr))),
-        3 => Some(Box::new(LockheedRustin::new(id, node_event_send, controller_drone_recv, packet_recv, packet_send, pdr))),
-        4 => Some(Box::new(LockheedRustin::new(id, node_event_send, controller_drone_recv, packet_recv, packet_send, pdr))),
-        5 => Some(Box::new(LockheedRustin::new(id, node_event_send, controller_drone_recv, packet_recv, packet_send, pdr))),
-        6 => Some(Box::new(LockheedRustin::new(id, node_event_send, controller_drone_recv, packet_recv, packet_send, pdr))),
-        7 => Some(Box::new(LockheedRustin::new(id, node_event_send, controller_drone_recv, packet_recv, packet_send, pdr))),
-        8 => Some(Box::new(LockheedRustin::new(id, node_event_send, controller_drone_recv, packet_recv, packet_send, pdr))),
-        9 => Some(Box::new(LockheedRustin::new(id, node_event_send, controller_drone_recv, packet_recv, packet_send, pdr))),
-        _ => Some(Box::new(LockheedRustin::new(id, node_event_send, controller_drone_recv, packet_recv, packet_send, pdr))),
-    }
-}
-
-
-fn spawn_servers_baia(
-    config: &Config,
-    packet_channels: &HashMap<NodeId, (Sender<Packet>, Receiver<Packet>)>,
-    background_flood: &HashMap<NodeId, (Sender<BackGroundFlood>, Receiver<BackGroundFlood>)>,
-    flooding: &mut HashMap<NodeId, Sender<BackGroundFlood>>,
-    server_commands: &HashMap<NodeId, (Sender<ServerCommands>, Receiver<ServerCommands>)>,
-    text_servers: &mut HashMap<NodeId, Sender<ServerCommands>>,
-    media_servers: &mut HashMap<NodeId, Sender<ServerCommands>>,
-    chat_servers: &mut HashMap<NodeId, Sender<ServerCommands>>,
-    server_event_send: Sender<ServerEvent>
-) {
-    for (i, cfg_server) in config.server.iter().cloned().enumerate() {
-        if cfg_server.connected_drone_ids.is_empty(){
-            topology_error(cfg_server.id, cfg_server.connected_drone_ids.clone());
+        for (_, sender) in self.web_client.iter(){
+            sender.send(ContentCommands::TopologyChanged).unwrap();
         }
-        let rcv = packet_channels[&cfg_server.id].1.clone();
-        let packet_send = cfg_server.connected_drone_ids.iter()
-            .map(|nid| (*nid, packet_channels[nid].0.clone()))
-            .collect::<HashMap<_,_>>();
-        let rcv_flood= background_flood[&cfg_server.id].1.clone();
-        flooding.insert(cfg_server.id, background_flood[&cfg_server.id].0.clone());
-
-        let rcv_command = server_commands[&cfg_server.id].1.clone();
-
-        match i {
-            0 => {
-                let mut server_baia = Server::new(cfg_server.id, rcv, packet_send, rcv_flood, rcv_command.clone(), server_event_send.clone());
-                thread::spawn(move || {
-                    server_baia.run();
-                });
-                chat_servers.insert(cfg_server.id, server_commands[&cfg_server.id].0.clone());
-                set_node_types(MyNodeType::ChatServer, config.server.len(), cfg_server.id);
-            },
-            1 => {
-                let mut text_server_baia = TextServerBaia::new(
-                    cfg_server.id,
-                    rcv,
-                    packet_send,
-                    rcv_flood,
-                    rcv_command.clone(),
-                    server_event_send.clone(),
-                    "assets/multimedia/paths/text_server1.txt"
-                );
-                thread::spawn(move || {
-                    text_server_baia.run();
-                });
-                text_servers.insert(cfg_server.id, server_commands[&cfg_server.id].0.clone());
-                set_node_types(MyNodeType::TextServer, config.server.len(), cfg_server.id);
-
-            },
-            2 => {
-                let mut media_server_baia = MediaServerBaia::new(
-                    cfg_server.id,
-                    rcv,
-                    packet_send,
-                    rcv_flood,
-                    rcv_command.clone(),
-                    server_event_send.clone(),
-                    "assets/multimedia/paths/media_server1.txt"
-                );
-                thread::spawn(move || {
-                    media_server_baia.run();
-                });
-                media_servers.insert(cfg_server.id, server_commands[&cfg_server.id].0.clone());
-                set_node_types(MyNodeType::MediaServer, config.server.len(), cfg_server.id);
-            },
-            3 => {
-                let mut media_server_baia = MediaServerBaia::new(
-                    cfg_server.id,
-                    rcv,
-                    packet_send,
-                    rcv_flood,
-                    rcv_command.clone(),
-                    server_event_send.clone(),
-                    "assets/multimedia/paths/media_serverr2.txt"
-                );
-                thread::spawn(move || {
-                    media_server_baia.run();
-                });
-                media_servers.insert(cfg_server.id, server_commands[&cfg_server.id].0.clone());
-                set_node_types(MyNodeType::MediaServer, config.server.len(), cfg_server.id);
-            },
-            _=>{}
+        for (_, sender) in self.text_server.iter().chain(self.media_server.iter()).chain(self.chat_server.iter()){
+            sender.send(ServerCommands::TopologyChanged).unwrap();
         }
+
     }
+
 }
-fn spawn_clients(
-    config: &Config,
-    packet_channels: &HashMap<NodeId, (Sender<Packet>, Receiver<Packet>)>,
-    command_chat_channel: &HashMap<NodeId, (Sender<CommandChat>, Receiver<CommandChat>)>,
-    command_web_channel: &HashMap<NodeId, (Sender<ContentCommands>, Receiver<ContentCommands>)>,
-    background_flood: &HashMap<NodeId, (Sender<BackGroundFlood>, Receiver<BackGroundFlood>)>,
-    client: &mut HashMap<NodeId, Sender<CommandChat>>,
-    web_client: &mut HashMap<NodeId, Sender<ContentCommands>>,
-    flooding: &mut HashMap<NodeId, Sender<BackGroundFlood>>,
-    chat_event_send: Sender<ChatClientEvent>,
-    web_event_send: Sender<WebBrowserEvents>
-) {
-    for (i, cfg_client) in config.client.iter().cloned().enumerate() {
-        if cfg_client.connected_drone_ids.is_empty(){
-            topology_error(cfg_client.id, cfg_client.connected_drone_ids.clone());
-        }
-        let packet_send: HashMap<NodeId, Sender<Packet>> = cfg_client.connected_drone_ids.iter()
-            .map(|nid| (*nid, packet_channels[nid].0.clone()))
-            .collect();
-        let rcv_packet = packet_channels[&cfg_client.id].1.clone();
-        let rcv_flood = background_flood[&cfg_client.id].1.clone();
-        flooding.insert(cfg_client.id, background_flood[&cfg_client.id].0.clone());
-
-
-        if i < 2 {
-            let rcv_command = command_chat_channel[&cfg_client.id].1.clone();
-            client.insert(cfg_client.id, command_chat_channel[&cfg_client.id].0.clone());
-
-            let mut client_instance = ChatClient::new(
-                cfg_client.id,
-                rcv_packet,
-                packet_send.clone(),
-                rcv_command,
-                chat_event_send.clone(),
-                rcv_flood,
-            );
-
-            thread::spawn(move || {
-                client_instance.run();
-            });
-            set_node_types(MyNodeType::ChatClient, config.client.len(), cfg_client.id);
-        } else {
-            let rcv_command = command_web_channel[&cfg_client.id].1.clone();
-            web_client.insert(cfg_client.id, command_web_channel[&cfg_client.id].0.clone());
-
-            let mut web_browser = WebBrowser::new(
-                cfg_client.id,
-                rcv_packet,
-                rcv_command,
-                packet_send.clone(),
-                rcv_flood,
-                web_event_send.clone()
-            );
-            thread::spawn(move || {
-                web_browser.run();
-            });
-            set_node_types(MyNodeType::WebBrowser, config.client.len(), cfg_client.id);
-        }
-    }
+enum AnySender {
+    Drone(Sender<DroneCommand>),
+    Client(Sender<CommandChat>),
+    Web(Sender<ContentCommands>),
+    TextServer(Sender<ServerCommands>),
+    MediaServer(Sender<ServerCommands>),
+    ChatServer(Sender<ServerCommands>),
 }
-fn set_node_types(node_type: MyNodeType, n: usize, id: NodeId){
-    if let Ok(mut state) = SHARED_STATE.write() {
-        match node_type{
-            MyNodeType::WebBrowser=>{
-                state.n_clients=n;
-                state.client_types.push((MyNodeType::WebBrowser, id));
-                state.is_updated=true;
-            },
-            MyNodeType::ChatClient=>{
-                state.n_clients=n;
-                state.client_types.push((MyNodeType::ChatClient, id));
-                state.is_updated=true;
-            },
-            MyNodeType::TextServer=>{
-                state.n_servers=n;
-                state.server_types.push((MyNodeType::TextServer, id));
-                state.is_updated=true;
-
-
-            },
-            MyNodeType::MediaServer=> {
-                state.n_servers = n;
-                state.server_types.push((MyNodeType::MediaServer, id));
-                state.is_updated = true;
-            },
-            MyNodeType::ChatServer=> {
-                state.n_servers = n;
-                state.server_types.push((MyNodeType::ChatServer, id));
-                state.is_updated = true;
+impl AnySender {
+    fn send_add_sender_command(&self, dst_id: NodeId, sender: Sender<Packet>) -> Result<(), Box<dyn std::error::Error>> {
+        match self {
+            AnySender::Drone(s) => Ok(s.send(DroneCommand::AddSender(dst_id, sender))?),
+            AnySender::Client(s) => Ok(s.send(CommandChat::AddSender(dst_id, sender))?),
+            AnySender::Web(s) => Ok(s.send(ContentCommands::AddSender(dst_id, sender))?),
+            AnySender::TextServer(s) | AnySender::MediaServer(s) | AnySender::ChatServer(s) => {
+                Ok(s.send(ServerCommands::AddSender(dst_id, sender))?)
             }
         }
     }
-}
 
-fn update_simulation_controller(
-    simulation_controller: &mut SimulationController,
-    node_event_send: Sender<DroneEvent>,
-    controller_drones: HashMap<NodeId, Sender<DroneCommand>>,
-    node_event_recv: Receiver<DroneEvent>,
-    neighbours: HashMap<NodeId, Vec<NodeId>>,
-    packet_channel: HashMap<NodeId, Sender<Packet>>,
-    client: HashMap<NodeId, Sender<CommandChat>>,
-    web_client: HashMap<NodeId, Sender<ContentCommands>>,
-    text_servers: HashMap<NodeId, Sender<ServerCommands>>,
-    media_servers: HashMap<NodeId, Sender<ServerCommands>>,
-    chat_servers: HashMap<NodeId, Sender<ServerCommands>>,
-    background_flooding : HashMap<NodeId, Sender<BackGroundFlood>>
-) {
-    simulation_controller.node_event_send = node_event_send.clone();
-    simulation_controller.drones = controller_drones;
-    simulation_controller.node_event_recv = node_event_recv;
-    simulation_controller.neighbours = neighbours;
-    simulation_controller.packet_channel = packet_channel;
-    simulation_controller.client = client;
-    simulation_controller.web_client = web_client;
-    simulation_controller.text_server = text_servers;
-    simulation_controller.media_server = media_servers;
-    simulation_controller.chat_server = chat_servers;
-    simulation_controller.background_flooding= background_flooding;
-}
-
-fn create_simulation_controller(
-    node_event_send: Sender<DroneEvent>,
-    simulation_controller: ResMut<SimulationController>,
-    chat_event_recv: Receiver<ChatClientEvent>,
-    web_event_recv: Receiver<WebBrowserEvents>,
-    server_event_recv: Receiver<ServerEvent>
-) -> SimulationController {
-    SimulationController {
-        node_event_send,
-        drones: simulation_controller.drones.clone(),
-        node_event_recv: simulation_controller.node_event_recv.clone(),
-        neighbours: simulation_controller.neighbours.clone(),
-        packet_channel: simulation_controller.packet_channel.clone(),
-        client: simulation_controller.client.clone(),
-        web_client: simulation_controller.web_client.clone(),
-        text_server: simulation_controller.text_server.clone(),
-        media_server: simulation_controller.media_server.clone(),
-        chat_server: simulation_controller.chat_server.clone(),
-        seen_floods: HashSet::new(),
-        client_list: HashMap::new(),
-        chat_event: chat_event_recv,
-        web_event: web_event_recv,
-        server_event: server_event_recv,
-        incoming_message: HashMap::new(),
-        messages: HashMap::new(),
-        register_success: HashMap::new(),
-        background_flooding: simulation_controller.background_flooding.clone()
-    }
-}
-
-fn spawn_servers_max(
-    config: &Config,
-    packet_channels: &HashMap<NodeId, (Sender<Packet>, Receiver<Packet>)>,
-    background_flood: &HashMap<NodeId, (Sender<BackGroundFlood>, Receiver<BackGroundFlood>)>,
-    flooding: &mut HashMap<NodeId, Sender<BackGroundFlood>>,
-    server_commands: &HashMap<NodeId, (Sender<ServerCommands>, Receiver<ServerCommands>)>,
-    text_servers: &mut HashMap<NodeId, Sender<ServerCommands>>,
-    chat_servers: &mut HashMap<NodeId, Sender<ServerCommands>>,
-    server_event_send: Sender<ServerEvent>
-) {
-    for (i, cfg_server) in config.server.iter().cloned().enumerate() {
-        if cfg_server.connected_drone_ids.is_empty(){
-            topology_error(cfg_server.id, cfg_server.connected_drone_ids.clone());
-        }
-        if cfg_server.connected_drone_ids.is_empty(){
-            topology_error(cfg_server.id, cfg_server.connected_drone_ids.clone());
-        }
-        let rcv = packet_channels[&cfg_server.id].1.clone();
-        let packet_send = cfg_server.connected_drone_ids.iter()
-            .map(|nid| (*nid, packet_channels[nid].0.clone()))
-            .collect::<HashMap<_,_>>();
-        let rcv_flood= background_flood[&cfg_server.id].1.clone();
-        flooding.insert(cfg_server.id, background_flood[&cfg_server.id].0.clone());
-
-        let rcv_command = server_commands[&cfg_server.id].1.clone();
-
-        match i {
-            0 => {
-                let mut server_max = ChatMax::new(cfg_server.id, rcv, packet_send, rcv_flood, rcv_command.clone(), server_event_send.clone());
-                thread::spawn(move || {
-                    server_max.run();
-                });
-                chat_servers.insert(cfg_server.id, server_commands[&cfg_server.id].0.clone());
-                set_node_types(MyNodeType::ChatServer, config.server.len(), cfg_server.id);
-            },
-            _ => {
-                let mut text_server_max = TextMax::new(
-                    cfg_server.id,
-                    rcv,
-                    packet_send,
-                    rcv_command.clone(),
-                    server_event_send.clone(),
-                    "assets/multimedia/paths/text_server1.txt",
-                    rcv_flood
-                );
-                thread::spawn(move || {
-                    text_server_max.run();
-                });
-                text_servers.insert(cfg_server.id, server_commands[&cfg_server.id].0.clone());
-                set_node_types(MyNodeType::TextServer, config.server.len(), cfg_server.id);
-            }
-
-        }
-    }
-}
-fn topology_error(id: NodeId, connected_ids: Vec<NodeId>){
-    if let Ok(mut state) = SHARED_STATE.write(){
-        state.wrong_connections.insert(id, connected_ids);
-        state.is_updated=true;
-    }
-}
-fn check_full_duplex_connections(config: &Config){
-    let mut incomplete_connections = Vec::new();
-
-    // Create a map of node IDs to their connected nodes
-    let mut connection_map: HashMap<NodeId, HashSet<NodeId>> = HashMap::new();
-
-    // Populate the connection map for all clients
-    for client in &config.client {
-        let connected_set: HashSet<NodeId> = client.connected_drone_ids.iter().cloned().collect();
-        connection_map.insert(client.id, connected_set);
-    }
-    for server in &config.server{
-        let connected_set: HashSet<NodeId> = server.connected_drone_ids.iter().cloned().collect();
-        connection_map.insert(server.id, connected_set);
-    }
-    for drone in &config.drone{
-        let connected_set: HashSet<NodeId> = drone.connected_node_ids.iter().cloned().collect();
-        connection_map.insert(drone.id, connected_set);
-    }
-
-    // Check for full duplex connections
-    for client in &config.client {
-        for &neighbor_id in &client.connected_drone_ids {
-            // Check if the neighbor has this client in its connection list
-            if let Some(neighbor_connections) = connection_map.get(&neighbor_id) {
-                if !neighbor_connections.contains(&client.id) {
-                    // This is not a full duplex connection
-                    incomplete_connections.push((client.id, neighbor_id));
-                }
-            } else {
-                // Neighbor doesn't exist in the map
-                incomplete_connections.push((client.id, neighbor_id));
+    fn send_remove_sender_command(&self, dst_id: NodeId) -> Result<(), Box<dyn std::error::Error>>{
+        match self{
+            AnySender::Drone(s)=> Ok(s.send(DroneCommand::RemoveSender(dst_id))?),
+            AnySender::Client(s)=> Ok(s.send(CommandChat::RemoveSender(dst_id))?),
+            AnySender::Web(s)=> Ok(s.send(ContentCommands::RemoveSender(dst_id))?),
+            AnySender::TextServer(s) | AnySender::MediaServer(s) | AnySender::ChatServer(s)=> {
+                Ok(s.send(ServerCommands::RemoveSender(dst_id))?)
             }
         }
     }
-    for server in &config.server {
-        for &neighbor_id in &server.connected_drone_ids {
-            // Check if the neighbor has this client in its connection list
-            if let Some(neighbor_connections) = connection_map.get(&neighbor_id) {
-                if !neighbor_connections.contains(&server.id) {
-                    // This is not a full duplex connection
-                    incomplete_connections.push((server.id, neighbor_id));
-                }
-            } else {
-                // Neighbor doesn't exist in the map
-                incomplete_connections.push((server.id, neighbor_id));
-            }
-        }
-    }
-    for drone in &config.drone {
-        for &neighbor_id in &drone.connected_node_ids {
-            // Check if the neighbor has this client in its connection list
-            if let Some(neighbor_connections) = connection_map.get(&neighbor_id) {
-                if !neighbor_connections.contains(&drone.id) {
-                    // This is not a full duplex connection
-                    incomplete_connections.push((drone.id, neighbor_id));
-                }
-            } else {
-                // Neighbor doesn't exist in the map
-                incomplete_connections.push((drone.id, neighbor_id));
-            }
-        }
-    }
-    if let Ok(mut state) = SHARED_STATE.write(){
-        state.incomplete_connections=incomplete_connections;
-        state.is_updated=true;
-    }
 
+    fn sender_type(&self) -> &'static str {
+        match self {
+            AnySender::Drone(_) => "drone",
+            AnySender::Client(_) => "client",
+            AnySender::Web(_) => "web",
+            AnySender::TextServer(_) => "text server",
+            AnySender::MediaServer(_) => "media server",
+            AnySender::ChatServer(_) => "chat server",
+        }
+    }
 }

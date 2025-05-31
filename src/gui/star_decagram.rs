@@ -1,11 +1,10 @@
 use bevy::prelude::*;
 use crate::network_initializer::network_initializer::*;
-use crate::GUI::login_window::{AddedDrone, NodeConfig, NodeType};
-use crate::GUI::shared_info_plugin::SeenClients;
+use crate::gui::login_window::{NodeConfig, NodeType};
+use crate::gui::shared_info_plugin::SeenClients;
 use crate::simulation_control::simulation_control::MyNodeType;
 
 pub fn spawn_star_decagram(
-    added_drone: Option<AddedDrone>,
     clients: &mut SeenClients
 ) -> Vec<NodeConfig>
 {
@@ -14,9 +13,7 @@ pub fn spawn_star_decagram(
     let mut nodes = Vec::new();
 
     let mut node_count = config.drone.len() + config.client.len() + config.server.len();
-    if let Some(_)=added_drone{
-        node_count+=1;
-    }
+
 
     let calculate_position = |index: usize| -> Vec2 {
         let angle = index as f32 * std::f32::consts::TAU / node_count as f32;
@@ -37,16 +34,7 @@ pub fn spawn_star_decagram(
         ));
         current_index += 1;
     }
-    if let Some(added_drone)=added_drone{
-        let position=calculate_position(current_index);
-        nodes.push(NodeConfig::new(
-            NodeType::Drone,
-            added_drone.drone.1,
-            position,
-            added_drone.drone.0.clone()
-        ));
-        current_index+=1;
-    }
+
 
     for client in &config.client {
 

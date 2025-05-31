@@ -2,12 +2,11 @@ use std::collections::HashMap;
 use bevy::prelude::*;
 use bevy::window::PrimaryWindow;
 use bevy_egui::{egui, EguiContexts};
-use crate::GUI::login_window::SimulationController;
-use crate::GUI::login_window::NodesConfig;
+use crate::gui::login_window::SimulationController;
 use wg_2024::network::NodeId;
 use crate::common_things::common::ClientType;
-use crate::GUI::login_window::Clickable;
-use crate::GUI::login_window::AppState;
+use crate::gui::login_window::Clickable;
+use crate::gui::login_window::AppState;
 
 
 pub struct ChatSystemPlugin;
@@ -23,14 +22,11 @@ impl Plugin for ChatSystemPlugin {
 
 #[derive(Resource, Default)]
 pub struct ChatState {
-    message_input: HashMap<NodeId, String>, // Each client has for every activ
-    active_chat_node: HashMap<NodeId, Option<NodeId>>, // Each client's active
-    active_chat_server: HashMap<NodeId, Option<NodeId>>, // Each client's acti
-    // Tracking registered clients: (client_id, server_id) -> is_registered
+    message_input: HashMap<NodeId, String>,
+    active_chat_node: HashMap<NodeId, Option<NodeId>>,
+    active_chat_server: HashMap<NodeId, Option<NodeId>>,
     pub registered_clients: HashMap<(NodeId, NodeId), bool>,
-    // Chat messages: (server_id, (sender_id, receiver_id)) -> [messages]
     pub chat_messages: HashMap<(NodeId, (NodeId, NodeId)), Vec<String>>,
-    //Chat responses : (server_id, (receiver_id, sender_id)) -> [messages]
     pub chat_responses: HashMap<(NodeId, (NodeId, NodeId)), Vec<String>>,
     pub chat_clients: Vec<NodeId>,
     pub chat_servers: HashMap<NodeId, Vec<NodeId>>
@@ -74,7 +70,6 @@ pub fn handle_clicks(
                     if !open_windows.windows.contains(&(clickable.name,clickable.window_type.clone())) {
                         open_windows.windows.push((clickable.name.clone(),clickable.window_type.clone()));
                         open_windows.click_count+=1;
-                        println!("Clicked on: {}", clickable.name);
 
                         match clickable.window_type{
                             ClientType::ChatClient=>sim.get_chat_servers(),
@@ -97,7 +92,6 @@ fn display_windows(
     mut contexts: EguiContexts,
     mut open_windows: ResMut<OpenWindows>,
     mut sim: ResMut<SimulationController>,
-    nodes: Res<NodesConfig>,
     mut chat_state: ResMut<ChatState>
 ) {
     let mut windows_to_close = Vec::new();

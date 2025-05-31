@@ -396,9 +396,9 @@ impl WebBrowser {
                                         if let Err(_) = self.send_event.send(WebBrowserEvents::SavedTextFile(self.config.id.clone(), path.clone())) {
                                             println!("failed to send path to text file to simulation control")
                                         }
-                                        //if let Err(_) = self.send_event.send(WebBrowserEvents::PacketInfo(self.config.id, ContentType::SavedText(fragment.total_n_fragments), packet.session_id)){
-                                        //  println!("client {} failed to notify SC about text server list",self.config.id);
-                                        //}
+                                        if let Err(_) = self.send_event.send(WebBrowserEvents::PacketInfo(self.config.id, ContentType::SavedText(fragment.total_n_fragments), packet.session_id)){
+                                          println!("client {} failed to notify SC about text server list",self.config.id);
+                                        }
                                     }
                                     Err(str) => { println!("{}", str) }
                                 }
@@ -434,9 +434,9 @@ impl WebBrowser {
                                         if let Err(_) = self.send_event.send(WebBrowserEvents::SavedMedia(self.config.id.clone(), path.clone())){
                                             println!("failed to send path to media to simulation control")
                                         }
-                                        //if let Err(_) = self.send_event.send(WebBrowserEvents::PacketInfo(self.config.id, ContentType::SavedMedia(fragment.total_n_fragments), packet.session_id)){
-                                        //    println!("client {} failed to notify SC about text server list",self.config.id);
-                                        //}
+                                        if let Err(_) = self.send_event.send(WebBrowserEvents::PacketInfo(self.config.id, ContentType::SavedMedia(fragment.total_n_fragments), packet.session_id)){
+                                            println!("client {} failed to notify SC about text server list",self.config.id);
+                                        }
                                     }
                                     Err(str) => {println!("{}", str)}
                                 }

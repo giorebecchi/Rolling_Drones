@@ -81,6 +81,15 @@ impl Server{
                             ServerCommands::SendTopologyGraph=>{
                                 self.send_topology_graph();
                             }
+                            ServerCommands::AddSender(id, sender)=>{
+                                //todo
+                            },
+                            ServerCommands::RemoveSender(id)=>{
+                                //todo
+                            },
+                            ServerCommands::TopologyChanged=>{
+                                //todo
+                            }
                         }
                     }
                 }

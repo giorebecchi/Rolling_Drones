@@ -1,12 +1,10 @@
 use bevy::prelude::*;
-use crate::common_things::common::ClientType;
-use crate::GUI::login_window::{NodeConfig, NodeType, AddedDrone};
-use crate::GUI::shared_info_plugin::SeenClients;
+use crate::gui::login_window::{NodeConfig, NodeType};
+use crate::gui::shared_info_plugin::SeenClients;
 use crate::network_initializer::network_initializer::parse_config;
 use crate::simulation_control::simulation_control::MyNodeType;
 
 pub fn spawn_butterfly(
-    added_drone: Option<AddedDrone>,
     clients: &mut SeenClients,
 ) -> Vec<NodeConfig>
 {
@@ -17,9 +15,6 @@ pub fn spawn_butterfly(
     let mut all_nodes = Vec::new();
     for drone in config.drone {
         all_nodes.push((NodeType::Drone, drone.id, drone.connected_node_ids));
-    }
-    if let Some(added_drone)=added_drone{
-        all_nodes.push((NodeType::Drone, added_drone.drone.1, added_drone.drone.0.clone()));
     }
     for client in &config.client {
         for (client_type, id) in &clients.clients{
@@ -49,7 +44,6 @@ pub fn spawn_butterfly(
     let mut nodes = Vec::with_capacity(node_count);
     let mut node_index = 0;
 
-    // Always fixed structure for the first three layers
     let base_structure = [2, 4, 4];
     let mut current_y = -vertical_spacing * 3.0;
 
@@ -70,7 +64,6 @@ pub fn spawn_butterfly(
         current_y += vertical_spacing;
     }
 
-    // If more than 10 nodes, add additional layers of 4 nodes each
     while node_index < node_count {
         let nodes_in_row = (node_count - node_index).min(4);
         let x_offset = (nodes_in_row as f32 - 1.0) * horizontal_spacing / 2.0;

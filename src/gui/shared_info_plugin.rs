@@ -5,9 +5,9 @@ use bevy::app::{App, AppExit, Plugin, Update};
 use bevy::prelude::{in_state, EventWriter, IntoSystemConfigs, NextState, Res, ResMut, Resource};
 use once_cell::sync::Lazy;
 use wg_2024::network::NodeId;
-use crate::GUI::chat_windows::ChatState;
-use crate::GUI::login_window::{AppState, NodeConfig, NodeType, NodesConfig};
-use crate::GUI::web_media_plugin::WebState;
+use crate::gui::chat_windows::ChatState;
+use crate::gui::login_window::AppState;
+use crate::gui::web_media_plugin::WebState;
 use crate::simulation_control::simulation_control::MyNodeType;
 
 pub static SHARED_STATE: Lazy<Arc<RwLock<ThreadInfo>>> = Lazy::new(|| {
@@ -86,7 +86,6 @@ fn sync_before_setup(
                 seen_clients.clients_len+=state.n_clients;
                 seen_clients.servers.extend(state.server_types.clone());
                 seen_clients.servers_len+=state.n_servers;
-            println!("state: {:?}",state);
 
 
             }
@@ -112,22 +111,15 @@ fn sync_backend_to_frontend(
         if state.is_updated {
 
             chat_state.chat_responses = state.responses.clone();
-            // chat_state.client_list= state.client_list.clone();
             chat_state.registered_clients = state.registered_clients.clone();
             chat_state.chat_servers = state.chat_servers.clone();
-            println!("chat_servers: {:?}",chat_state.chat_servers);
             chat_state.chat_clients=state.chat_clients.clone();
             web_state.text_servers=state.text_servers.clone();
-            println!("text_servers: {:?}", web_state.text_servers);
             web_state.media_servers=state.media_servers.clone();
-            println!("media_servers: {:?}", web_state.media_servers);
             web_state.media_paths=state.client_medias.clone();
             web_state.target_media_server=state.target_media_server.clone();
-            println!("target_media_server: {:?}",web_state.target_media_server);
             web_state.actual_media_path=state.actual_media_path.clone();
-            println!("actual_media_path: {:?}", web_state.actual_media_path);
             web_state.actual_file_path=state.actual_file_path.clone();
-            println!("actual_file_path: {:?}", web_state.actual_file_path);
             topology.node_connection=state.wrong_connections.clone();
             topology.incomplete_connections=state.incomplete_connections.clone();
             topology.wrong_pdr=state.wrong_pdr.clone();
