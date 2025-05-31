@@ -7,14 +7,13 @@ use bevy_egui::{egui, EguiContexts, EguiPlugin};
 use bevy_egui::egui::menu;
 use crossbeam_channel::{Receiver, Sender};
 use wg_2024::network::{NodeId};
-use crate::GUI::star_decagram::spawn_star_decagram;
-use crate::GUI::double_chain::spawn_double_chain;
-use crate::GUI::butterfly::spawn_butterfly;
+use crate::gui::star_decagram::spawn_star_decagram;
+use crate::gui::double_chain::spawn_double_chain;
+use crate::gui::butterfly::spawn_butterfly;
 use crate::simulation_control::simulation_control::*;
-use egui::widgets::TextEdit;
 use wg_2024::controller::{DroneCommand, DroneEvent};
 use wg_2024::packet::{Ack, FloodRequest, FloodResponse, Fragment, Nack, Packet};
-use std::fmt::{Display, Formatter};
+use std::fmt::Display;
 use crate::common_things::common::{BackGroundFlood, ChatClientEvent, ClientType, CommandChat, ContentCommands, WebBrowserEvents, ServerCommands, ServerEvent};
 use bevy_framepace::{FramepacePlugin, FramepaceSettings, Limiter};
 use std::sync::{Arc};
@@ -22,11 +21,12 @@ use egui::{Color32, RichText};
 use once_cell::sync::Lazy;
 use petgraph::Graph;
 use petgraph::prelude::UnGraphMap;
-use crate::GUI::chat_windows::ChatSystemPlugin;
-use crate::GUI::shared_info_plugin::{BackendBridgePlugin, SeenClients};
-use crate::GUI::web_media_plugin::WebMediaPlugin;
-use crate::GUI::advanced_logs_window::AdvancedLogsPlugin;
-use crate::GUI::simulation_commands::SimulationCommandsPlugin;
+use crate::gui::chat_windows::ChatSystemPlugin;
+use crate::gui::shared_info_plugin::{BackendBridgePlugin, SeenClients};
+use crate::gui::web_media_plugin::WebMediaPlugin;
+use crate::gui::advanced_logs_window::AdvancedLogsPlugin;
+use crate::gui::simulation_commands::SimulationCommandsPlugin;
+use crate::network_initializer::network_initializer::start_simulation;
 
 #[derive(Component)]
 struct InputText;
@@ -83,14 +83,7 @@ pub enum NodeType{
     WebBrowser,
     ChatClient
 }
-#[derive(Event)]
-pub struct NewDroneSpawned{
-    pub drone: (Vec<NodeId>, NodeId)
-}
-#[derive(Resource,Clone,Default)]
-pub struct AddedDrone{
-    pub drone: (Vec<NodeId>,NodeId)
-}
+
 #[derive(Clone,Resource)]
 pub struct SimulationController {
     pub drones: HashMap<NodeId, Sender<DroneCommand>>,
@@ -157,7 +150,6 @@ pub fn main() {
         .add_plugins(WebMediaPlugin)
         .add_plugins(EguiPlugin)
         .init_resource::<OccupiedScreenSpace>()
-        .init_resource::<AddedDrone>()
         .init_resource::<UserConfig>()
         .init_resource::<NodesConfig>()
         .init_resource::<UiCommands>()
@@ -170,12 +162,10 @@ pub fn main() {
             state: shared_state.clone(),
         })
         .init_state::<AppState>()
-        .add_event::<NewDroneSpawned>()
         .add_systems(Update, (ui_settings,sync_log))
         .add_systems(Startup, setup_camera)
         .add_systems(OnEnter(AppState::SetUp), start_simulation)
         .add_systems(OnEnter(AppState::InGame), (setup_network, initiate_flood))
-        .add_systems(Update, recompute_network.run_if(in_state(AppState::InGame)))
         .add_systems(Update , (draw_connections,set_up_bundle).run_if(in_state(AppState::InGame)))
 
         .run();
@@ -214,56 +204,26 @@ fn setup_network(
     match (*user_config).0.as_str(){
         "star"=>{
 
-            let nodes= spawn_star_decagram(None,&mut seen_clients);
+            let nodes= spawn_star_decagram(&mut seen_clients);
             (*nodes_config).0=nodes;
-            println!("nodes :{:?}",nodes_config.clone());
         },
         "double_chain"=>{
-            let nodes=spawn_double_chain(None,&mut seen_clients);
+            let nodes=spawn_double_chain(&mut seen_clients);
             (*nodes_config).0=nodes;
         },
         "butterfly"=>{
-            let nodes= spawn_butterfly(None, &mut seen_clients);
+            let nodes= spawn_butterfly(&mut seen_clients);
             (*nodes_config).0=nodes;
         },
         _=> {
-            let nodes = spawn_star_decagram(None, &mut seen_clients);
+            let nodes = spawn_star_decagram(&mut seen_clients);
             (*nodes_config).0=nodes;
 
         },
     }
 
 }
-fn recompute_network(
-    mut event_reader: EventReader<NewDroneSpawned>,
-    user_config : Res<UserConfig>,
-    mut nodes_config: ResMut<NodesConfig>,
-    mut added_drone: ResMut<AddedDrone>,
-    mut seen_clients: ResMut<SeenClients>
-){
-    for new_drone in event_reader.read(){
-        added_drone.drone=new_drone.drone.clone();
-        match user_config.0.as_str(){
-            "star"=>{
-                let nodes= spawn_star_decagram(Some(added_drone.clone()),&mut seen_clients);
-                (*nodes_config).0=nodes;
-            },
-            "double_chain"=>{
-                let nodes=spawn_double_chain(Some(added_drone.clone()),&mut seen_clients);
-                (*nodes_config).0=nodes;
-            },
-            "butterfly"=>{
-                let nodes= spawn_butterfly(Some(added_drone.clone()), &mut seen_clients);
-                (*nodes_config).0=nodes;
-            },
-            _=> {
-                let nodes = spawn_star_decagram(Some(added_drone.clone()),&mut seen_clients);
-                (*nodes_config).0=nodes;
 
-            }
-        }
-    }
-}
 #[derive(Component)]
 pub struct Clickable {
     pub name: NodeId,
@@ -447,15 +407,12 @@ fn ui_settings(
     sim_log: Res<DisplayableLog>,
     mut sim_windows: ResMut<SimWindows>,
     mut node_entities: ResMut<NodeEntities>,
-    mut simulation_commands: ResMut<UiCommands>,
-    mut next_state: ResMut<NextState<AppState>>,
-    mut event_writer: EventWriter<NewDroneSpawned>
+    mut next_state: ResMut<NextState<AppState>>
 ) {
 
     if let Some(context)=contexts.try_ctx_mut() {
         let ctx = context;
 
-        //let state = sim_state.state.lock().unwrap();
         occupied_screen_space.left = egui::SidePanel::left("left_panel")
             .resizable(true)
             .show(ctx, |ui| {
@@ -470,14 +427,6 @@ fn ui_settings(
                         }else if ui.button("Butterfly").clicked(){
                             topology.0="butterfly".to_string();
                             next_state.set(AppState::SetUp);
-                        }else if ui.button("Reset").clicked(){
-                            nodes.0=Vec::new();
-                            for entity in node_entities.0.clone(){
-                                commands.entity(entity).despawn_recursive();
-                            }
-                            sim.crash_all();
-                            node_entities.0.clear();
-                            next_state.set(AppState::Menu);
                         }
                     });
                     if ui.button("Simulation Commands").clicked() {
@@ -493,23 +442,19 @@ fn ui_settings(
             .rect
             .width();
         occupied_screen_space.right = {
-            // Store panel's collapsed state in the UI using a unique ID
             let mut collapsed = ctx.data_mut(|d| *d.get_persisted_mut_or_default::<bool>(egui::Id::new("right_panel_collapsed")));
 
-            // Create a resizable right panel with a show/hide button
             let panel = egui::SidePanel::right("right_panel")
                 .resizable(true)
                 .default_width(300.0)
                 .min_width(if collapsed { 24.0 } else { 150.0 })
                 .show(ctx, |ui| {
                     ui.horizontal(|ui| {
-                        // Toggle button with icon
                         if ui.button(if collapsed { "show" } else { "collapse" }).clicked() {
                             collapsed = !collapsed;
                             ctx.data_mut(|d| d.insert_persisted(egui::Id::new("right_panel_collapsed"), collapsed));
                         }
 
-                        // Only show the panel title when expanded
                         if !collapsed {
                             ui.label("Simulation log");
                             if ui.button("Clear Log").clicked() {
@@ -533,9 +478,9 @@ fn ui_settings(
                         client_log.push_str(node_content);
                     }
 
-                    // Only show content when not collapsed
                     if !collapsed {
                         egui::ScrollArea::vertical()
+                            .max_height(450.0)
                             .show(ui, |ui| {
                                 ui.horizontal(|ui|{
                                     ui.label(RichText::new(client_log).color(Color32::GREEN));
@@ -546,14 +491,12 @@ fn ui_settings(
                             });
                         if ui.button("Advanced Logs").clicked(){
                             sim_windows.advanced_logs=true;
-                            println!("now open: {}", sim_windows.advanced_logs);
                         }
                     }
 
                     ui.allocate_rect(ui.available_rect_before_wrap(), egui::Sense::hover());
                 });
 
-            // Return the panel width
             panel.response.rect.width()
         };
     }

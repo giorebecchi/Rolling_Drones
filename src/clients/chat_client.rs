@@ -330,9 +330,6 @@ impl ChatClient {
                                 if let Err(_) = self.event_send.send(RegisteredSuccess((self.config.id.clone(), src_id.clone()), Ok(()))){
                                     println!("could not send to simulation control");
                                 }
-                                //if let Err(err) = self.event_send.send(ChatClientEvent::PacketInfo(self.config.id, ChatEvent::RegisteredSuccess(fragment.total_n_fragments), packet.session_id )) {
-                                //    println!("Failed to notify SC about server list: {}", err);
-                                //}
                             }else {
                                 println!("not registered successfully");
                                 if let Err(_) = self.event_send.send(RegisteredSuccess((self.config.id.clone(), src_id.clone()), Err("registration not successful".to_string()))){
@@ -351,19 +348,15 @@ impl ChatClient {
                             if let Err(_) = self.event_send.send(ClientList((self.config.id.clone(), src_id.clone()), registered_clients)){
                                 println!("failed to send the registered clients to sc");
                             }
-                            //if let Err(err) = self.event_send.send(ChatClientEvent::PacketInfo(self.config.id, ChatEvent::ClientList(fragment.total_n_fragments), packet.session_id )) {
-                            //    println!("Failed to notify SC about server list: {}", err);
-                            //}
                         },
                         ChatResponse::ForwardMessage(message_chat) =>{
                             let sender = message_chat.from_id;
-                            println!("Message from: {}, content:\n{}", sender, message_chat.content);
                             if let Err(str) = self.event_send.send(IncomingMessage((self.config.id.clone(), src_id.clone(), sender), message_chat.content)){
                                 println!("failed to send message to simulation control: {}", str);
                             }
-                            //if let Err(err) = self.event_send.send(ChatClientEvent::PacketInfo(self.config.id, ChatEvent::IncomingMessage(fragment.total_n_fragments), packet.session_id )) {
-                            //    println!("Failed to notify SC about server list: {}", err);
-                            //}
+                            if let Err(err) = self.event_send.send(ChatClientEvent::PacketInfo(self.config.id, ChatEvent::IncomingMessage(fragment.total_n_fragments), packet.session_id )) {
+                                println!("Failed to notify SC about server list: {}", err);
+                            }
                         }
                     }
 

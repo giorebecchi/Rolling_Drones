@@ -1,16 +1,18 @@
 use std::fmt::{Display, Formatter};
+use crossbeam_channel::Sender;
 use petgraph::Graph;
 use petgraph::prelude::UnGraphMap;
 use serde::{Deserialize, Serialize};
 use wg_2024::network::NodeId;
 use wg_2024::packet::Packet;
-use crate::GUI::login_window::NodeType;
+use crate::gui::login_window::NodeType;
 use crate::servers::Text_max::Server;
 use crate::simulation_control::simulation_control::MyNodeType;
 
 //comandi sim_control
 #[derive(Clone)]
 pub enum CommandChat {
+    TopologyChanged,
     ServerType(NodeId),//node id server
     SearchChatServers,
     RegisterClient(NodeId),//node id server
@@ -18,6 +20,8 @@ pub enum CommandChat {
     SendMessage(NodeId, NodeId, String),//node id del client a cui mandare la string, node id server da cui passare
     EndChat(NodeId),//node id del server
     SendTopologyGraph,
+    RemoveSender(NodeId),
+    AddSender(NodeId, Sender<Packet>), //works the same as drones
     Crash
 }
 ///The NodeId identifies the client that sent the ChatClientEvent
@@ -52,6 +56,9 @@ pub enum RequestEvent{
 
 pub enum ServerCommands{
     SendTopologyGraph,
+    AddSender(NodeId, Sender<Packet>),
+    RemoveSender(NodeId),
+    TopologyChanged
 }
 
 //pub enum ServerEvent{
@@ -169,8 +176,9 @@ pub enum MediaServer{
 
 //need to add the simulation control commands
 //possibility:
-#[derive(Serialize, Deserialize, Debug)]
+#[derive(Debug)]
 pub enum ContentCommands{
+    TopologyChanged,
     GetPathResolution, //sent to the text server, to resolve all the text files from media servers (1st step)
     GetTextList(NodeId), //sent to client, client needs to ask text server, node id text server? probably better if automated
     GetMediaPosition(NodeId, MediaId), //sent to client with id of media needed, same problem with id of text server
@@ -179,6 +187,8 @@ pub enum ContentCommands{
     GetText(NodeId, TextId), //sent to client, text id of the text file needed
     SearchTypeServers,
     SendTopologyGraph,
+    AddSender(NodeId, Sender<Packet>),
+    RemoveSender(NodeId),
     Crash
 }
 pub enum BackGroundFlood{
@@ -214,28 +224,4 @@ pub enum ContentRequest{
     GetPosition(u64),
     GetMedia(u64),
     GetText(u64)
-}
-impl Display for ContentType{
-    fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
-        match self{
-            ContentType::TextServerList(_)=>{
-                write!(f,"Fragment of a TextServer List packet")
-            },
-            ContentType::MediaServerList(_)=>{
-                write!(f,"Fragment of a MediaServer List packet")
-            },
-            ContentType::FileList(_)=>{
-                write!(f,"Fragment of a File List packet")
-            },
-            ContentType::MediaPosition(_)=>{
-                write!(f,"Fragment of a MediaPosition packet")
-            },
-            ContentType::SavedMedia(_)=>{
-                write!(f,"Fragment of a SavedMedia packet")
-            },
-            ContentType::SavedText(_)=>{
-                write!(f,"Fragment of a SavedText packet")
-            }
-        }
-    }
 }

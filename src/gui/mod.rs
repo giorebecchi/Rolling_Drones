@@ -2,7 +2,6 @@ pub mod login_window;
 pub mod star_decagram;
 pub mod double_chain;
 pub mod butterfly;
-pub mod test_try;
 pub mod chat_windows;
 pub mod shared_info_plugin;
 pub mod web_media_plugin;
