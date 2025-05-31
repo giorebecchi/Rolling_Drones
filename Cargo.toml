@@ -11,7 +11,7 @@ wg_2024 = { git = "https://github.com/WGL-2024/WGL_repo_2024.git", features = ["
 bevy =  { version = "0.15.3" }
 bevy_framepace = "0.18.1"
 toml = "0.8.19"
-crossbeam-channel = "0.5.13"
+crossbeam-channel = "0.5.15"
 rand = "0.9.0-beta.0"
 petgraph = "0.7.1"
 bagel_bomber = { git = "https://github.com/daw-dev/bagel-bomber.git", default-features = false }
