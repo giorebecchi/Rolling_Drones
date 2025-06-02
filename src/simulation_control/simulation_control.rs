@@ -180,13 +180,13 @@ impl SimulationController {
         let message = match event {
             ChatEvent::ChatServers(size) => {
                 format!(
-                    "Chat Client {}: asked for list of Chat Servers\nThe message was made of {} fragments\n",
+                    "Chat Client {}: received list of Chat Servers\nThe message was made of {} fragments\n",
                     client, size
                 )
             }
             ChatEvent::ClientList(size) => {
                 format!(
-                    "Chat Client {}: asked for list of Chat Clients\nThe message was made of {} fragments\n",
+                    "Chat Client {}: received list of Chat Clients\nThe message was made of {} fragments\n",
                     client, size
                 )
             }
@@ -359,37 +359,37 @@ impl SimulationController {
         let message = match packet_info {
             ContentType::TextServerList(size) => {
                 format!(
-                    "Web browser: {} asked for list of Text Servers\n the message was made of {} fragments\n",
+                    "Web browser: {} received list of Text Servers\n the message was made of {} fragments\n",
                     client, size
                 )
             }
             ContentType::MediaServerList(size) => {
                 format!(
-                    "Web browser: {} asked for list of Media Servers\n the message was made of {} fragments\n",
+                    "Web browser: {} received list of Media Servers\n the message was made of {} fragments\n",
                     client, size
                 )
             }
             ContentType::FileList(size) => {
                 format!(
-                    "Web browser: {} asked for File List\n the message was made of {} fragments\n",
+                    "Web browser: {} received File List\n the message was made of {} fragments\n",
                     client, size
                 )
             }
             ContentType::MediaPosition(size) => {
                 format!(
-                    "Web browser: {} asked for Media Position\n the message was made of {} fragments\n",
+                    "Web browser: {} received Media Position\n the message was made of {} fragments\n",
                     client, size
                 )
             }
             ContentType::SavedText(size) => {
                 format!(
-                    "Web browser: {} asked for a Text File\n the message was made of {} fragments\n",
+                    "Web browser: {} received a  Text File\n the message was made of {} fragments\n",
                     client, size
                 )
             }
             ContentType::SavedMedia(size) => {
                 format!(
-                    "Web browser: {} asked for a Media\n the message was made of {} fragments\n",
+                    "Web browser: {} received a Media\n the message was made of {} fragments\n",
                     client, size
                 )
             }

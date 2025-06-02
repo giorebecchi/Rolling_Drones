@@ -6,6 +6,7 @@ edition = "2021"
 default = []
 max = []
 
+
 [dependencies]
 wg_2024 = { git = "https://github.com/WGL-2024/WGL_repo_2024.git", features = ["serialize", "debug"]}
 bevy =  { version = "0.15.3" }

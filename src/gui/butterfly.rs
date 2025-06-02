@@ -14,14 +14,14 @@ pub fn spawn_butterfly(
 
     let mut all_nodes = Vec::new();
     for drone in config.drone {
-        all_nodes.push((NodeType::Drone, drone.id, drone.connected_node_ids));
+        all_nodes.push((NodeType::Drone, drone.id, drone.connected_node_ids, drone.pdr));
     }
     for client in &config.client {
         for (client_type, id) in &clients.clients{
             if id.clone() == client.id{
                 match client_type{
-                    MyNodeType::WebBrowser=>all_nodes.push((NodeType::WebBrowser, client.id, client.connected_drone_ids.clone())),
-                    MyNodeType::ChatClient=>all_nodes.push((NodeType::ChatClient, client.id, client.connected_drone_ids.clone())),
+                    MyNodeType::WebBrowser=>all_nodes.push((NodeType::WebBrowser, client.id, client.connected_drone_ids.clone(), -1.00)),
+                    MyNodeType::ChatClient=>all_nodes.push((NodeType::ChatClient, client.id, client.connected_drone_ids.clone(), -1.00)),
                     _=>unreachable!()
                 }
             }
@@ -31,9 +31,9 @@ pub fn spawn_butterfly(
         for (server_type, id) in &clients.servers {
             if id.clone()==server.id {
                 match server_type {
-                    MyNodeType::TextServer => all_nodes.push((NodeType::TextServer, server.id, server.connected_drone_ids.clone())),
-                    MyNodeType::MediaServer => all_nodes.push((NodeType::MediaServer, server.id, server.connected_drone_ids.clone())),
-                    MyNodeType::ChatServer=>all_nodes.push((NodeType::ChatServer, server.id, server.connected_drone_ids.clone())),
+                    MyNodeType::TextServer => all_nodes.push((NodeType::TextServer, server.id, server.connected_drone_ids.clone(), -1.00)),
+                    MyNodeType::MediaServer => all_nodes.push((NodeType::MediaServer, server.id, server.connected_drone_ids.clone(), -1.00)),
+                    MyNodeType::ChatServer=>all_nodes.push((NodeType::ChatServer, server.id, server.connected_drone_ids.clone(), -1.00)),
                     _ => unreachable!()
                 }
             }
@@ -52,12 +52,13 @@ pub fn spawn_butterfly(
         for i in 0..count {
             if node_index >= node_count { break; }
             let x = (i as f32 * horizontal_spacing) - x_offset;
-            let (node_type, id, connected_ids) = &all_nodes[node_index];
+            let (node_type, id, connected_ids, pdr) = &all_nodes[node_index];
             nodes.push(NodeConfig::new(
                 node_type.clone(),
                 *id,
                 Vec2::new(x, current_y),
-                connected_ids.clone()
+                connected_ids.clone(),
+                *pdr
             ));
             node_index += 1;
         }
@@ -69,12 +70,13 @@ pub fn spawn_butterfly(
         let x_offset = (nodes_in_row as f32 - 1.0) * horizontal_spacing / 2.0;
         for i in 0..nodes_in_row {
             let x = (i as f32 * horizontal_spacing) - x_offset;
-            let (node_type, id, connected_ids) = &all_nodes[node_index];
+            let (node_type, id, connected_ids, pdr) = &all_nodes[node_index];
             nodes.push(NodeConfig::new(
                 node_type.clone(),
                 *id,
                 Vec2::new(x, current_y),
-                connected_ids.clone()
+                connected_ids.clone(),
+                *pdr
             ));
             node_index += 1;
         }
