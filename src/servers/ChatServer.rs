@@ -82,10 +82,10 @@ impl Server{
                                 self.send_topology_graph();
                             }
                             ServerCommands::AddSender(id, sender)=>{
-                                //todo
+                                self.add_sender(id, sender);
                             },
                             ServerCommands::RemoveSender(id)=>{
-                                //todo
+                                self.remove_sender(id)
                             },
                             ServerCommands::TopologyChanged=>{
                                 //todo
@@ -99,6 +99,16 @@ impl Server{
     fn send_topology_graph(&self){
         self.send_event.send(ServerEvent::Graph(self.server_id, self.neigh_map.clone())).unwrap();
     }
+    fn add_sender(&mut self, node_id: NodeId, sender: Sender<Packet>){
+        if !self.packet_send.contains_key(&node_id) {
+            self.packet_send.insert(node_id, sender);
+        }
+    }
+    
+    fn remove_sender(&mut self, node_id: NodeId){
+        self.packet_send.remove_entry(&node_id);
+    }
+    
     pub fn handle_packet(&mut self, p:Packet){
         match p.clone().pack_type {
             PacketType::MsgFragment(_) => {println!("received packet {p}");self.handle_msg_fragment(p)}
@@ -123,7 +133,7 @@ impl Server{
     }
 
 
-    fn send_packet<T>(&mut self, p:T, id:NodeId, nt:NodeType)where T : Fragmentation+Serialize+Debug{
+    fn send_packet(&mut self, p:ChatResponse, id:NodeId, nt:NodeType){
         // println!("flooding : {:?}", self.flooding); //fa vedere tutte le flood response salvaate nel server
         // println!("graph del chatserver {:?}: {:?}",self.server_id, self.neigh_map); //fa vedere il grafo (tutti i nodi e tutti gli edges)
         if let Some(srh) = self.best_path_custom_cost(id,nt){
@@ -137,6 +147,14 @@ impl Server{
                     self.forward_packet(i.clone());
                 }
                 self.fragments_send.insert(self.session_id.clone(), (id,nt,fragments_send));
+                match p {
+                    ChatResponse::ServerTypeChat(_) => {self.send_event.send(ServerEvent::ChatPacketInfo(self.server_id, MyNodeType::ChatServer, ChatServerEvent::SendingServerTypeChat(vec.len() as u64),self.session_id)).unwrap();}
+                    ChatResponse::RegisterClient(_) => {self.send_event.send(ServerEvent::ChatPacketInfo(self.server_id, MyNodeType::ChatServer, ChatServerEvent::ClientRegistration(vec.len() as u64),self.session_id)).unwrap();}
+                    ChatResponse::RegisteredClients(_) => {self.send_event.send(ServerEvent::ChatPacketInfo(self.server_id, MyNodeType::ChatServer, ChatServerEvent::SendingClientList(vec.len() as u64),self.session_id)).unwrap();}
+                    ChatResponse::SendMessage(_) => {self.send_event.send(ServerEvent::ChatPacketInfo(self.server_id, MyNodeType::ChatServer, ChatServerEvent::ForwardingMessage(vec.len() as u64),self.session_id)).unwrap();}
+                    ChatResponse::EndChat(_) => {self.send_event.send(ServerEvent::ChatPacketInfo(self.server_id, MyNodeType::ChatServer, ChatServerEvent::ClientElimination(vec.len() as u64),self.session_id)).unwrap();}
+                    ChatResponse::ForwardMessage(_) => {}
+                }
                 self.session_id+=1;
                 //aggiungere un field nella struct server per salvare tutti i vari pacchetti nel caso in cui fossero droppati ecc.
             }
@@ -166,22 +184,15 @@ impl Server{
                             ChatRequest::ServerType => {
                                 println!("Server type request received from client: {:?}!", p.routing_header.hops.clone()[0]);
                                 self.send_packet(ChatResponse::ServerTypeChat(self.clone().server_type), p.routing_header.hops[0], NodeType::Client);
-                                //da scommentare per gio 
-                                 self.send_event.send(ServerEvent::ChatPacketInfo(self.server_id, MyNodeType::ChatServer, ChatServerEvent::SendingServerTypeChat(fragment.total_n_fragments),self.session_id-1)).unwrap();
                             }
                             ChatRequest::RegisterClient(n) => {
                                 println!("Register client request received from client: {:?}!", p.routing_header.hops.clone()[0]);
                                 self.registered_clients.push(n);
                                 self.send_packet(ChatResponse::RegisterClient(true), p.routing_header.hops[0], NodeType::Client);
-                                //Esempio su come usare ChatPacketInfo
-                                //da scommentare per gio 
-                                self.send_event.send(ServerEvent::ChatPacketInfo(self.server_id, MyNodeType::ChatServer, ChatServerEvent::ClientRegistration(fragment.total_n_fragments),self.session_id-1)).unwrap();
                             }
                             ChatRequest::GetListClients => {
                                 println!("Get client list request received from client: {:?}!", p.routing_header.hops.clone()[0]);
                                 self.send_packet(ChatResponse::RegisteredClients(self.clone().registered_clients), p.routing_header.hops[0], NodeType::Client);
-                                //da scommentare per gio 
-                                self.send_event.send(ServerEvent::ChatPacketInfo(self.server_id, MyNodeType::ChatServer, ChatServerEvent::SendingClientList(fragment.total_n_fragments),self.session_id-1)).unwrap();
                             }
                             ChatRequest::SendMessage(mc, _) => {
                                 println!("Send message request received from client: {:?}!", p.routing_header.hops.clone()[0]);
@@ -192,15 +203,11 @@ impl Server{
                                 }else {
                                     self.send_packet(ChatResponse::SendMessage(Err("Error with the registration of the two involved clients".to_string())), p.routing_header.hops[0], NodeType::Client);
                                 }
-                                //da scommentare per gio 
-                                self.send_event.send(ServerEvent::ChatPacketInfo(self.server_id, MyNodeType::ChatServer, ChatServerEvent::ForwardingMessage(fragment.total_n_fragments),self.session_id-1)).unwrap();
                             }
                             ChatRequest::EndChat(n) => {
                                 println!("end chat request received from client: {:?}!", p.routing_header.hops.clone()[0]);
                                 self.registered_clients.retain(|x| *x != n);
                                 self.send_packet(ChatResponse::EndChat(true), p.routing_header.hops[0], NodeType::Client);
-                                //da scommentare per gio 
-                                self.send_event.send(ServerEvent::ChatPacketInfo(self.server_id, MyNodeType::ChatServer, ChatServerEvent::ClientElimination(fragment.total_n_fragments),self.session_id-1)).unwrap();
                             }
                         }
                     }else {
@@ -276,13 +283,23 @@ impl Server{
         if let PacketType::Nack(nack) = packet.pack_type{
             match nack.clone().nack_type{
                 NackType::ErrorInRouting(crashed_id) => {
-                    // println!("sono il chat {:?} ho ricevuto un errorinrouting with route {:?}, the drone that crashed is {:?}", self.server_id, packet.routing_header.hops, crashed_id.clone());
-                    let node1 = self.find_node(crashed_id, NodeType::Drone).unwrap_or_default();
-                    let edges: Vec<_> = self.neigh_map.edges_directed(node1, Incoming).map(|e| e.id()).collect();
-                    // println!("all the edges incoming into node1 {:?}", edges);
-                    for i in edges.clone(){
-                        self.neigh_map.remove_edge(i.clone());
-                    }
+                    println!("sono il chat {:?} ho ricevuto un errorinrouting with route {:?}, the drone that crashed is {:?}", self.server_id, packet.routing_header.hops, crashed_id.clone());
+                    let mut node1;
+                    let mut node2;
+                    if self.node_exists(crashed_id, NodeType::Drone){
+                        node1 = self.find_node(crashed_id, NodeType::Drone).unwrap_or_default();
+                    } else if  self.node_exists(crashed_id, NodeType::Client){ 
+                        node1 = self.find_node(crashed_id, NodeType::Client).unwrap_or_default();
+                    } else { node1 = self.find_node(crashed_id, NodeType::Server).unwrap_or_default(); }
+                    if self.node_exists(id, NodeType::Drone){
+                        node2 = self.find_node(id, NodeType::Drone).unwrap_or_default();
+                    }else if   self.node_exists(id, NodeType::Client){
+                        node2 = self.find_node(id, NodeType::Client).unwrap_or_default();
+                    } else { node2 = self.find_node(id, NodeType::Server).unwrap_or_default() }
+                    
+                    let edge = self.neigh_map.find_edge(node2, node1).unwrap_or_default();
+                    // println!("edge that failed {:?}", edge);
+                    self.neigh_map.remove_edge(edge);
                     // println!("graph del chat dopo aver tolto gli edges del drone crashato {:?}", self.neigh_map);
                     self.packet_recover(s_id, nack.fragment_index);
                 }

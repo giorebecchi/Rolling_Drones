@@ -107,10 +107,10 @@ impl Server{
                                 self.send_topology_graph();
                             },
                             ServerCommands::AddSender(id, sender)=>{
-                                //todo
+                                self.add_sender(id, sender);
                             },
                             ServerCommands::RemoveSender(id)=>{
-                                //todo
+                                self.remove_sender(id);
                             },
                             ServerCommands::TopologyChanged=>{
                                 //todo
@@ -121,8 +121,18 @@ impl Server{
             }
         }
     }
-    fn send_topology_graph(&self){
+    fn send_topology_graph(&self) {
         self.send_event.send(ServerEvent::Graph(self.server_id, self.neigh_map.clone())).unwrap();
+    }
+
+    fn add_sender(&mut self, node_id: NodeId, sender: Sender<Packet>){
+        if !self.packet_send.contains_key(&node_id) {
+            self.packet_send.insert(node_id, sender);
+        }
+    }
+
+    fn remove_sender(&mut self, node_id: NodeId){
+        self.packet_send.remove_entry(&node_id);
     }
     pub fn handle_packet(&mut self, p:Packet){
         match p.clone().pack_type {
@@ -148,7 +158,7 @@ impl Server{
     }
 
 
-    fn send_packet<T>(&mut self, p:T, id:NodeId, nt:NodeType)where T : Fragmentation+Serialize+Debug{
+    fn send_packet(&mut self, p:MediaServer, id:NodeId, nt:NodeType){
         // println!("flooding : {:?}", self.flooding); //fa vedere tutte le flood response salvaate nel server
         //println!("graph del media {:?} : {:?}",self.server_id , self.neigh_map); //fa vedere il grafo (tutti i nodi e tutti gli edges)
         if let Some(srh) = self.best_path_custom_cost(id,nt){
@@ -162,6 +172,11 @@ impl Server{
                     self.forward_packet(i.clone());
                 }
                 self.fragments_send.insert(self.session_id.clone(), (id,nt,fragments_send));
+                match p {
+                    MediaServer::ServerTypeMedia(_) => {self.send_event.send(ServerEvent::MediaPacketInfo(self.server_id, MyNodeType::MediaServer, MediaServerEvent::SendingServerTypeMedia(vec.len() as u64),self.session_id)).unwrap();}
+                    MediaServer::SendPath(_) => {self.send_event.send(ServerEvent::MediaPacketInfo(self.server_id, MyNodeType::MediaServer, MediaServerEvent::SendingPathRes(vec.len() as u64),self.session_id)).unwrap();}
+                    MediaServer::SendMedia(_) => {self.send_event.send(ServerEvent::MediaPacketInfo(self.server_id, MyNodeType::MediaServer, MediaServerEvent::SendingMedia(vec.len() as u64),self.session_id)).unwrap();}
+                }
                 self.session_id+=1;
                 //aggiungere un field nella struct server per salvare tutti i vari pacchetti nel caso in cui fossero droppati ecc.
             }
@@ -193,6 +208,7 @@ impl Server{
                     self.forward_packet(i.clone());
                 }
                 self.fragments_send.insert(self.session_id.clone(), (id,nt,fragments_send));
+                self.send_event.send(ServerEvent::MediaPacketInfo(self.server_id, MyNodeType::MediaServer, MediaServerEvent::SendingMedia(vec.len() as u64),self.session_id)).unwrap();
                 self.session_id+=1;
             }
         }else {
@@ -223,17 +239,13 @@ impl Server{
                             WebBrowserCommands::GetMedia(media_id) => {
                                 if self.paths.contains_key(&media_id){
                                     let path = self.paths.get(&media_id).unwrap().clone();
-                                    self.send_image(path.as_str(),p.routing_header.hops[0],NodeType::Client);
-                                    //da scommentare per gio 
-                                    self.send_event.send(ServerEvent::MediaPacketInfo(self.server_id, MyNodeType::MediaServer, MediaServerEvent::SendingMedia(fragment.total_n_fragments),self.session_id-1)).unwrap();
+                                    self.send_image(path.as_str(),p.routing_header.hops[0],NodeType::Client); 
                                 }
                             }
                             WebBrowserCommands::GetText(_) => {println!("I shouldn't receive this command");}
                             WebBrowserCommands::GetServerType => {
                                 println!("problems in sending servertype");
                                 self.send_packet(MediaServer::ServerTypeMedia(self.clone().server_type), p.routing_header.hops[0], NodeType::Client);
-                                //da scommentare per gio 
-                                self.send_event.send(ServerEvent::MediaPacketInfo(self.server_id, MyNodeType::MediaServer, MediaServerEvent::SendingServerTypeMedia(fragment.total_n_fragments),self.session_id-1)).unwrap();
                             }
                         }
                     }else {
@@ -247,14 +259,10 @@ impl Server{
                                     TextServer::ServerTypeReq => {
                                         // println!("sono il media {:?} e sto mandando il mio servertype {:?} al text {:?}",self.server_id,self.server_type,p.routing_header.hops[0]);
                                         self.send_packet(MediaServer::ServerTypeMedia(self.clone().server_type), p.routing_header.hops[0], NodeType::Server);
-                                        // da scommentare per gio 
-                                        // self.send_event.send(ServerEvent::MediaPacketInfo(self.server_id, MyNodeType::TextServer, MediaServerEvent::SendingServerTypeMedia(fragment.total_n_fragments),self.session_id-1)).unwrap();
                                     }
                                     TextServer::PathResolution => {
                                         //println!("sono il media {:?} e sto mandando il mio pathres {:?} al text {:?}",self.server_id,self.server_type,p.routing_header.hops[0]);
                                         self.send_packet(MediaServer::SendPath(self.clone().images_ids),p.routing_header.hops[0], NodeType::Server);
-                                        // da scommentare per gio 
-                                        self.send_event.send(ServerEvent::MediaPacketInfo(self.server_id, MyNodeType::MediaServer, MediaServerEvent::SendingPathRes(fragment.total_n_fragments),self.session_id-1)).unwrap();
                                     }
                                     _ => {println!("I shouldn't receive these commands");}
                                 }
@@ -326,14 +334,24 @@ impl Server{
         if let PacketType::Nack(nack) = packet.pack_type{
             match nack.clone().nack_type{
                 NackType::ErrorInRouting(crashed_id) => {
-                    // self.neigh_map.remove_node(self.find_node(crashed_id,NodeType::Drone).unwrap());
-                    // println!("sono il media {:?} ho ricevuto un errorinrouting with route {:?}, the drone that crashed is {:?}", self.server_id, packet.routing_header.hops, crashed_id.clone());
+                    println!("sono il media {:?} ho ricevuto un errorinrouting with route {:?}, the drone that crashed is {:?}", self.server_id, packet.routing_header.hops, crashed_id.clone());
                     let node1 = self.find_node(crashed_id, NodeType::Drone).unwrap_or_default();
-                    let edges: Vec<_> = self.neigh_map.edges_directed(node1, Incoming).map(|e| e.id()).collect();
-                    // println!("all the edges incoming into node1 {:?}", edges);
-                    for i in edges.clone(){
-                        self.neigh_map.remove_edge(i.clone());
-                    }
+                    let mut node1;
+                    let mut node2;
+                    if self.node_exists(crashed_id, NodeType::Drone){
+                        node1 = self.find_node(crashed_id, NodeType::Drone).unwrap_or_default();
+                    } else if  self.node_exists(crashed_id, NodeType::Client){
+                        node1 = self.find_node(crashed_id, NodeType::Client).unwrap_or_default();
+                    } else { node1 = self.find_node(crashed_id, NodeType::Server).unwrap_or_default(); }
+                    if self.node_exists(id, NodeType::Drone){
+                        node2 = self.find_node(id, NodeType::Drone).unwrap_or_default();
+                    }else if   self.node_exists(id, NodeType::Client){
+                        node2 = self.find_node(id, NodeType::Client).unwrap_or_default();
+                    } else { node2 = self.find_node(id, NodeType::Server).unwrap_or_default() }
+
+                    let edge = self.neigh_map.find_edge(node2, node1).unwrap_or_default();
+                    // println!("edge that failed {:?}", edge);
+                    self.neigh_map.remove_edge(edge);
                     // println!("graph del media {:?} dopo aver tolto gli edges del drone crashato {:?}",self.server_id, self.neigh_map);
                     self.packet_recover(s_id, nack.fragment_index);
                 }
