@@ -42,6 +42,7 @@ dependencies = [
  "egui",
  "fungi_drone",
  "lockheedrustin-drone",
+ "log",
  "once_cell",
  "petgraph 0.7.1",
  "rand 0.9.0",

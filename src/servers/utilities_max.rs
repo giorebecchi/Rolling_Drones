@@ -53,7 +53,7 @@ pub fn deserialize_comando_text(input: Box<[([u8; 128], u8)]>) -> ComandoText {
     };
 
 
-    println!("JSON ricevuto: {}", serialized_string);
+    //println!("JSON ricevuto: {}", serialized_string);
 
 
     // Prova in ordine: MediaServer -> TextServer -> ChatResponse
@@ -99,7 +99,7 @@ pub fn deserialize_comando_chat(input: Box<[([u8; 128], u8)]>) -> ComandoChat {
     };
 
 
-    println!("JSON ricevuto: {}", serialized_string);
+    //println!("JSON ricevuto: {}", serialized_string);
 
 
     // Prova in ordine: MediaServer -> TextServer -> ChatResponse
@@ -163,16 +163,32 @@ impl PartialOrd for State {
     }
 }
 #[derive(Clone, Debug)]
-pub(crate) struct Data{
+pub (crate)struct Data {
     pub counter: u64,
+    pub total_expected: usize,
     pub dati: Box<[([u8; 128], u8)]>,
     pub who_ask: NodeId,
 }
 impl Data {
-    pub fn new(data: ([u8; 128], u8) , position: u64, total: u64, count: u64, asker: NodeId) -> Data {
-        let mut v = vec![([0;128], 0); total as usize].into_boxed_slice();
+    pub fn new(
+        data: ([u8; 128], u8),
+        position: u64,
+        total: u64,
+        count: u64,
+        asker: NodeId,
+    ) -> Data {
+        let total_usize = total as usize;
+        // Creo un Box<[([u8;128], u8)]> di lunghezza total_usize,
+        // inizializzato a ([0; 128], 0) per ogni slot
+        let mut v = vec![( [0u8; 128], 0u8 ); total_usize].into_boxed_slice();
+        // Posiziono subito il frammento corrente
         v[position as usize] = data;
-        Data{counter: count, dati: v, who_ask: asker }
+        Data {
+            counter: count,
+            total_expected: total_usize,
+            dati: v,
+            who_ask: asker,
+        }
     }
 }
 pub(crate) fn get_file(file_name: String) -> Option<String> {
