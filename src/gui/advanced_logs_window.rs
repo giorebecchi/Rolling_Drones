@@ -76,7 +76,6 @@ fn log_window(
                         }
                         ui.label("Topology:");
 
-                        // Calculate missed connections
                         let (discovered_connections, all_nodes_in_graph) = if let Some(graph) = sim_log.graph.get(&node.0) {
                             let mut connections = HashSet::new();
                             let mut nodes_set = HashSet::new();
@@ -115,8 +114,6 @@ fn log_window(
                         } else {
                             (HashSet::new(), HashSet::new())
                         };
-
-                        // Get actual connections from the full network
                         let mut actual_connections = HashSet::new();
                         for node_config in nodes.0.iter() {
                             if all_nodes_in_graph.contains(&node_config.id) {
@@ -130,13 +127,11 @@ fn log_window(
                             }
                         }
 
-                        // Calculate missed connections
                         let missed_connections: Vec<(NodeId, NodeId)> = actual_connections
                             .difference(&discovered_connections)
                             .cloned()
                             .collect();
 
-                        // Display statistics
                         ui.horizontal(|ui| {
                             ui.label(format!("Discovered: {} connections", discovered_connections.len()));
                             ui.label("|");
@@ -268,7 +263,7 @@ fn log_window(
 
                                         ui.monospace(&route_str);
 
-                                        // Calculate and display route reliability
+                                    
                                         let reliability = calculate_route_reliability(route, &nodes);
                                         let reliability_color = if reliability >= 0.9 {
                                             egui::Color32::GREEN
@@ -285,7 +280,7 @@ fn log_window(
                                         );
                                     });
 
-                                    // Show per-node PDR details on hover
+                                
                                     ui.indent(format!("route_details_{}", idx), |ui| {
                                         ui.collapsing("Show node details", |ui| {
                                             for (i, &node_id) in route.iter().enumerate() {
@@ -438,10 +433,8 @@ fn render_graph_visualization_with_missed(
             node_positions.insert(*node_id, egui::pos2(x, y));
         }
 
-        // Draw missed connections first (in red, dashed)
         for (source, target) in &missed_connections {
             if let (Some(start_pos), Some(end_pos)) = (node_positions.get(source), node_positions.get(target)) {
-                // Draw dashed line by drawing multiple small segments
                 let num_dashes = 10;
                 let dash_length = 0.6 / num_dashes as f32;
                 let gap_length = 0.4 / num_dashes as f32;
@@ -469,7 +462,7 @@ fn render_graph_visualization_with_missed(
             }
         }
 
-        // Draw discovered connections (in gray)
+       
         for (source, target) in &connections {
             if let (Some(start_pos), Some(end_pos)) = (node_positions.get(source), node_positions.get(target)) {
                 painter.line_segment(
@@ -479,7 +472,6 @@ fn render_graph_visualization_with_missed(
             }
         }
 
-        // Draw nodes
         for (node_id, pos) in &node_positions {
             painter.circle(
                 *pos,
@@ -498,7 +490,6 @@ fn render_graph_visualization_with_missed(
     }
 }
 
-// Keep the old function for backwards compatibility
 fn render_graph_visualization(
     painter: &egui::Painter,
     rect: &egui::Rect,
@@ -508,7 +499,6 @@ fn render_graph_visualization(
     render_graph_visualization_with_missed(painter, rect, all_nodes, connections, vec![])
 }
 
-// Function to get PDR from a node - you'll need to adjust this based on your actual NodeConfig structure
 fn get_node_pdr(node: &NodeConfig) -> f32 {
 
      node.pdr
@@ -516,11 +506,9 @@ fn get_node_pdr(node: &NodeConfig) -> f32 {
 
 }
 
-// Calculate the reliability of a route based on PDR of each node
 fn calculate_route_reliability(route: &[NodeId], nodes: &NodesConfig) -> f32 {
     let mut reliability = 1.0;
 
-    // Skip the first and last nodes (source and destination)
     for &node_id in route.iter().skip(1).take(route.len().saturating_sub(2)) {
         if let Some(node_config) = nodes.0.iter().find(|n| n.id == node_id) {
             let pdr = get_node_pdr(node_config);
