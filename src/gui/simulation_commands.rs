@@ -2,6 +2,7 @@ use bevy::prelude::*;
 use bevy_egui::{egui, EguiContexts};
 use egui::{Color32, RichText};
 use wg_2024::network::NodeId;
+use std::collections::{HashMap, HashSet, VecDeque};
 use crate::gui::login_window::{AppState, NodeConfig, NodeType, NodesConfig, SimWindows, SimulationController};
 
 pub struct SimulationCommandsPlugin;
@@ -24,6 +25,196 @@ struct SimulationCommandsState {
     selected_pdr_drone: Option<NodeId>,
     pdr_value: String,
     pdr_error: Option<String>,
+    connectivity_error: Option<String>,
+}
+
+fn build_adjacency_list(nodes: &[NodeConfig]) -> HashMap<NodeId, Vec<NodeId>> {
+    let mut graph = HashMap::new();
+
+    for node in nodes {
+        graph.insert(node.id, node.connected_node_ids.clone());
+    }
+
+    graph
+}
+
+fn has_path(graph: &HashMap<NodeId, Vec<NodeId>>, source: NodeId, target: NodeId) -> bool {
+    if source == target {
+        return true;
+    }
+
+    let mut visited = HashSet::new();
+    let mut queue = VecDeque::new();
+
+    queue.push_back(source);
+    visited.insert(source);
+
+    while let Some(current) = queue.pop_front() {
+        if let Some(neighbors) = graph.get(&current) {
+            for &neighbor in neighbors {
+                if neighbor == target {
+                    return true;
+                }
+
+                if !visited.contains(&neighbor) {
+                    visited.insert(neighbor);
+                    queue.push_back(neighbor);
+                }
+            }
+        }
+    }
+
+    false
+}
+
+fn all_can_reach_at_least_one(
+    graph: &HashMap<NodeId, Vec<NodeId>>,
+    nodes: &[NodeConfig],
+    from_type: NodeType,
+    to_type: NodeType
+) -> bool {
+    let from_nodes: Vec<NodeId> = nodes.iter()
+        .filter(|n| n.node_type == from_type)
+        .map(|n| n.id)
+        .collect();
+
+    let to_nodes: Vec<NodeId> = nodes.iter()
+        .filter(|n| n.node_type == to_type)
+        .map(|n| n.id)
+        .collect();
+
+    for from_id in from_nodes {
+        let mut can_reach_any = false;
+        for &to_id in &to_nodes {
+            if has_path(graph, from_id, to_id) {
+                can_reach_any = true;
+                break;
+            }
+        }
+        if !can_reach_any {
+            return false;
+        }
+    }
+
+    true
+}
+
+fn can_reach_all(
+    graph: &HashMap<NodeId, Vec<NodeId>>,
+    nodes: &[NodeConfig],
+    from_id: NodeId,
+    to_type: NodeType
+) -> bool {
+    let to_nodes: Vec<NodeId> = nodes.iter()
+        .filter(|n| n.node_type == to_type)
+        .map(|n| n.id)
+        .collect();
+
+    for to_id in to_nodes {
+        if !has_path(graph, from_id, to_id) {
+            return false;
+        }
+    }
+
+    true
+}
+
+fn validate_chat_connectivity(nodes: &[NodeConfig]) -> Result<(), String> {
+    let graph = build_adjacency_list(nodes);
+
+    let chat_clients: Vec<&NodeConfig> = nodes.iter()
+        .filter(|n| n.node_type == NodeType::ChatClient)
+        .collect();
+
+    let chat_servers: Vec<&NodeConfig> = nodes.iter()
+        .filter(|n| n.node_type == NodeType::ChatServer)
+        .collect();
+
+    for client in &chat_clients {
+        let mut can_reach_server = false;
+        for server in &chat_servers {
+            if has_path(&graph, client.id, server.id) {
+                can_reach_server = true;
+                break;
+            }
+        }
+        if !can_reach_server {
+            return Err(format!("ChatClient {} cannot reach any ChatServer", client.id));
+        }
+    }
+
+    for server in &chat_servers {
+        let mut reachable_client_ids = Vec::new();
+        for client in &chat_clients {
+            if has_path(&graph, server.id, client.id) {
+                reachable_client_ids.push(client.id);
+            }
+        }
+
+        if reachable_client_ids.len() < 2 {
+            return Err(format!(
+                "ChatServer {} must be able to reach at least 2 different ChatClients, but can only reach {}",
+                server.id,
+                reachable_client_ids.len()
+            ));
+        }
+    }
+
+    Ok(())
+}
+
+fn validate_web_media_connectivity(nodes: &[NodeConfig]) -> Result<(), String> {
+    let graph = build_adjacency_list(nodes);
+
+    let web_browsers: Vec<&NodeConfig> = nodes.iter()
+        .filter(|n| n.node_type == NodeType::WebBrowser)
+        .collect();
+
+    let text_servers: Vec<&NodeConfig> = nodes.iter()
+        .filter(|n| n.node_type == NodeType::TextServer)
+        .collect();
+
+    let media_servers: Vec<&NodeConfig> = nodes.iter()
+        .filter(|n| n.node_type == NodeType::MediaServer)
+        .collect();
+
+    for browser in &web_browsers {
+        let mut can_reach_text = false;
+        for text in &text_servers {
+            if has_path(&graph, browser.id, text.id) {
+                can_reach_text = true;
+                break;
+            }
+        }
+        if !can_reach_text {
+            return Err(format!("WebBrowser {} cannot reach any TextServer", browser.id));
+        }
+    }
+
+    for text in &text_servers {
+        for media in &media_servers {
+            if !has_path(&graph, text.id, media.id) {
+                return Err(format!("TextServer {} cannot reach MediaServer {}", text.id, media.id));
+            }
+        }
+    }
+
+    Ok(())
+}
+
+fn simulate_network_change<F>(nodes: &[NodeConfig], change: F) -> Vec<NodeConfig>
+where
+    F: Fn(&mut Vec<NodeConfig>),
+{
+    let mut simulated_nodes = nodes.to_vec();
+    change(&mut simulated_nodes);
+    simulated_nodes
+}
+
+fn would_break_connectivity(nodes: &[NodeConfig], simulated_nodes: &[NodeConfig]) -> Result<(), String> {
+    validate_chat_connectivity(&simulated_nodes)?;
+    validate_web_media_connectivity(&simulated_nodes)?;
+    Ok(())
 }
 
 fn simulation_commands_window(
@@ -45,6 +236,12 @@ fn simulation_commands_window(
 
         window.show(ctx, |ui| {
             ui.heading("Simulation Controls");
+
+            if let Some(error) = &sim_commands.connectivity_error {
+                ui.colored_label(Color32::RED, error);
+                ui.separator();
+            }
+
             ui.separator();
             ui.vertical(|ui| {
                 ui.group(|ui| {
@@ -71,14 +268,31 @@ fn simulation_commands_window(
 
                         if ui.button("Crash").clicked() {
                             if let Some(id) = sim_commands.selected_crash_drone {
-                                sim.crash(id);
-                                if let Some(index) = nodes.0.iter().position(|node| node.id == id) {
-                                    nodes.0.remove(index);
+                                let simulated = simulate_network_change(&nodes.0, |nodes| {
+                                    if let Some(index) = nodes.iter().position(|node| node.id == id) {
+                                        nodes.remove(index);
+                                    }
+                                    for node in nodes.iter_mut() {
+                                        node.connected_node_ids.retain(|&conn_id| conn_id != id);
+                                    }
+                                });
+
+                                match would_break_connectivity(&nodes.0, &simulated) {
+                                    Ok(_) => {
+                                        sim.crash(id);
+                                        if let Some(index) = nodes.0.iter().position(|node| node.id == id) {
+                                            nodes.0.remove(index);
+                                        }
+                                        for node in nodes.0.iter_mut() {
+                                            node.connected_node_ids.retain(|&conn_id| conn_id != id);
+                                        }
+                                        sim_commands.selected_crash_drone = None;
+                                        sim_commands.connectivity_error = None;
+                                    }
+                                    Err(e) => {
+                                        sim_commands.connectivity_error = Some(format!("Cannot crash drone: {}", e));
+                                    }
                                 }
-                                for node in nodes.0.iter_mut() {
-                                    node.connected_node_ids.retain(|&conn_id| conn_id != id);
-                                }
-                                sim_commands.selected_crash_drone = None;
                             }
                         }
                     });
@@ -162,6 +376,7 @@ fn simulation_commands_window(
 
                                 sim_commands.selected_add_target = None;
                                 sim_commands.selected_add_neighbor = None;
+                                sim_commands.connectivity_error = None;
                             }
                         }
                     });
@@ -222,15 +437,29 @@ fn simulation_commands_window(
                             if let (Some(from_id), Some(to_id)) =
                                 (sim_commands.selected_remove_neighbor, sim_commands.selected_remove_target) {
 
-                                sim.remove_sender(to_id, from_id);
-                                sim.change_in_topology();
+                                let simulated = simulate_network_change(&nodes.0, |nodes| {
+                                    if let Some(from_node) = nodes.iter_mut().find(|n| n.id == from_id) {
+                                        from_node.connected_node_ids.retain(|&id| id != to_id);
+                                    }
+                                });
 
-                                if let Some(from_node) = nodes.0.iter_mut().find(|n| n.id == from_id) {
-                                    from_node.connected_node_ids.retain(|&id| id != to_id);
+                                match would_break_connectivity(&nodes.0, &simulated) {
+                                    Ok(_) => {
+                                        sim.remove_sender(to_id, from_id);
+                                        sim.change_in_topology();
+
+                                        if let Some(from_node) = nodes.0.iter_mut().find(|n| n.id == from_id) {
+                                            from_node.connected_node_ids.retain(|&id| id != to_id);
+                                        }
+
+                                        sim_commands.selected_remove_target = None;
+                                        sim_commands.selected_remove_neighbor = None;
+                                        sim_commands.connectivity_error = None;
+                                    }
+                                    Err(e) => {
+                                        sim_commands.connectivity_error = Some(format!("Cannot remove connection: {}", e));
+                                    }
                                 }
-
-                                sim_commands.selected_remove_target = None;
-                                sim_commands.selected_remove_neighbor = None;
                             }
                         }
                     });
@@ -269,6 +498,9 @@ fn simulation_commands_window(
                                     Ok(pdr) => {
                                         if (0.0..=1.0).contains(&pdr) {
                                             sim.pdr(id, pdr);
+                                            for drone in nodes.0.iter_mut().filter(|node| node.id == id) {
+                                                drone.pdr = pdr;
+                                            }
                                             sim_commands.selected_pdr_drone = None;
                                             sim_commands.pdr_value.clear();
                                             sim_commands.pdr_error = None;

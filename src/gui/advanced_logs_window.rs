@@ -1,4 +1,4 @@
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 use bevy::prelude::*;
 use bevy_egui::{EguiContexts, egui};
 use wg_2024::network::NodeId;
@@ -55,10 +55,16 @@ fn log_window(
                 });
 
             if let Some(node) = log_info.selected_node.clone() {
-                if ui.button(format!("Connections found by {:?}: {}", node.1, node.0)).clicked() {
-                    sim.ask_topology_graph(node.0, node.1.clone());
-                    log_info.show_graph = true;
-                }
+                ui.horizontal(|ui| {
+                    if ui.button(format!("Connections found by {:?}: {}", node.1, node.0)).clicked() {
+                        sim.ask_topology_graph(node.0, node.1.clone());
+                        log_info.show_graph = true;
+                    }
+
+                    if log_info.show_graph {
+                        ui.checkbox(&mut log_info.show_missed_connections, "Show missed connections");
+                    }
+                });
 
                 if log_info.show_graph {
                     let has_ungraph = sim_log.graph.get(&node.0).is_some();
@@ -69,6 +75,78 @@ fn log_window(
                             log_info.show_graph = false;
                         }
                         ui.label("Topology:");
+
+                        // Calculate missed connections
+                        let (discovered_connections, all_nodes_in_graph) = if let Some(graph) = sim_log.graph.get(&node.0) {
+                            let mut connections = HashSet::new();
+                            let mut nodes_set = HashSet::new();
+
+                            for node_id in graph.node_identifiers() {
+                                nodes_set.insert(node_id);
+                            }
+
+                            for edge in graph.edge_references() {
+                                let (source, target, _) = edge.clone();
+                                connections.insert((source.min(target), source.max(target)));
+                            }
+                            (connections, nodes_set)
+                        } else if let Some(graph) = sim_log.server_graph.get(&node.0) {
+                            let mut connections = HashSet::new();
+                            let mut nodes_set = HashSet::new();
+
+                            for node_index in graph.node_indices() {
+                                if let Some((node_id, _)) = graph.node_weight(node_index) {
+                                    nodes_set.insert(*node_id);
+                                }
+                            }
+
+                            for edge in graph.edge_references() {
+                                let source_idx = edge.source();
+                                let target_idx = edge.target();
+
+                                if let (Some((source_id, _)), Some((target_id, _))) =
+                                    (graph.node_weight(source_idx), graph.node_weight(target_idx)) {
+                                    let min_id = (*source_id).min(*target_id);
+                                    let max_id = (*source_id).max(*target_id);
+                                    connections.insert((min_id, max_id));
+                                }
+                            }
+                            (connections, nodes_set)
+                        } else {
+                            (HashSet::new(), HashSet::new())
+                        };
+
+                        // Get actual connections from the full network
+                        let mut actual_connections = HashSet::new();
+                        for node_config in nodes.0.iter() {
+                            if all_nodes_in_graph.contains(&node_config.id) {
+                                for &connected_id in &node_config.connected_node_ids {
+                                    if all_nodes_in_graph.contains(&connected_id) {
+                                        let min_id = node_config.id.min(connected_id);
+                                        let max_id = node_config.id.max(connected_id);
+                                        actual_connections.insert((min_id, max_id));
+                                    }
+                                }
+                            }
+                        }
+
+                        // Calculate missed connections
+                        let missed_connections: Vec<(NodeId, NodeId)> = actual_connections
+                            .difference(&discovered_connections)
+                            .cloned()
+                            .collect();
+
+                        // Display statistics
+                        ui.horizontal(|ui| {
+                            ui.label(format!("Discovered: {} connections", discovered_connections.len()));
+                            ui.label("|");
+                            ui.label(format!("Actual: {} connections", actual_connections.len()));
+                            ui.label("|");
+                            ui.colored_label(
+                                egui::Color32::RED,
+                                format!("Missed: {} connections", missed_connections.len())
+                            );
+                        });
 
                         let graph_response = ui.allocate_rect(
                             ui.available_rect_before_wrap().shrink(20.0),
@@ -89,7 +167,13 @@ fn log_window(
                                 connections.push((source, target));
                             }
 
-                            render_graph_visualization(&painter, &graph_response.rect, all_nodes, connections);
+                            render_graph_visualization_with_missed(
+                                &painter,
+                                &graph_response.rect,
+                                all_nodes,
+                                connections,
+                                if log_info.show_missed_connections { missed_connections } else { vec![] }
+                            );
 
                         } else if let Some(graph) = sim_log.server_graph.get(&node.0) {
                             let mut all_nodes = Vec::new();
@@ -111,7 +195,13 @@ fn log_window(
                                 }
                             }
 
-                            render_graph_visualization(&painter, &graph_response.rect, all_nodes, connections);
+                            render_graph_visualization_with_missed(
+                                &painter,
+                                &graph_response.rect,
+                                all_nodes,
+                                connections,
+                                if log_info.show_missed_connections { missed_connections } else { vec![] }
+                            );
                         }
                     } else {
                         ui.label("No graph data available. Try requesting topology data first.");
@@ -176,7 +266,47 @@ fn log_window(
                                             .collect::<Vec<_>>()
                                             .join(" → ");
 
-                                        ui.monospace(route_str);
+                                        ui.monospace(&route_str);
+
+                                        // Calculate and display route reliability
+                                        let reliability = calculate_route_reliability(route, &nodes);
+                                        let reliability_color = if reliability >= 0.9 {
+                                            egui::Color32::GREEN
+                                        } else if reliability >= 0.7 {
+                                            egui::Color32::YELLOW
+                                        } else {
+                                            egui::Color32::RED
+                                        };
+
+                                        ui.label(" | ");
+                                        ui.colored_label(
+                                            reliability_color,
+                                            format!("Reliability: {:.1}%", reliability * 100.0)
+                                        );
+                                    });
+
+                                    // Show per-node PDR details on hover
+                                    ui.indent(format!("route_details_{}", idx), |ui| {
+                                        ui.collapsing("Show node details", |ui| {
+                                            for (i, &node_id) in route.iter().enumerate() {
+                                                if let Some(node_config) = nodes.0.iter().find(|n| n.id == node_id) {
+                                                    let pdr = get_node_pdr(node_config);
+                                                    let success_rate = 1.0 - pdr;
+                                                    ui.horizontal(|ui| {
+                                                        ui.label(format!("  Node {} ({:?}): ",
+                                                                         node_id,
+                                                                         node_config.node_type
+                                                        ));
+                                                        ui.colored_label(
+                                                            if success_rate >= 0.9 { egui::Color32::GREEN }
+                                                            else if success_rate >= 0.7 { egui::Color32::YELLOW }
+                                                            else { egui::Color32::RED },
+                                                            format!("PDR: {:.2}, Success: {:.1}%", pdr, success_rate * 100.0)
+                                                        );
+                                                    });
+                                                }
+                                            }
+                                        });
                                     });
                                 }
                             }
@@ -283,13 +413,16 @@ fn log_window(
 struct LogInfo {
     selected_node: Option<(NodeId, NodeType)>,
     drop_rate: HashMap<NodeId, (u64, usize)>,
-    show_graph: bool
+    show_graph: bool,
+    show_missed_connections: bool,
 }
-fn render_graph_visualization(
+
+fn render_graph_visualization_with_missed(
     painter: &egui::Painter,
     rect: &egui::Rect,
     all_nodes: Vec<NodeId>,
-    connections: Vec<(NodeId, NodeId)>
+    connections: Vec<(NodeId, NodeId)>,
+    missed_connections: Vec<(NodeId, NodeId)>
 ) {
     let mut node_positions = HashMap::new();
 
@@ -305,6 +438,38 @@ fn render_graph_visualization(
             node_positions.insert(*node_id, egui::pos2(x, y));
         }
 
+        // Draw missed connections first (in red, dashed)
+        for (source, target) in &missed_connections {
+            if let (Some(start_pos), Some(end_pos)) = (node_positions.get(source), node_positions.get(target)) {
+                // Draw dashed line by drawing multiple small segments
+                let num_dashes = 10;
+                let dash_length = 0.6 / num_dashes as f32;
+                let gap_length = 0.4 / num_dashes as f32;
+
+                for i in 0..num_dashes {
+                    let t_start = (i as f32) * (dash_length + gap_length);
+                    let t_end = t_start + dash_length;
+
+                    if t_end <= 1.0 {
+                        let dash_start = egui::pos2(
+                            start_pos.x + (end_pos.x - start_pos.x) * t_start,
+                            start_pos.y + (end_pos.y - start_pos.y) * t_start
+                        );
+                        let dash_end = egui::pos2(
+                            start_pos.x + (end_pos.x - start_pos.x) * t_end,
+                            start_pos.y + (end_pos.y - start_pos.y) * t_end
+                        );
+
+                        painter.line_segment(
+                            [dash_start, dash_end],
+                            egui::Stroke::new(2.0, egui::Color32::RED),
+                        );
+                    }
+                }
+            }
+        }
+
+        // Draw discovered connections (in gray)
         for (source, target) in &connections {
             if let (Some(start_pos), Some(end_pos)) = (node_positions.get(source), node_positions.get(target)) {
                 painter.line_segment(
@@ -313,6 +478,8 @@ fn render_graph_visualization(
                 );
             }
         }
+
+        // Draw nodes
         for (node_id, pos) in &node_positions {
             painter.circle(
                 *pos,
@@ -329,4 +496,38 @@ fn render_graph_visualization(
             );
         }
     }
+}
+
+// Keep the old function for backwards compatibility
+fn render_graph_visualization(
+    painter: &egui::Painter,
+    rect: &egui::Rect,
+    all_nodes: Vec<NodeId>,
+    connections: Vec<(NodeId, NodeId)>
+) {
+    render_graph_visualization_with_missed(painter, rect, all_nodes, connections, vec![])
+}
+
+// Function to get PDR from a node - you'll need to adjust this based on your actual NodeConfig structure
+fn get_node_pdr(node: &NodeConfig) -> f32 {
+
+     node.pdr
+
+
+}
+
+// Calculate the reliability of a route based on PDR of each node
+fn calculate_route_reliability(route: &[NodeId], nodes: &NodesConfig) -> f32 {
+    let mut reliability = 1.0;
+
+    // Skip the first and last nodes (source and destination)
+    for &node_id in route.iter().skip(1).take(route.len().saturating_sub(2)) {
+        if let Some(node_config) = nodes.0.iter().find(|n| n.id == node_id) {
+            let pdr = get_node_pdr(node_config);
+            let node_success_rate = 1.0 - pdr;
+            reliability *= node_success_rate;
+        }
+    }
+
+    reliability
 }
