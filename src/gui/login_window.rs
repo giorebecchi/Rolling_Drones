@@ -113,15 +113,17 @@ pub struct NodeConfig{
     pub id: NodeId,
     pub position: Vec2,
     pub connected_node_ids: Vec<NodeId>,
+    pub pdr: f32,
 }
 
 impl NodeConfig {
-    pub fn new(node_type: NodeType, id: NodeId, position: Vec2, connected_node_ids: Vec<NodeId>)->Self{
+    pub fn new(node_type: NodeType, id: NodeId, position: Vec2, connected_node_ids: Vec<NodeId>, pdr: f32)->Self{
         Self{
             node_type,
             id,
             position,
             connected_node_ids,
+            pdr
         }
     }
 }
@@ -165,7 +167,7 @@ pub fn main() {
         .add_systems(Update, (ui_settings,sync_log))
         .add_systems(Startup, setup_camera)
         .add_systems(OnEnter(AppState::SetUp), start_simulation)
-        .add_systems(OnEnter(AppState::InGame), (setup_network, initiate_flood))
+        .add_systems(OnEnter(AppState::InGame), (setup_network))
         .add_systems(Update , (draw_connections,set_up_bundle).run_if(in_state(AppState::InGame)))
 
         .run();
@@ -399,14 +401,11 @@ pub fn draw_connections(
 }
 fn ui_settings(
     mut contexts: EguiContexts,
-    mut commands: Commands,
     mut occupied_screen_space: ResMut<OccupiedScreenSpace>,
     mut nodes : ResMut<NodesConfig>,
     mut topology : ResMut<UserConfig>,
-    mut sim : ResMut<SimulationController>,
     sim_log: Res<DisplayableLog>,
     mut sim_windows: ResMut<SimWindows>,
-    mut node_entities: ResMut<NodeEntities>,
     mut next_state: ResMut<NextState<AppState>>
 ) {
 
@@ -462,30 +461,46 @@ fn ui_settings(
                             }
                         }
                     });
-                    let mut client_log = String::new();
-                    let mut server_log = String::new();
-                    for ((node_type, _), node_content) in sim_log.flooding_log.iter(){
-                        match node_type{
-                            MyNodeType::WebBrowser=> client_log.push_str(node_content),
-                            MyNodeType::ChatClient=> client_log.push_str(node_content),
-                            MyNodeType::TextServer=> server_log.push_str(node_content),
-                            MyNodeType::MediaServer=> server_log.push_str(node_content),
-                            MyNodeType::ChatServer=>server_log.push_str(node_content),
+                    let client_types: HashSet<MyNodeType> = HashSet::from([
+                        MyNodeType::WebBrowser,
+                        MyNodeType::ChatClient,
+                    ]);
+
+                    let mut client_log = String::with_capacity(1024); // Pre-allocate
+                    let mut server_log = String::with_capacity(1024);
+
+
+                    for ((node_type, _), node_content) in sim_log.flooding_log.iter() {
+                        if client_types.contains(node_type) {
+                            client_log.push_str(node_content);
+                        } else {
+                            server_log.push_str(node_content);
                         }
                     }
 
-                    for ((_,_), node_content) in sim_log.msg_log.iter(){
-                        client_log.push_str(node_content);
+                    let node_map: HashMap<NodeId, NodeType> = nodes.0.iter()
+                        .map(|node| (node.id.clone(), node.node_type.clone()))
+                        .collect();
+
+                    for ((id, _), node_content) in sim_log.msg_log.iter() {
+                        if let Some(node_type) = node_map.get(id) {
+                            if *node_type == NodeType::WebBrowser || *node_type == NodeType::ChatClient {
+                                client_log.push_str(node_content);
+                            } else {
+                                server_log.push_str(node_content);
+                            }
+                        }
                     }
+
 
                     if !collapsed {
                         egui::ScrollArea::vertical()
                             .max_height(450.0)
                             .show(ui, |ui| {
                                 ui.horizontal(|ui|{
-                                    ui.label(RichText::new(client_log).color(Color32::GREEN));
+                                    ui.label(RichText::new(client_log).color(Color32::ORANGE));
                                     ui.separator();
-                                    ui.label(RichText::new(server_log).color(Color32::WHITE));
+                                    ui.label(RichText::new(server_log).color(Color32::MAGENTA));
                                 });
 
                             });

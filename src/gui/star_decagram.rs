@@ -30,7 +30,8 @@ pub fn spawn_star_decagram(
             NodeType::Drone,
             drone.id,
             position,
-            drone.connected_node_ids.clone()
+            drone.connected_node_ids.clone(),
+            drone.pdr
         ));
         current_index += 1;
     }
@@ -50,7 +51,8 @@ pub fn spawn_star_decagram(
                     node_type,
                     client.id,
                     position,
-                    client.connected_drone_ids.clone()
+                    client.connected_drone_ids.clone(),
+                    -1.00
                 ));
                 current_index += 1;
             }
@@ -71,7 +73,8 @@ pub fn spawn_star_decagram(
                     node_type,
                     server.id,
                     position,
-                    server.connected_drone_ids.clone()
+                    server.connected_drone_ids.clone(),
+                    -1.00
                 ));
                 current_index += 1;
             }

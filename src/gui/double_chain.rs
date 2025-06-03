@@ -27,15 +27,15 @@ pub fn spawn_double_chain(
     let mut all_nodes = Vec::with_capacity(node_count);
 
     for drone in &config.drone {
-        all_nodes.push((NodeType::Drone, drone.id, &drone.connected_node_ids));
+        all_nodes.push((NodeType::Drone, drone.id, &drone.connected_node_ids, drone.pdr));
     }
 
     for client in &config.client {
         for (client_type, id) in &clients.clients {
             if id.clone() == client.id {
                 match client_type {
-                    MyNodeType::WebBrowser => all_nodes.push((NodeType::WebBrowser, client.id, &client.connected_drone_ids)),
-                    MyNodeType::ChatClient => all_nodes.push((NodeType::ChatClient, client.id, &client.connected_drone_ids)),
+                    MyNodeType::WebBrowser => all_nodes.push((NodeType::WebBrowser, client.id, &client.connected_drone_ids, -1.00)),
+                    MyNodeType::ChatClient => all_nodes.push((NodeType::ChatClient, client.id, &client.connected_drone_ids, -1.00)),
                     _ => unreachable!()
                 }
             }
@@ -46,16 +46,16 @@ pub fn spawn_double_chain(
         for (server_type, id) in &clients.servers {
             if id.clone() == server.id {
                 match server_type {
-                    MyNodeType::TextServer => all_nodes.push((NodeType::TextServer, server.id, &server.connected_drone_ids)),
-                    MyNodeType::MediaServer => all_nodes.push((NodeType::MediaServer, server.id, &server.connected_drone_ids)),
-                    MyNodeType::ChatServer => all_nodes.push((NodeType::ChatServer, server.id, &server.connected_drone_ids)),
+                    MyNodeType::TextServer => all_nodes.push((NodeType::TextServer, server.id, &server.connected_drone_ids, -1.00)),
+                    MyNodeType::MediaServer => all_nodes.push((NodeType::MediaServer, server.id, &server.connected_drone_ids, -1.00)),
+                    MyNodeType::ChatServer => all_nodes.push((NodeType::ChatServer, server.id, &server.connected_drone_ids, -1.00)),
                     _ => unreachable!()
                 }
             }
         }
     }
 
-    for (i, (node_type, id, connected_ids)) in all_nodes.iter().enumerate() {
+    for (i, (node_type, id, connected_ids, pdr)) in all_nodes.iter().enumerate() {
         let row = i / nodes_per_row;
         let position_in_row = i % nodes_per_row;
 
@@ -73,7 +73,9 @@ pub fn spawn_double_chain(
             node_type.clone(),
             *id,
             Vec2::new(x, y),
-            (*connected_ids).clone()
+            (*connected_ids).clone(),
+            *pdr
+
         ));
     }
 

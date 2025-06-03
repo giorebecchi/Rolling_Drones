@@ -6,6 +6,7 @@ edition = "2021"
 default = []
 max = []
 
+
 [dependencies]
 wg_2024 = { git = "https://github.com/WGL-2024/WGL_repo_2024.git", features = ["serialize", "debug"]}
 bevy =  { version = "0.15.3" }
@@ -32,6 +33,9 @@ bincode = "1.3.3"
 rolling_drone = { git = "https://github.com/giorebecchi/RollingDrone.git"}
 base64 = "0.21.7"
 egui = "0.31.1"
+log = "0.4.26"
+walkdir = "2"
+infer = "0.15"
 
 [dev-dependencies]
 rusty_tester = { git = "https://github.com/rusty-drone-2024/rusty-tester" }

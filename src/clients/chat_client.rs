@@ -384,9 +384,9 @@ impl ChatClient {
                             if let Err(str) = self.event_send.send(IncomingMessage((self.config.id.clone(), src_id.clone(), sender), message_chat.content)){
                                 println!("failed to send message to simulation control: {}", str);
                             }
-                            if let Err(err) = self.event_send.send(ChatClientEvent::PacketInfo(self.config.id, ChatEvent::IncomingMessage(fragment.total_n_fragments), packet.session_id )) {
-                                println!("Failed to notify SC about server list: {}", err);
-                            }
+                            //if let Err(err) = self.event_send.send(ChatClientEvent::PacketInfo(self.config.id, ChatEvent::IncomingMessage(fragment.total_n_fragments), packet.session_id )) {
+                            //    println!("Failed to notify SC about server list: {}", err);
+                            //}
                         }
                     }
 

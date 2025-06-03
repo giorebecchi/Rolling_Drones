@@ -8,12 +8,16 @@ use std::collections::{BinaryHeap, HashMap};
 use std::{fs, io, thread};
 use std::fs::File;
 use std::io::{BufRead, BufReader};
-use std::path::Path;
+use std::path::{Path, PathBuf};
 use wg_2024::network::{NodeId, SourceRoutingHeader};
 use wg_2024::packet::{Ack, FloodRequest, FloodResponse, Fragment, Nack, NackType, NodeType, Packet, PacketType};
 use bevy::utils::HashSet;
+use egui::Key::M;
 use rand::Rng;
 use serde_json::Error;
+use walkdir::WalkDir;
+use std::io::{Read};
+use infer;
 
 pub struct Server{
     server_id: NodeId,
@@ -63,7 +67,8 @@ impl Server {
     }
     pub fn run(&mut self) {
         let path = self.path.clone();
-        self.load_files_from_directory(Path::new(&path));
+        self.load_image_paths_from_file();
+        self.load_text_paths_from_file();
         println!("{:?}", self.file_list);
         println!("{:?}", self.media_list);
         self.floading();
@@ -89,103 +94,272 @@ impl Server {
     }
     fn handle_packet(&mut self, packet: Packet) {
         let p = packet.clone();
-        match packet.pack_type {
+
+        match p.pack_type {
             PacketType::MsgFragment(fragment) => {
+
                 let session = packet.session_id;
-                self.handle_message(fragment, &session, p);
+                self.handle_message(fragment, &session, packet);
             }
             PacketType::Ack(ack) => {
+
                 let session = packet.session_id;
-                self.handle_ack(ack, &session)
-            }
-            PacketType::Nack(nack) => {
-                let session = packet.session_id;
-                let position = nack.fragment_index;
-                self.handle_nack(nack, &position, &session)
+                self.handle_ack(ack, session)
             }
             PacketType::FloodRequest(_) => {
-                self.handle_flood_request(p)
+                self.handle_flood_request(packet)
             }
             PacketType::FloodResponse(_) => {
-                self.handle_flood_response(p);
+                self.handle_flood_response(packet);
+            },
+            PacketType::Nack(nack) => {
+
+                let session = packet.session_id;
+                let position = nack.fragment_index;
+                self.handle_nack(nack, &position, &session);
             }
         }
     }
     fn handle_message(&mut self, fragment: Fragment, session: &u64, packet: Packet) {
+        println!(
+            "⮕ RICEVUTO frammento session={} idx={} total_n_fragments={}",
+            session, fragment.fragment_index, fragment.total_n_fragments
+        );
+
+        // 1. Invia subito l’ACK
         let ack = create_ack(packet.clone());
         self.send_packet(ack);
-        if let Some(boxed) = self.fragment_recv.get_mut(&session) {
-            let d = fragment.data;
-            let number = fragment.length;
-            boxed.dati[fragment.fragment_index as usize] = (d, number);
-            boxed.counter += 1;
-            if boxed.counter == fragment.total_n_fragments {
-                self.handle_command(session);
-            }
+
+        // 2. Verifica che routing_header.hops non sia vuoto
+        let asker = if let Some(first_hop) = packet.routing_header.hops.get(0).cloned() {
+            first_hop
         } else {
-            let asker = packet.routing_header.hops[0];
-            let number = fragment.length;
-            let d = (fragment.data, number);
-            let data = Data::new(d, fragment.fragment_index, fragment.total_n_fragments, 1, asker);
-            self.fragment_recv.insert(*session, data);
-            if let Some(boxed) = self.fragment_recv.get_mut(&session) {
-                if boxed.counter == fragment.total_n_fragments {
-                    self.handle_command(session);
+            eprintln!(
+                "[WARN] handle_message: routing_header.hops vuoto per session {}. Ignoro frammento.",
+                session
+            );
+            return;
+        };
+
+        // 3. Determino total_frags:
+        //    - se esiste già un Data, uso il suo total_expected
+        //    - altrimenti prendo fragment.total_n_fragments
+        let total_frags = if let Some(existing) = self.fragment_recv.get(session) {
+            existing.total_expected
+        } else {
+            fragment.total_n_fragments as usize
+        };
+        println!("   → total_expected per session {} = {}", session, total_frags);
+
+        // 4. Controllo indice
+        let frag_idx = fragment.fragment_index as usize;
+        if frag_idx >= total_frags {
+            eprintln!(
+                "[WARN] handle_message: fragment_index ({}) >= total_expected ({}) per session {}. Ignoro frammento.",
+                frag_idx, total_frags, session
+            );
+            return;
+        }
+
+        // 5. Estrai dati raw
+        let data_chunk: [u8; 128] = fragment.data;
+        let length_byte: u8 = fragment.length;
+
+        // 6. Se esiste già un Data nella mappa, aggiorno
+        if let Some(data_struct) = self.fragment_recv.get_mut(session) {
+            println!(
+                "   → Esiste già Data: counter={}/{}",
+                data_struct.counter, data_struct.total_expected
+            );
+
+            // 6.a Se il buffer è di lunghezza diversa, ricostruisco e riallineo il counter
+            if data_struct.dati.len() != total_frags {
+                eprintln!(
+                    "[WARN] handle_message: il buffer.len() ({}) != total_expected ({}) per session {}. Ricostruisco.",
+                    data_struct.dati.len(),
+                    total_frags,
+                    session
+                );
+                let mut temp_vec: Vec<([u8; 128], u8)> = data_struct.dati.to_vec();
+                let mut new_vec: Vec<([u8; 128], u8)> = vec![( [0u8; 128], 0u8 ); total_frags];
+                for (i, existing) in temp_vec.into_iter().take(total_frags).enumerate() {
+                    new_vec[i] = existing;
                 }
+                data_struct.dati = new_vec.into_boxed_slice();
+                let riempiti = data_struct
+                    .dati
+                    .iter()
+                    .filter(|(_, len)| *len != 0u8)
+                    .count() as u64;
+                data_struct.counter = riempiti;
+                println!(
+                    "   → Dopo ricostruzione: counter riallineato a {}/{}",
+                    data_struct.counter, data_struct.total_expected
+                );
+            }
+
+            // 6.b Se lo slot è vuoto, inserisco e incremento; altrimenti è duplicato
+            if data_struct.dati[frag_idx].1 == 0 {
+                data_struct.dati[frag_idx] = (data_chunk, length_byte);
+                data_struct.counter += 1;
+                println!(
+                    "   → Inserito frammento {}: counter ora {}/{}",
+                    frag_idx, data_struct.counter, data_struct.total_expected
+                );
+            } else {
+                // Frammento duplicato:
+                println!(
+                    "   → Frammento duplicato idx={} per session {}: skip",
+                    frag_idx, session
+                );
+                // Se è un messaggio single-fragment (total_expected == 1),
+                // vogliamo processarlo comunque un’altra volta
+                if data_struct.total_expected == 1 {
+                    println!("   → Single-fragment duplicato: richiamo handle_command");
+                    self.handle_command(session);
+                    // Rimuovo subito il Data per far sì che futuri duplicati entrino in nuovo ramo “else”
+                    self.fragment_recv.remove(session);
+                }
+                return;
+            }
+
+            // 6.c Se ho ricevuto tutti i frammenti, chiamo handle_command e rimuovo il Data
+            if data_struct.counter == data_struct.total_expected as u64 {
+                println!(
+                    "   → Tutti frammenti arrivati ({} su {}) – chiamo handle_command",
+                    data_struct.counter, data_struct.total_expected
+                );
+                self.handle_command(session);
+                self.fragment_recv.remove(session);
+            } else {
+                println!(
+                    "   → Mancano frammenti: counter {}/{}",
+                    data_struct.counter, data_struct.total_expected
+                );
+            }
+        }
+        // 7. Altrimenti, è il primo frammento per questa session: creo un nuovo Data
+        else {
+            println!("   → Primo frammento per session {}: creo Data", session);
+            // 7.a Creo il nuovo Data
+            let data = Data::new(
+                (data_chunk, length_byte),
+                frag_idx as u64,
+                total_frags as u64,
+                1,
+                asker,
+            );
+            self.fragment_recv.insert(*session, data);
+            println!(
+                "   → Data creato: counter=1/{}",
+                total_frags
+            );
+
+            // 7.b Se total_frags == 1, chiamo subito handle_command e rimuovo il Data
+            if total_frags == 1 {
+                println!("   → Single-fragment ricevuto: chiamo handle_command");
+                self.handle_command(session);
+                self.fragment_recv.remove(session);
+            } else {
+                println!("   → Attendo gli altri {} frammenti.", total_frags - 1);
             }
         }
     }
-    fn handle_ack(&mut self, fragment: Ack, session: &u64) {
-        if let Some(boxed) = self.fragment_send.get_mut(&session) {
-            boxed.counter -= 1;
-            if boxed.counter == 0 {
-                self.fragment_send.remove(session);
+    fn handle_ack(&mut self, _ack: Ack, session: u64) {
+        // 1. Provo a prendere mutabilmente l’entry in fragment_send per questa sessione
+        if let Some(data_struct) = self.fragment_send.get_mut(&session) {
+            // 2. Se il counter è maggiore di zero, decremento
+            if data_struct.counter > 0 {
+                data_struct.counter -= 1;
+
+                // 3. Se è arrivato a zero, significa che ho ricevuto tutti gli ACK
+                if data_struct.counter == 0 {
+                    // Prima chiudo il borrow su data_struct
+                    drop(data_struct);
+                    // Poi rimuovo la sessione dalla HashMap
+                    self.fragment_send.remove(&session);
+                }
+            } else {
+                // Se il counter era già a 0, loggo il warning e non faccio nulla
+                eprintln!(
+                    "[WARN] handle_ack: counter già a 0 per session {}",
+                    session
+                );
             }
+        } else {
+            // Se non trovo alcuna session, loggo il warning
+            eprintln!(
+                "[WARN] handle_ack: session {} non trovata in fragment_send. Ignoro.",
+                session
+            );
         }
     }
     fn handle_nack(&mut self, fragment: Nack, position: &u64, session: &u64) {
-        if let Some(boxed) = self.fragment_send.get_mut(&session) {
-            match fragment.nack_type {
-                NackType::ErrorInRouting(id) => {
-                    let destination = boxed.who_ask;
-                    self.remove_drone(id);
-                    let root = self.routing(destination);
-                    match root {
-                        None => {
-                            println!("path not found");
-                        }
-                        Some(root) => {
-                            println!("{:?}", root.clone());
-                            let total = self.fragment_send.get(&session).unwrap().dati.len() - 1;
-                            let source = SourceRoutingHeader::new(root, 1);
-                            let nacked = fragment.fragment_index;
-                            let fr = Fragment::new(*position, total as u64, self.fragment_send.get(&session).unwrap().dati[nacked as usize].0);
-                            let pack = Packet::new_fragment(source, *session, fr);
-                            self.send_packet(pack);
-                            return;
-                        }
-                    }
-                }
-                NackType::Dropped => {
-                    let destination = boxed.who_ask;
-                    let root = self.routing(destination);
-                    match root {
-                        None => {
-                            println!("path not found");
-                        }
-                        Some(root) => {
-                            let total = self.fragment_send.get(&session).unwrap().dati.len() - 1;
-                            let source = SourceRoutingHeader::new(root, 1);
-                            let nacked = fragment.fragment_index;
-                            let fr = Fragment::new(*position, total as u64, self.fragment_send.get(&session).unwrap().dati[nacked as usize].0);
-                            let pack = Packet::new_fragment(source, *session, fr);
-                            self.send_packet(pack);
-                            return;
-                        }
-                    }
-                }
-                _ => { unreachable!() }
+
+        // 1. Controllo che la session esista ancora in fragment_send
+        if !self.fragment_send.contains_key(session) {
+            eprintln!(
+                "[WARN] handle_nack: session {} NON trovata in fragment_send. Esco.",
+                session
+            );
+            return;
+        }
+
+        // 2. Leggo immutabilmente data_struct per verificare lunghezza buffer e chi ha chiesto
+        let data_struct = self.fragment_send.get(session).unwrap();
+        let destination = data_struct.who_ask;
+        let buf_len = data_struct.dati.len();
+
+        // 3. Se buffer vuoto, niente da ritrasmettere
+        if buf_len == 0 {
+            eprintln!(
+                "[WARN] handle_nack: buffer vuoto per session {}. Esco.",
+                session
+            );
+            return;
+        }
+
+        // 4. Controllo indice frammento
+        let nacked_idx = fragment.fragment_index as usize;
+        if nacked_idx >= buf_len {
+            eprintln!(
+                "[WARN] handle_nack: fragment_index {} >= buf_len {} per session {}. Esco.",
+                nacked_idx, buf_len, session
+            );
+            return;
+        }
+
+        // 5. Clono immediatamente il chunk di dati, in modo da non tenere vivo il borrow immutabile
+        let chunk_data = data_struct.dati[nacked_idx].0.clone();
+
+        // 6. Gestisco i tipi di NACK
+        match fragment.nack_type {
+            NackType::ErrorInRouting(bad_node) => {
+                self.remove_drone(bad_node);
             }
+            NackType::Dropped => {
+                // Non rimuovo nodi, continuo a ritrasmettere
+            }
+            _ => {
+                return;
+            }
+        }
+
+        // 7. Ricalcolo un percorso aggiornato verso destination
+        if let Some(root) = self.routing(destination) {
+
+            // 8. Ricostruisco il fragment da inviare:
+            //    - total = buf_len (numero di frammenti totali)
+            let total = buf_len as u64;
+            let source = SourceRoutingHeader::new(root.clone(), 1);
+            let fr = Fragment::new(*position, total, chunk_data);
+            let pack = Packet::new_fragment(source, *session, fr);
+
+            // 9. Invio il pacchetto
+
+            self.send_packet(pack);
+        } else {
+
         }
     }
     fn handle_flood_request(&mut self, packet: Packet) {
@@ -278,8 +452,6 @@ impl Server {
                     self.send_response(last_node, risposta, &session);
                 }
             }
-
-
         }
     }
     fn remove_drone(&mut self, node_id: NodeId) {
@@ -382,6 +554,7 @@ impl Server {
         }
     }
     fn handle_command(&mut self, session: &u64) {
+        println!("handling");
         let data = self.fragment_recv.get(session).unwrap();
         let d = data.dati.clone();
         let command = deserialize_comando_text(d);
@@ -394,7 +567,7 @@ impl Server {
                             if ServerType == ServerType::MediaServer {
                                 self.media_others.insert(id_client, Vec::new());
                                 let response = Risposta::Text(TextServer::PathResolution);
-                                self.send_response(id_client, response, session)
+                                self.send_response(id_client, response, &self.get_session())
                             }
                         }
                     }
@@ -404,7 +577,7 @@ impl Server {
                         } else {}
                     }
                     MediaServer::SendMedia(_) => {
-                        unreachable!()
+                        println!("non dovrei ricevre questo messaggio ")
                     }
                 }
             }
@@ -412,16 +585,16 @@ impl Server {
                 match text {
                     TextServer::ServerTypeReq => {
                         let response = Risposta::Media(MediaServer::ServerTypeMedia(ServerType::MediaServer));
-                        self.send_response(id_client, response, session);
+                        self.send_response(id_client, response, &self.get_session());
                     }
                     TextServer::PathResolution => {
                         let response = Risposta::Media(MediaServer::SendPath(self.get_list()));
-                        self.send_response(id_client, response, session);
+                        self.send_response(id_client, response, &self.get_session());
                     }
 
 
                     _ => {
-                        unreachable!()
+                        println!("non dovrei ricevere questo messaggio ")
                     }
                 }
             }
@@ -436,7 +609,7 @@ impl Server {
                     WebBrowserCommands::GetList => {
                         let list = self.get_list();
                         let response = Risposta::Text(TextServer::SendFileList(list));
-                        self.send_response(id_client, response, session)
+                        self.send_response(id_client, response, &self.get_session())
                     }
                     WebBrowserCommands::GetPosition(media) => {
                         let mut id_server = 0;
@@ -445,7 +618,7 @@ impl Server {
                             Ok(id) => {
                                 id_server = id;
                                 let response = Risposta::Text(TextServer::PositionMedia(id_server));
-                                self.send_response(id_client, response, session);
+                                self.send_response(id_client, response, &self.get_session());
                             }
                             _ => {} // chiedi per la gestione degli errori
                         }
@@ -459,24 +632,24 @@ impl Server {
                             content : media.unwrap(),
                         };
                         let response = Risposta::Media(MediaServer::SendMedia(file));
-                        self.send_response(id_client, response, session);
+                        self.send_response(id_client, response, &self.get_session());
                     }
                     WebBrowserCommands::GetText(text_name) => {
-                        let text = self.get_text_from_file(text_name.clone());
+                        let media = self.get_text(text_name.clone());
                         let name = title_and_extension(text_name);
-                        let file = FileMetaData{
+                        let file = FileMetaData {
                             title: name.0,
                             extension: name.1,
-                            content: text.unwrap(),
+                            content: media.unwrap(),
                         };
                         let response = Risposta::Text(TextServer::Text(file));
-                        self.send_response(id_client, response, session);
+                        self.send_response(id_client, response, &self.get_session());
                     }
                     WebBrowserCommands::GetServerType => {
                         let response = Risposta::Text(TextServer::ServerTypeText(self.server_type.clone()));
-                        self.send_response(id_client, response, session);
-                        let response = Risposta::Text(TextServer::ServerTypeText(ServerType::MediaServer));
-                        self.send_response(id_client, response, session);
+                        self.send_response(id_client, response, &self.get_session());
+                        let response = Risposta::Media(MediaServer::ServerTypeMedia(ServerType::MediaServer));
+                        self.send_response(id_client, response, &self.get_session());
                     }
                 }
             }
@@ -492,12 +665,12 @@ impl Server {
         }
     }
     fn send_response(&mut self, id: NodeId, response: Risposta, session: &u64) {
-        println!{"risposta: {:#?}", response}
         match response {
             Risposta::Text(text) => {
                 let dati = serialize(&text);
                 let total = dati.len();
-                let d_to_send = Data { counter: total as u64, dati, who_ask: id };
+                let total_usize = dati.len();
+                let d_to_send = Data { counter: total as u64, total_expected: total_usize, dati, who_ask: id };
                 self.fragment_send.insert(*session, d_to_send);
                 let root = self.routing(id);
                 match root {
@@ -519,7 +692,8 @@ impl Server {
             Risposta::Media(media) => {
                 let dati = serialize(&media);
                 let total = dati.len();
-                let d_to_send = Data { counter: total as u64, dati, who_ask: id };
+                let total_usize = dati.len();
+                let d_to_send = Data { counter: total as u64, total_expected: total_usize, dati, who_ask: id };
                 self.fragment_send.insert(*session, d_to_send);
                 let root = self.routing(id);
                 match root {
@@ -541,68 +715,124 @@ impl Server {
             _ => {}
         }
     }
-    fn load_files_from_directory(&mut self, file_path: &Path) {
-        let file = match File::open(&file_path) {
-            Ok(f) => f,
-            Err(e) => {
-                eprintln!("Errore nell'aprire il file '{}': {}", file_path.display(), e);
-                return;
-            }
-        };
+    pub fn load_text_paths_from_file(&mut self) -> io::Result<()> {
+        let path_file = Path::new(&self.path);
 
+        if !path_file.is_file() {
+            eprintln!("Errore: '{}' non è un file valido", path_file.display());
+            return Err(io::Error::new(io::ErrorKind::InvalidInput, "Path non valido"));
+        }
 
+        let file = File::open(path_file)?;
         let reader = BufReader::new(file);
 
+        for line in reader.lines().flatten() {
+            let trimmed = line.trim();
+            if trimmed.is_empty() {
+                continue;
+            }
 
-        for line in reader.lines() {
-            match line {
-                Ok(path_str) => {
-                    let path = Path::new(&path_str);
-                    if !path.exists() {
-                        eprintln!("Path non trovato: {}", path_str);
-                        continue;
-                    }
+            let path = PathBuf::from(trimmed);
 
+            if !path.is_file() {
+                println!("⚠️  Path non valido (non è un file): {}", trimmed);
+                continue;
+            }
 
-                    match path.extension().and_then(|ext| ext.to_str()).map(|s| s.to_lowercase()) {
-                        Some(ext)=>{
-                            if ext == "txt" {
-                                if let Some(file_name) = path.file_name().and_then(|n| n.to_str()) {
-                                    self.file_list.push((file_name.to_string(), path_str.clone()));
-                                }
-                            }else{
-                                if let Some(file_name) = path.file_name().and_then(|n| n.to_str()) {
-                                    self.media_list.push((file_name.to_string(), path_str.clone()));
-                                }else{
-                                    println!("Estensione non supportata");
-                                }
-                            }
-                        }
-                        _ => {
+            let ext_opt = path
+                .extension()
+                .and_then(|e| e.to_str())
+                .map(|e| e.to_lowercase());
 
-                        }
-                    }
-                }
-                Err(e) => {
-                    eprintln!("Errore nella lettura di una riga: {}", e);
+            if matches!(ext_opt.as_deref(), Some("txt")) {
+                if let Some(name) = path.file_name().and_then(|n| n.to_str()) {
+                    self.file_list
+                        .push((name.to_string(), path.to_string_lossy().to_string()));
                 }
             }
         }
+
+        Ok(())
+    }
+    pub fn load_image_paths_from_file(&mut self) -> io::Result<()> {
+        let path_file = Path::new(&self.path);
+
+        if !path_file.is_file() {
+            eprintln!("Errore: '{}' non è un file valido", path_file.display());
+            return Err(io::Error::new(io::ErrorKind::InvalidInput, "Path non valido"));
+        }
+
+        let file = File::open(path_file)?;
+        let reader = BufReader::new(file);
+
+        for line in reader.lines().flatten() {
+            let trimmed = line.trim();
+            if trimmed.is_empty() {
+                continue;
+            }
+
+            let path = PathBuf::from(trimmed);
+
+            if !path.is_file() {
+                println!("⚠️  Path non valido (non è un file): {}", trimmed);
+                continue;
+            }
+
+            let ext_opt = path
+                .extension()
+                .and_then(|e| e.to_str())
+                .map(|e| e.to_lowercase());
+
+            let is_image = matches!(
+                ext_opt.as_deref(),
+                Some("jpg")
+                    | Some("jpeg")
+                    | Some("png")
+                    | Some("gif")
+                    | Some("bmp")
+                    | Some("webp")
+                    | Some("tiff")
+                    | Some("ico")
+                    | Some("jfif")
+            );
+
+            if is_image {
+                if let Some(name) = path.file_name().and_then(|n| n.to_str()) {
+                    self.media_list
+                        .push((name.to_string(), path.to_string_lossy().to_string()));
+                }
+            }
+        }
+
+        Ok(())
     }
     fn get_list(&self) -> Vec<String> {
-        let mut list = Vec::new();
-        for i in self.file_list.clone() {
-            list.push(i.0.clone());
-        }
-        for i in self.media_list.clone() {
-            list.push(i.0.clone());
-        }
-        for i in self.media_others.clone() {
-            for k in i.1.clone() {
-                list.push(k);
+        let mut seen = HashSet::new();
+        let mut unique_list = Vec::new();
+
+        // Iteriamo su file_list
+        for (name, _) in &self.file_list {
+            if seen.insert(name.clone()) {
+                unique_list.push(name.clone());
             }
         }
-        list
+
+        // Iteriamo su media_list
+        for (name, _) in &self.media_list {
+            if seen.insert(name.clone()) {
+                unique_list.push(name.clone());
+            }
+        }
+
+        // Iteriamo su media_others
+        for (_, vec_strings) in &self.media_others {
+            for k in vec_strings {
+                if seen.insert(k.clone()) {
+                    unique_list.push(k.clone());
+                }
+            }
+        }
+        unique_list
     }
     fn find_position_media(&self, media_id: MediaId) -> Result<NodeId, String> {
         for i in self.media_list.clone() {
@@ -623,22 +853,8 @@ impl Server {
         }
         Err(String::from(format!("Media {} not found anywhere", media_id)))
     }
-    fn get_text_from_file(&self, text_id: TextId) -> Result<String, String> {
-        if let Some((_, file_path)) = self.file_list.iter().find(|(id, _)| *id == text_id) {
-            let reading = read_file(Path::new(file_path));
-            match reading {
-                Ok(contenuto) => Ok(contenuto),
-                Err(_) => {
-                    eprintln!("Errore nell'aprire il file '{}'", file_path);
-                    Err(format!("File '{}' not found", file_path))
-                }
-            }
-        } else {
-            Err(format!("File con ID {:?} non trovato", text_id))
-        }
-    }
     fn get_media(&self, media_id: MediaId) -> Result<String, String> {
-        if let Some((_, file_path)) = self.file_list.iter().find(|(id, _)| *id == media_id) {
+        if let Some((_, file_path)) = self.media_list.iter().find(|(id, _)| *id == media_id) {
             match fs::read(Path::new(file_path)) {
                 Ok(bytes) => {
                     let encoded = BASE64.encode(&bytes);
@@ -653,18 +869,38 @@ impl Server {
             Err(format!("File con ID {:?} non trovato", media_id))
         }
     }
+    fn get_text(&self, text_id: TextId) -> Result<String, String> {
+        if let Some((_, file_path)) = self.file_list.iter().find(|(id, _)| *id == text_id) {
+            match fs::read(Path::new(file_path)) {
+                Ok(bytes) => {
+                    let encoded = BASE64.encode(&bytes);
+                    Ok(encoded)
+                }
+                Err(_) => {
+                    eprintln!("Errore nell'aprire il file '{}'", file_path);
+                    Err(format!("File '{}' not found", file_path))
+                }
+            }
+        } else {
+            Err(format!("File con ID {:?} non trovato", text_id))
+        }
+    }
+    fn get_session(&self) -> u64 {
+        let mut rng = rand::thread_rng();
 
+        loop {
+            let candidate = rng.gen_range(0..=100);
+            if !self.fragment_recv.contains_key(&candidate) {
+                return candidate;
+            }
+        }
+    }
 }
-
 fn title_and_extension(name: String) -> (String, String) {
     let s2 = name[name.len()-3..].to_string();
     let s1 = name[0..name.len()-4].to_string();
     (s1, s2)
 }
-
 fn read_file<P: AsRef<Path>>(path: P) -> Result<String, io::Error> {
     fs::read_to_string(path)
 }
-
-
-
