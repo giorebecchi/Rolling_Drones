@@ -373,6 +373,11 @@ fn simulation_commands_window(
                                         from_node.connected_node_ids.push(to_id);
                                     }
                                 }
+                                if let Some(to_node) = nodes.0.iter_mut().find(|n| n.id == to_id) {
+                                    if !to_node.connected_node_ids.contains(&from_id) {
+                                        to_node.connected_node_ids.push(from_id);
+                                    }
+                                }
 
                                 sim_commands.selected_add_target = None;
                                 sim_commands.selected_add_neighbor = None;
