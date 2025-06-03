@@ -12,6 +12,7 @@ use crate::clients::assembler::{Fragmentation, NodeData};
 use crate::common_things::common::{ChatRequest, ClientType, ContentCommands, FileMetaData, MediaId, MediaServer, ServerType, TextServer, WebBrowserCommands, WebBrowserEvents};
 use crate::common_things::common::WebBrowserEvents::TypeClient;
 use base64::engine::general_purpose::STANDARD as BASE64;
+use egui::debug_text::print;
 use petgraph::prelude::UnGraphMap;
 
 pub struct WebBrowser {
@@ -90,6 +91,7 @@ impl WebBrowser {
                     if let Ok(command) = command {
                         self.build_topology();
                         self.handle_commands(command);
+                        println!("topology: {:?}", self.topology_graph);
                     }
                 }
                
@@ -122,12 +124,46 @@ impl WebBrowser {
             ContentCommands::SendTopologyGraph => {
                 self.send_topology_graph();
             }
-
+            ContentCommands::AddSender(node_id, sender) => {
+                self.add_sender(node_id, sender);
+            }
+            ContentCommands::RemoveSender(node_id) => {
+                self.remove_sender(node_id);
+            }
+            ContentCommands::TopologyChanged => {
+                self.handle_topology();
+            }
+            
             _ => {}
         }
     }
     fn send_topology_graph(&self){
         self.send_event.send(WebBrowserEvents::Graph(self.config.id, self.topology_graph.clone())).unwrap();
+    }
+    
+    pub fn add_sender(&mut self, node_id: NodeId, sender: Sender<Packet>) {
+        if !self.send_packets.contains_key(&node_id) {
+            self.send_packets.insert(node_id, sender);
+            println!("added sender for web browser");
+        }else { 
+            println!(" node: {} is already a neighbor of the web browser", node_id)
+        }
+    }
+    
+    pub fn remove_sender(&mut self, node_id: NodeId) {
+        println!("before remove: {:?}", self.send_packets.keys());
+        
+        if self.send_packets.contains_key(&node_id) {
+            self.send_packets.remove(&node_id);
+            println!("after remove: {:?}", self.send_packets.keys());
+        }else { 
+            println!("not a neighbor of web browser")
+        }
+        
+    }
+    
+    pub fn handle_topology(& mut self){
+        self.flooding(); //probably it's the problem
     }
 
     fn handle_messages(& mut self, message: Packet){
@@ -688,6 +724,7 @@ impl WebBrowser {
     pub fn send_messages(& mut self, destination_id: &NodeId, mut packet: Packet){
         packet.routing_header.hop_index+=1;
         if let Some(sender) = self.send_packets.get(&destination_id){
+            println!("dest: {}", destination_id);
             if let Err(err) = sender.send(packet.clone()){
                 println!("Error sending command: {}", err); //have to send back nack
             }
