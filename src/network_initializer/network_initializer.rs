@@ -514,7 +514,7 @@ fn spawn_servers_max(
                     packet_send,
                     rcv_command.clone(),
                     server_event_send.clone(),
-                    "assets/multimedia/paths/text_server1.txt",
+                    "assets/multimedia/path_max/max_server.txt",
                     rcv_flood
                 );
                 thread::spawn(move || {
