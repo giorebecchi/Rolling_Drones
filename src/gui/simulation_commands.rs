@@ -441,6 +441,9 @@ fn simulation_commands_window(
                                     if let Some(from_node) = nodes.iter_mut().find(|n| n.id == from_id) {
                                         from_node.connected_node_ids.retain(|&id| id != to_id);
                                     }
+                                    if let Some(to_node) = nodes.iter_mut().find(|n| n.id == to_id) {
+                                        to_node.connected_node_ids.retain(|&id| id != from_id);
+                                    }
                                 });
 
                                 match would_break_connectivity(&nodes.0, &simulated) {
@@ -448,8 +451,14 @@ fn simulation_commands_window(
                                         sim.remove_sender(to_id, from_id);
                                         sim.change_in_topology();
 
+
+
+
                                         if let Some(from_node) = nodes.0.iter_mut().find(|n| n.id == from_id) {
                                             from_node.connected_node_ids.retain(|&id| id != to_id);
+                                        }
+                                        if let Some(to_node) = nodes.0.iter_mut().find(|n| n.id == to_id) {
+                                            to_node.connected_node_ids.retain(|&id| id != from_id);
                                         }
 
                                         sim_commands.selected_remove_target = None;
@@ -489,14 +498,14 @@ fn simulation_commands_window(
                                 }
                             });
 
-                        ui.label("PDR (0.0 - 1.0):");
+                        ui.label("PDR (0.0 - 0.99):");
                         ui.text_edit_singleline(&mut sim_commands.pdr_value);
 
                         if ui.button("Set PDR").clicked() {
                             if let Some(id) = sim_commands.selected_pdr_drone {
                                 match sim_commands.pdr_value.parse::<f32>() {
                                     Ok(pdr) => {
-                                        if (0.0..=1.0).contains(&pdr) {
+                                        if (0.0..=0.99).contains(&pdr) {
                                             sim.pdr(id, pdr);
                                             for drone in nodes.0.iter_mut().filter(|node| node.id == id) {
                                                 drone.pdr = pdr;
@@ -505,7 +514,7 @@ fn simulation_commands_window(
                                             sim_commands.pdr_value.clear();
                                             sim_commands.pdr_error = None;
                                         } else {
-                                            sim_commands.pdr_error = Some("PDR must be between 0.0 and 1.0".to_string());
+                                            sim_commands.pdr_error = Some("PDR must be between 0.0 and 0.99".to_string());
                                         }
                                     }
                                     Err(_) => {
