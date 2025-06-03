@@ -8,13 +8,16 @@ use std::collections::{BinaryHeap, HashMap};
 use std::{fs, io, thread};
 use std::fs::File;
 use std::io::{BufRead, BufReader};
-use std::path::Path;
+use std::path::{Path, PathBuf};
 use wg_2024::network::{NodeId, SourceRoutingHeader};
 use wg_2024::packet::{Ack, FloodRequest, FloodResponse, Fragment, Nack, NackType, NodeType, Packet, PacketType};
 use bevy::utils::HashSet;
 use egui::Key::M;
 use rand::Rng;
 use serde_json::Error;
+use walkdir::WalkDir;
+use std::io::{Read};
+use infer;
 
 pub struct Server{
     server_id: NodeId,
@@ -64,7 +67,8 @@ impl Server {
     }
     pub fn run(&mut self) {
         let path = self.path.clone();
-        self.load_files_from_directory(Path::new(&path));
+        self.load_image_paths_from_file();
+        self.load_text_paths_from_file();
         println!("{:?}", self.file_list);
         println!("{:?}", self.media_list);
         self.floading();
@@ -448,8 +452,6 @@ impl Server {
                     self.send_response(last_node, risposta, &session);
                 }
             }
-
-
         }
     }
     fn remove_drone(&mut self, node_id: NodeId) {
@@ -565,7 +567,7 @@ impl Server {
                             if ServerType == ServerType::MediaServer {
                                 self.media_others.insert(id_client, Vec::new());
                                 let response = Risposta::Text(TextServer::PathResolution);
-                                self.send_response(id_client, response, session)
+                                self.send_response(id_client, response, &self.get_session())
                             }
                         }
                     }
@@ -583,11 +585,11 @@ impl Server {
                 match text {
                     TextServer::ServerTypeReq => {
                         let response = Risposta::Media(MediaServer::ServerTypeMedia(ServerType::MediaServer));
-                        self.send_response(id_client, response, session);
+                        self.send_response(id_client, response, &self.get_session());
                     }
                     TextServer::PathResolution => {
                         let response = Risposta::Media(MediaServer::SendPath(self.get_list()));
-                        self.send_response(id_client, response, session);
+                        self.send_response(id_client, response, &self.get_session());
                     }
 
 
@@ -607,7 +609,7 @@ impl Server {
                     WebBrowserCommands::GetList => {
                         let list = self.get_list();
                         let response = Risposta::Text(TextServer::SendFileList(list));
-                        self.send_response(id_client, response, session)
+                        self.send_response(id_client, response, &self.get_session())
                     }
                     WebBrowserCommands::GetPosition(media) => {
                         let mut id_server = 0;
@@ -616,7 +618,7 @@ impl Server {
                             Ok(id) => {
                                 id_server = id;
                                 let response = Risposta::Text(TextServer::PositionMedia(id_server));
-                                self.send_response(id_client, response, session);
+                                self.send_response(id_client, response, &self.get_session());
                             }
                             _ => {} // chiedi per la gestione degli errori
                         }
@@ -630,24 +632,24 @@ impl Server {
                             content : media.unwrap(),
                         };
                         let response = Risposta::Media(MediaServer::SendMedia(file));
-                        self.send_response(id_client, response, session);
+                        self.send_response(id_client, response, &self.get_session());
                     }
                     WebBrowserCommands::GetText(text_name) => {
                         let media = self.get_text(text_name.clone());
-                        let name = crate::servers::Text_max::title_and_extension(text_name);
+                        let name = title_and_extension(text_name);
                         let file = FileMetaData {
                             title: name.0,
                             extension: name.1,
                             content: media.unwrap(),
                         };
-                        let response = Risposta::Media(MediaServer::SendMedia(file));
-                        self.send_response(id_client, response, session);
+                        let response = Risposta::Text(TextServer::Text(file));
+                        self.send_response(id_client, response, &self.get_session());
                     }
                     WebBrowserCommands::GetServerType => {
                         let response = Risposta::Text(TextServer::ServerTypeText(self.server_type.clone()));
-                        self.send_response(id_client, response, session);
-                        //let response = Risposta::Media(MediaServer::ServerTypeMedia(ServerType::MediaServer));
-                        //self.send_response(id_client, response, session);
+                        self.send_response(id_client, response, &self.get_session());
+                        let response = Risposta::Media(MediaServer::ServerTypeMedia(ServerType::MediaServer));
+                        self.send_response(id_client, response, &self.get_session());
                     }
                 }
             }
@@ -662,8 +664,6 @@ impl Server {
             }
         }
     }
-
-
     fn send_response(&mut self, id: NodeId, response: Risposta, session: &u64) {
         match response {
             Risposta::Text(text) => {
@@ -715,68 +715,124 @@ impl Server {
             _ => {}
         }
     }
-    fn load_files_from_directory(&mut self, file_path: &Path) {
-        let file = match File::open(&file_path) {
-            Ok(f) => f,
-            Err(e) => {
-                eprintln!("Errore nell'aprire il file '{}': {}", file_path.display(), e);
-                return;
-            }
-        };
+    pub fn load_text_paths_from_file(&mut self) -> io::Result<()> {
+        let path_file = Path::new(&self.path);
 
+        if !path_file.is_file() {
+            eprintln!("Errore: '{}' non è un file valido", path_file.display());
+            return Err(io::Error::new(io::ErrorKind::InvalidInput, "Path non valido"));
+        }
 
+        let file = File::open(path_file)?;
         let reader = BufReader::new(file);
 
+        for line in reader.lines().flatten() {
+            let trimmed = line.trim();
+            if trimmed.is_empty() {
+                continue;
+            }
 
-        for line in reader.lines() {
-            match line {
-                Ok(path_str) => {
-                    let path = Path::new(&path_str);
-                    if !path.exists() {
-                        eprintln!("Path non trovato: {}", path_str);
-                        continue;
-                    }
+            let path = PathBuf::from(trimmed);
 
+            if !path.is_file() {
+                println!("⚠️  Path non valido (non è un file): {}", trimmed);
+                continue;
+            }
 
-                    match path.extension().and_then(|ext| ext.to_str()).map(|s| s.to_lowercase()) {
-                        Some(ext)=>{
-                            if ext == "txt" {
-                                if let Some(file_name) = path.file_name().and_then(|n| n.to_str()) {
-                                    self.file_list.push((file_name.to_string(), path_str.clone()));
-                                }
-                            }else{
-                                if let Some(file_name) = path.file_name().and_then(|n| n.to_str()) {
-                                    self.media_list.push((file_name.to_string(), path_str.clone()));
-                                }else{
-                                    println!("Estensione non supportata");
-                                }
-                            }
-                        }
-                        _ => {
+            let ext_opt = path
+                .extension()
+                .and_then(|e| e.to_str())
+                .map(|e| e.to_lowercase());
 
-                        }
-                    }
-                }
-                Err(e) => {
-                    eprintln!("Errore nella lettura di una riga: {}", e);
+            if matches!(ext_opt.as_deref(), Some("txt")) {
+                if let Some(name) = path.file_name().and_then(|n| n.to_str()) {
+                    self.file_list
+                        .push((name.to_string(), path.to_string_lossy().to_string()));
                 }
             }
         }
+
+        Ok(())
+    }
+    pub fn load_image_paths_from_file(&mut self) -> io::Result<()> {
+        let path_file = Path::new(&self.path);
+
+        if !path_file.is_file() {
+            eprintln!("Errore: '{}' non è un file valido", path_file.display());
+            return Err(io::Error::new(io::ErrorKind::InvalidInput, "Path non valido"));
+        }
+
+        let file = File::open(path_file)?;
+        let reader = BufReader::new(file);
+
+        for line in reader.lines().flatten() {
+            let trimmed = line.trim();
+            if trimmed.is_empty() {
+                continue;
+            }
+
+            let path = PathBuf::from(trimmed);
+
+            if !path.is_file() {
+                println!("⚠️  Path non valido (non è un file): {}", trimmed);
+                continue;
+            }
+
+            let ext_opt = path
+                .extension()
+                .and_then(|e| e.to_str())
+                .map(|e| e.to_lowercase());
+
+            let is_image = matches!(
+                ext_opt.as_deref(),
+                Some("jpg")
+                    | Some("jpeg")
+                    | Some("png")
+                    | Some("gif")
+                    | Some("bmp")
+                    | Some("webp")
+                    | Some("tiff")
+                    | Some("ico")
+                    | Some("jfif")
+            );
+
+            if is_image {
+                if let Some(name) = path.file_name().and_then(|n| n.to_str()) {
+                    self.media_list
+                        .push((name.to_string(), path.to_string_lossy().to_string()));
+                }
+            }
+        }
+
+        Ok(())
     }
     fn get_list(&self) -> Vec<String> {
-        let mut list = Vec::new();
-        for i in self.file_list.clone() {
-            list.push(i.0.clone());
-        }
-        for i in self.media_list.clone() {
-            list.push(i.0.clone());
-        }
-        for i in self.media_others.clone() {
-            for k in i.1.clone() {
-                list.push(k);
+        let mut seen = HashSet::new();
+        let mut unique_list = Vec::new();
+
+        // Iteriamo su file_list
+        for (name, _) in &self.file_list {
+            if seen.insert(name.clone()) {
+                unique_list.push(name.clone());
             }
         }
-        list
+
+        // Iteriamo su media_list
+        for (name, _) in &self.media_list {
+            if seen.insert(name.clone()) {
+                unique_list.push(name.clone());
+            }
+        }
+
+        // Iteriamo su media_others
+        for (_, vec_strings) in &self.media_others {
+            for k in vec_strings {
+                if seen.insert(k.clone()) {
+                    unique_list.push(k.clone());
+                }
+            }
+        }
+        unique_list
     }
     fn find_position_media(&self, media_id: MediaId) -> Result<NodeId, String> {
         for i in self.media_list.clone() {
@@ -796,20 +852,6 @@ impl Server {
             }
         }
         Err(String::from(format!("Media {} not found anywhere", media_id)))
-    }
-    fn get_text_from_file(&self, text_id: TextId) -> Result<String, String> {
-        if let Some((_, file_path)) = self.file_list.iter().find(|(id, _)| *id == text_id) {
-            let reading = read_file(Path::new(file_path));
-            match reading {
-                Ok(contenuto) => Ok(contenuto),
-                Err(_) => {
-                    eprintln!("Errore nell'aprire il file '{}'", file_path);
-                    Err(format!("File '{}' not found", file_path))
-                }
-            }
-        } else {
-            Err(format!("File con ID {:?} non trovato", text_id))
-        }
     }
     fn get_media(&self, media_id: MediaId) -> Result<String, String> {
         if let Some((_, file_path)) = self.media_list.iter().find(|(id, _)| *id == media_id) {
@@ -843,15 +885,22 @@ impl Server {
             Err(format!("File con ID {:?} non trovato", text_id))
         }
     }
+    fn get_session(&self) -> u64 {
+        let mut rng = rand::thread_rng();
 
+        loop {
+            let candidate = rng.gen_range(0..=100);
+            if !self.fragment_recv.contains_key(&candidate) {
+                return candidate;
+            }
+        }
+    }
 }
-
 fn title_and_extension(name: String) -> (String, String) {
     let s2 = name[name.len()-3..].to_string();
     let s1 = name[0..name.len()-4].to_string();
     (s1, s2)
 }
-
 fn read_file<P: AsRef<Path>>(path: P) -> Result<String, io::Error> {
     fs::read_to_string(path)
 }
