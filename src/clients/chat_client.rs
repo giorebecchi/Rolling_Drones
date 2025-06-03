@@ -157,8 +157,11 @@ impl ChatClient {
     }
     
     pub fn remove_sender(&mut self, node: NodeId) {
+        println!("before remove: {:?}", self.send_packets.keys());
         if self.send_packets.contains_key(&node){
+           
             self.send_packets.remove(&node);
+            println!("after remove: {:?}", self.send_packets.keys());
             println!("removed drone");
         }else { println!("this drone can't be removed as it's not a neighbour") }
     }
