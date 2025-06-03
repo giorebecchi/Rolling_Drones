@@ -217,16 +217,3 @@ pub(crate) fn create_ack(packet: Packet) ->Packet {
     };
     pack
 }
-
-
-
-
-
-
-
-
-
-
-
-
-
