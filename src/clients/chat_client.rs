@@ -120,12 +120,23 @@ impl ChatClient {
             CommandChat::SendTopologyGraph => {
                 self.send_topology_graph();
             }
+            CommandChat::AddSender(node_id, sender) => {
+                self.add_sender(node_id, sender);
+            }
+            CommandChat::RemoveSender(node_id) => {
+                self.remove_sender(node_id);
+            }
+            CommandChat::TopologyChanged => {
+                self.handle_topology();
+            }
+            
             _ => {}
         }
     }
     fn send_topology_graph(&self){
         self.event_send.send(ChatClientEvent::Graph(self.config.id, self.topology.clone())).unwrap();
     }
+    
     pub fn handle_incoming(&mut self, message: Packet) {
         match message.pack_type {
             PacketType::MsgFragment(_) => {
@@ -136,6 +147,28 @@ impl ChatClient {
             PacketType::FloodRequest(_) => { self.handle_flood_req(message); },
             PacketType::FloodResponse(_) => { self.handle_flood_response(message); },
         }
+    }
+    
+    pub fn add_sender(&mut self, node_to_add: NodeId, sender: Sender<Packet>) {
+        if !self.send_packets.contains_key(&node_to_add){
+            self.send_packets.insert(node_to_add, sender);
+            println!("added drone");
+        }else { println!("already has this drone as a neighbour") }
+    }
+    
+    pub fn remove_sender(&mut self, node: NodeId) {
+        println!("before remove: {:?}", self.send_packets.keys());
+        if self.send_packets.contains_key(&node){
+           
+            self.send_packets.remove(&node);
+            println!("after remove: {:?}", self.send_packets.keys());
+            println!("removed drone");
+        }else { println!("this drone can't be removed as it's not a neighbour") }
+    }
+    
+    pub fn handle_topology(& mut self){
+        self.initiate_flooding();
+        println!("initiating new flooding");
     }
 
     pub fn search_chat_servers(&mut self) {
