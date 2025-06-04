@@ -456,55 +456,61 @@ impl Server{
 
     fn handle_flood_response(&mut self, p:Packet){
         //println!("media server flood response: {}", p.pack_type);
-        if let PacketType::FloodResponse(mut flood) = p.pack_type{
+        if let PacketType::FloodResponse(mut flood) = p.clone().pack_type{
             // println!("server {} has received flood response {}", self.server_id,flood.clone());
-            let mut safetoadd = true;
-            for i in self.flooding.iter(){
-                if i.flood_id<flood.flood_id{
-                    println!("the server is starting to receive new flood responses");
-                    self.flooding.clear();
-                    break;
-                }else if i.flood_id==flood.flood_id{
-
-                }else { safetoadd = false; break; }
-            }
-            if safetoadd {
-                self.flooding.push(flood.clone());
-                
-                
-                let mut prev;
-                match self.find_node(self.server_id, NodeType::Server) {
-                    None => { prev = self.neigh_map.add_node((self.server_id, NodeType::Server)) }
-                    Some(ni) => { prev = ni }
+            if flood.path_trace[0].0 == self.server_id {
+                let mut safetoadd = true;
+                for i in self.flooding.iter() {
+                    if i.flood_id < flood.flood_id {
+                        println!("the server is starting to receive new flood responses");
+                        self.flooding.clear();
+                        break;
+                    } else if i.flood_id == flood.flood_id {} else {
+                        safetoadd = false;
+                        break;
+                    }
                 }
+                if safetoadd {
+                    self.flooding.push(flood.clone());
 
-                for &(j, k) in flood.path_trace.iter().skip(1) {
-                    if let Some(&(prev_id, prev_nt)) = self.neigh_map.node_weight(prev) {
-                        if self.node_exists(j.clone(), k.clone()) {
-                            let next = self.find_node(j.clone(), k.clone()).unwrap();
-                            if self.neigh_map.find_edge(prev, next).is_none() {
-                                self.neigh_map.add_edge(prev, next, 0.0);
-                            }
-                            if self.neigh_map.find_edge(next, prev).is_none() {
-                                self.neigh_map.add_edge(next, prev, 0.0);
-                            }
 
-                            prev = next;
-                        } else {
-                            let newnodeid = self.neigh_map.add_node((j.clone(), k.clone()));
-                                self.stats.insert(newnodeid.clone(), drops {dropped:0, forwarded:1});
+                    let mut prev;
+                    match self.find_node(self.server_id, NodeType::Server) {
+                        None => { prev = self.neigh_map.add_node((self.server_id, NodeType::Server)) }
+                        Some(ni) => { prev = ni }
+                    }
+
+                    for &(j, k) in flood.path_trace.iter().skip(1) {
+                        if let Some(&(prev_id, prev_nt)) = self.neigh_map.node_weight(prev) {
+                            if self.node_exists(j.clone(), k.clone()) {
+                                let next = self.find_node(j.clone(), k.clone()).unwrap();
+                                if self.neigh_map.find_edge(prev, next).is_none() {
+                                    self.neigh_map.add_edge(prev, next, 0.0);
+                                }
+                                if self.neigh_map.find_edge(next, prev).is_none() {
+                                    self.neigh_map.add_edge(next, prev, 0.0);
+                                }
+
+                                prev = next;
+                            } else {
+                                let newnodeid = self.neigh_map.add_node((j.clone(), k.clone()));
+                                self.stats.insert(newnodeid.clone(), drops { dropped: 0, forwarded: 1 });
                                 if self.neigh_map.find_edge(prev, newnodeid).is_none() {
                                     self.neigh_map.add_edge(prev, newnodeid, 0.0);
                                 }
                                 if self.neigh_map.find_edge(newnodeid, prev).is_none() {
                                     self.neigh_map.add_edge(newnodeid, prev, 0.0);
                                 }
-                            prev = newnodeid;
+                                prev = newnodeid;
+                            }
                         }
                     }
+                } else {
+                    println!("you received an outdated version of the flooding");
                 }
             }else {
-                println!("you received an outdated version of the flooding");
+                println!("forwarding the flood because it is not mine");
+                self.forward_packet(p);
             }
         }
     }
