@@ -134,7 +134,6 @@ fn log_window(
                             .cloned()
                             .collect();
 
-                        // Calculate incorrect connections (discovered but not actual)
                         let incorrect_connections: Vec<(NodeId, NodeId)> = discovered_connections
                             .difference(&actual_connections)
                             .cloned()
@@ -151,12 +150,12 @@ fn log_window(
                             );
                             ui.label("|");
                             ui.colored_label(
-                                egui::Color32::from_rgb(255, 140, 0), // Orange color for incorrect
+                                egui::Color32::from_rgb(255, 140, 0),
                                 format!("Incorrect: {} connections", incorrect_connections.len())
                             );
                         });
 
-                        // Show details of incorrect connections if any exist
+
                         if !incorrect_connections.is_empty() && log_info.show_incorrect_connections {
                             ui.collapsing("Incorrect connections details", |ui| {
                                 for (source, target) in &incorrect_connections {
@@ -459,7 +458,6 @@ fn render_graph_visualization_with_errors(
             node_positions.insert(*node_id, egui::pos2(x, y));
         }
 
-        // Draw missed connections (dashed red lines)
         for (source, target) in &missed_connections {
             if let (Some(start_pos), Some(end_pos)) = (node_positions.get(source), node_positions.get(target)) {
                 let num_dashes = 10;
@@ -489,7 +487,6 @@ fn render_graph_visualization_with_errors(
             }
         }
 
-        // Draw incorrect connections (dotted orange lines)
         for (source, target) in &incorrect_connections {
             if let (Some(start_pos), Some(end_pos)) = (node_positions.get(source), node_positions.get(target)) {
                 let num_dots = 20;
@@ -519,7 +516,6 @@ fn render_graph_visualization_with_errors(
             }
         }
 
-        // Draw regular connections
         for (source, target) in &connections {
             if let (Some(start_pos), Some(end_pos)) = (node_positions.get(source), node_positions.get(target)) {
                 painter.line_segment(
@@ -529,7 +525,6 @@ fn render_graph_visualization_with_errors(
             }
         }
 
-        // Draw nodes
         for (node_id, pos) in &node_positions {
             painter.circle(
                 *pos,
