@@ -12,7 +12,7 @@ use crate::gui::login_window::{NodeType, SimulationController, SHARED_LOG};
 use crate::gui::shared_info_plugin::SHARED_STATE;
 use crate::common_things::common::{BackGroundFlood, ChatClientEvent, ChatEvent, ChatServerEvent, ClientType, CommandChat, ContentCommands, ContentRequest, ContentType, MediaServerEvent, RequestEvent, ServerCommands, ServerEvent, TextServerEvent, WebBrowserEvents};
 
-#[derive(Clone,Debug,PartialEq, Eq, Hash)]
+#[derive(Clone, Debug, PartialEq, Eq, Hash, Copy)]
 pub enum MyNodeType{
     WebBrowser,
     ChatClient,
