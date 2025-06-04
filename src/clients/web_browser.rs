@@ -724,7 +724,6 @@ impl WebBrowser {
     pub fn send_messages(& mut self, destination_id: &NodeId, mut packet: Packet){
         packet.routing_header.hop_index+=1;
         if let Some(sender) = self.send_packets.get(&destination_id){
-            println!("dest: {}", destination_id);
             if let Err(err) = sender.send(packet.clone()){
                 println!("Error sending command: {}", err); //have to send back nack
             }
