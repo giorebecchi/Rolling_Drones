@@ -371,6 +371,7 @@ impl Server{
                     for (idd, neighbour) in self.packet_send.clone() {
                         if idd == previous {
                         } else {
+                            println!("i am the chat server {:?}, i am forwarding the floodrequest to {:?}, flood request: {:?}",self.server_id,idd, new_packet);
                             neighbour.send(new_packet.clone()).unwrap();
                         }
                     }
@@ -395,13 +396,14 @@ impl Server{
             },
             session_id: s_id,
         };
+        println!("i am the chatserver {:?} the flood response generated is: {:?}", self.server_id,fr);
         fr
     }
 
     fn handle_flood_response(&mut self, p:Packet){
         //println!("chat server flood response: {}", p.pack_type);
         if let PacketType::FloodResponse(mut flood) = p.pack_type{
-            // println!("server {} has received flood response {}", self.server_id,flood.clone());
+             println!("server {} has received flood response {}", self.server_id,flood.clone());
             let mut safetoadd = true;
             for i in self.flooding.iter(){
                 if i.flood_id<flood.flood_id{
@@ -423,6 +425,7 @@ impl Server{
 
                 for &(j, k) in flood.path_trace.iter().skip(1) {
                     if let Some(&(prev_id, prev_nt)) = self.neigh_map.node_weight(prev) {
+                        println!("trying to connect {:?} to {:?}", j, prev_id);
                         if self.node_exists(j.clone(), k.clone()) {
                             let next = self.find_node(j.clone(), k.clone()).unwrap();
                                 if self.neigh_map.find_edge(prev, next).is_none() {
@@ -446,6 +449,7 @@ impl Server{
                         }
                     }
                 }
+                println!("graph del chatserver {:?}, {:?}", self.server_id,self.neigh_map);
             }else {
                 println!("you received an outdated version of the flooding");
             }
