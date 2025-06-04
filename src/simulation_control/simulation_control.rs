@@ -48,6 +48,8 @@ impl Default for SimulationController{
             incoming_message: HashMap::new(),
             register_success : HashMap::new(),
             background_flooding: HashMap::new(),
+            chat_active: true,
+            web_active: true
         }
     }
 }
@@ -57,40 +59,29 @@ impl Default for SimulationController{
 impl SimulationController {
     pub(crate) fn run(&mut self) {
         let mut flood_req_hash = HashSet::new();
+        let no_chat_client=crossbeam_channel::never();
+        let no_web_browser=crossbeam_channel::never();
 
         loop {
             select_biased! {
-                recv(self.chat_event) -> event => {
+                recv(if self.chat_active { &self.chat_event } else { &no_chat_client }) -> event => {
                     if let Ok(chat_event) = event {
-                        println!("what is client doin {:?}", chat_event);
                         self.handle_chat_event(chat_event);
-                    }else{
-                        println!("what was that chat client?");
                     }
                 }
-                recv(self.web_event) -> event => {
+                recv(if self.web_active { &self.web_event } else { &no_web_browser }) -> event => {
                     if let Ok(web_event) = event {
-                        println!("what is web client doin {:?}", web_event);
                         self.handle_web_event(web_event);
-                    }else{
-                        println!("what was that web client?");
                     }
                 }
                 recv(self.server_event) -> event => {
                     if let Ok(server_event) = event {
-                        println!("what is server doin {:?}", server_event);
                         self.handle_server_event(server_event);
-                    }else{
-                        println!("what was that server ?");
                     }
                 }
                 recv(self.node_event_recv) -> command => {
-                    println!("here?");
                     if let Ok(drone_event) = command {
-                        println!("SC received : {:?}", drone_event);
                         self.handle_drone_event(drone_event, &mut flood_req_hash);
-                    }else{
-                        println!("SC couldn't received anything");
                     }
                 }
             }
@@ -612,7 +603,6 @@ impl SimulationController {
     fn handle_packet_sent(&self, packet: &Packet, flood_req_hash: &mut HashSet<(NodeId, u64)>) {
         match packet.pack_type.clone() {
             FloodRequest(flood_req) => {
-                println!("Received floods: {:?}",flood_req);
                 if flood_req_hash.insert((flood_req.initiator_id, flood_req.flood_id)) {
                     let node_type = self.determine_node_type(flood_req.initiator_id);
 
@@ -632,9 +622,6 @@ impl SimulationController {
             }
             MsgFragment(_) => {
                 self.handle_msg_fragment_sent(packet);
-            },
-            PacketType::FloodResponse(flood_response)=>{
-                println!("flood_response: {:?}",flood_response);
             }
             _=>{}
         }

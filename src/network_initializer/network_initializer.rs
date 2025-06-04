@@ -21,15 +21,14 @@ use crate::servers::MediaServerFillo::Server as MediaServerBaia;
 use crate::servers::Chat_max::Server as ChatMax;
 use crate::servers::Text_max::Server as TextMax;
 
-pub fn parse_config(file: &str) -> Config {
-    let file_str = fs::read_to_string("assets/configurations/sub_net.toml").unwrap();
+pub fn parse_config() -> Config {
+    let file_str = fs::read_to_string("assets/configurations/double_chain.toml").unwrap();
     toml::from_str(&file_str).unwrap()
 }
 pub fn start_simulation(
     mut simulation_controller: ResMut<SimulationController>
 ) {
-    let file_path = "assets/configurations/double_chain.toml";
-    let config = parse_config(file_path);
+    let config = parse_config();
     check_full_duplex_connections(&config);
 
     let (packet_channels, command_chat_channel,
@@ -86,6 +85,7 @@ pub fn start_simulation(
             server_event_send.clone(),
         );
     }
+    let n_servers=text_servers.len()+chat_servers.len()+media_servers.len();
 
     spawn_clients(
         &config,
@@ -97,7 +97,8 @@ pub fn start_simulation(
         &mut web_client,
         &mut background_flood,
         chat_event_send.clone(),
-        web_event_send.clone()
+        web_event_send.clone(),
+        n_servers
     );
 
     update_simulation_controller(
@@ -107,20 +108,24 @@ pub fn start_simulation(
         node_event_recv,
         neighbours,
         packet_channels,
-        client,
-        web_client,
+        client.clone(),
+        web_client.clone(),
         text_servers,
         media_servers,
         chat_servers,
         background_flood
     );
+    let web_active=!web_client.is_empty();
+    let chat_active=!client.is_empty();
 
     let mut controller = create_simulation_controller(
         node_event_send,
         simulation_controller,
         chat_event_recv,
         web_event_recv,
-        server_event_recv
+        server_event_recv,
+        web_active,
+        chat_active
     );
 
     thread::spawn(move || {
@@ -249,75 +254,141 @@ fn spawn_servers_baia(
     chat_servers: &mut HashMap<NodeId, Sender<ServerCommands>>,
     server_event_send: Sender<ServerEvent>
 ) {
+    let n_clients = config.client.len();
+    let n_servers = config.server.len();
+
     for (i, cfg_server) in config.server.iter().cloned().enumerate() {
-        if cfg_server.connected_drone_ids.is_empty(){
+        if cfg_server.connected_drone_ids.is_empty() {
             topology_error(cfg_server.id, cfg_server.connected_drone_ids.clone());
         }
+
         let rcv = packet_channels[&cfg_server.id].1.clone();
         let packet_send = cfg_server.connected_drone_ids.iter()
             .map(|nid| (*nid, packet_channels[nid].0.clone()))
-            .collect::<HashMap<_,_>>();
-        let rcv_flood= background_flood[&cfg_server.id].1.clone();
+            .collect::<HashMap<_, _>>();
+        let rcv_flood = background_flood[&cfg_server.id].1.clone();
         flooding.insert(cfg_server.id, background_flood[&cfg_server.id].0.clone());
-
         let rcv_command = server_commands[&cfg_server.id].1.clone();
 
-        match i {
-            0 => {
-                let mut server_baia = Server::new(cfg_server.id, rcv, packet_send, rcv_flood, rcv_command.clone(), server_event_send.clone());
-                thread::spawn(move || {
-                    server_baia.run();
-                });
-                chat_servers.insert(cfg_server.id, server_commands[&cfg_server.id].0.clone());
-                set_node_types(MyNodeType::ChatServer, config.server.len(), cfg_server.id);
-                println!("spawned server: {}",cfg_server.id);
+        match (n_clients, n_servers) {
+            (1, 1) => {
+                spawn_text_server(cfg_server.id, rcv, packet_send, rcv_flood, rcv_command,
+                                  server_event_send.clone(), text_servers, server_commands,
+                                  "assets/multimedia/paths/text_server1.txt", n_servers);
             },
-            1 => {
-                let mut server_baia = Server::new(cfg_server.id, rcv, packet_send, rcv_flood, rcv_command.clone(), server_event_send.clone());
-                thread::spawn(move || {
-                    server_baia.run();
-                });
-                chat_servers.insert(cfg_server.id, server_commands[&cfg_server.id].0.clone());
-                set_node_types(MyNodeType::ChatServer, config.server.len(), cfg_server.id);
-                println!("spawned server: {}",cfg_server.id);
+            (2, 1) => {
+                spawn_chat_server(cfg_server.id, rcv, packet_send, rcv_flood, rcv_command,
+                                  server_event_send.clone(), chat_servers, server_commands, n_servers);
+            },
+            (2, 2) => {
+                spawn_chat_server(cfg_server.id, rcv, packet_send, rcv_flood, rcv_command,
+                                  server_event_send.clone(), chat_servers, server_commands, n_servers);
+            },
+            (3, 1) => {
+                spawn_chat_server(cfg_server.id, rcv, packet_send, rcv_flood, rcv_command,
+                                  server_event_send.clone(), chat_servers, server_commands, n_servers);
+            },
+            (3, 2) => {
+                match i {
+                    0 => spawn_chat_server(cfg_server.id, rcv, packet_send, rcv_flood, rcv_command,
+                                           server_event_send.clone(), chat_servers, server_commands, n_servers),
+                    1 => spawn_text_server(cfg_server.id, rcv, packet_send, rcv_flood, rcv_command,
+                                           server_event_send.clone(), text_servers, server_commands,
+                                           "assets/multimedia/paths/text_server1.txt", n_servers),
+                    _ => unreachable!()
+                }
+            },
+            (3, 3) => {
+                match i {
+                    0 => spawn_chat_server(cfg_server.id, rcv, packet_send, rcv_flood, rcv_command,
+                                           server_event_send.clone(), chat_servers, server_commands, n_servers),
+                    1 => spawn_text_server(cfg_server.id, rcv, packet_send, rcv_flood, rcv_command,
+                                           server_event_send.clone(), text_servers, server_commands,
+                                           "assets/multimedia/paths/text_server1.txt", n_servers),
+                    2 => spawn_media_server(cfg_server.id, rcv, packet_send, rcv_flood, rcv_command,
+                                            server_event_send.clone(), media_servers, server_commands,
+                                            "assets/multimedia/paths/media_server1.txt", n_servers),
+                    _ => unreachable!()
+                }
+            },
+            _ => {
+                if n_servers >= 3 {
+                    match i  {
+                        0 => spawn_chat_server(cfg_server.id, rcv, packet_send, rcv_flood, rcv_command,
+                                               server_event_send.clone(), chat_servers, server_commands, n_servers),
+                        1 => spawn_text_server(cfg_server.id, rcv, packet_send, rcv_flood, rcv_command,
+                                               server_event_send.clone(), text_servers, server_commands,
+                                               "assets/multimedia/paths/text_server1.txt", n_servers),
+                        _ => spawn_media_server(cfg_server.id, rcv, packet_send, rcv_flood, rcv_command,
+                                                server_event_send.clone(), media_servers, server_commands,
+                                                "assets/multimedia/paths/media_server1.txt", n_servers),
 
-            },
-            2 => {
-                println!("shouldn't be here");
-                let mut media_server_baia = MediaServerBaia::new(
-                    cfg_server.id,
-                    rcv,
-                    packet_send,
-                    rcv_flood,
-                    rcv_command.clone(),
-                    server_event_send.clone(),
-                    "assets/multimedia/paths/media_server1.txt"
-                );
-                thread::spawn(move || {
-                    media_server_baia.run();
-                });
-                media_servers.insert(cfg_server.id, server_commands[&cfg_server.id].0.clone());
-                set_node_types(MyNodeType::MediaServer, config.server.len(), cfg_server.id);
-            },
-            3 => {
-                let mut media_server_baia = MediaServerBaia::new(
-                    cfg_server.id,
-                    rcv,
-                    packet_send,
-                    rcv_flood,
-                    rcv_command.clone(),
-                    server_event_send.clone(),
-                    "assets/multimedia/paths/media_serverr2.txt"
-                );
-                thread::spawn(move || {
-                    media_server_baia.run();
-                });
-                media_servers.insert(cfg_server.id, server_commands[&cfg_server.id].0.clone());
-                set_node_types(MyNodeType::MediaServer, config.server.len(), cfg_server.id);
-            },
-            _=>{}
+                    }
+                } else {
+                    spawn_chat_server(cfg_server.id, rcv, packet_send, rcv_flood, rcv_command,
+                                      server_event_send.clone(), chat_servers, server_commands, n_servers);
+                }
+            }
         }
     }
+}
+fn spawn_chat_server(
+    id: NodeId,
+    rcv: Receiver<Packet>,
+    packet_send: HashMap<NodeId, Sender<Packet>>,
+    rcv_flood: Receiver<BackGroundFlood>,
+    rcv_command: Receiver<ServerCommands>,
+    server_event_send: Sender<ServerEvent>,
+    chat_servers: &mut HashMap<NodeId, Sender<ServerCommands>>,
+    server_commands: &HashMap<NodeId, (Sender<ServerCommands>, Receiver<ServerCommands>)>,
+    n_servers: usize
+) {
+    let mut server = Server::new(id, rcv, packet_send, rcv_flood, rcv_command, server_event_send);
+    thread::spawn(move || {
+        server.run();
+    });
+    chat_servers.insert(id, server_commands[&id].0.clone());
+    set_node_types(MyNodeType::ChatServer, n_servers, id);
+}
+
+fn spawn_text_server(
+    id: NodeId,
+    rcv: Receiver<Packet>,
+    packet_send: HashMap<NodeId, Sender<Packet>>,
+    rcv_flood: Receiver<BackGroundFlood>,
+    rcv_command: Receiver<ServerCommands>,
+    server_event_send: Sender<ServerEvent>,
+    text_servers: &mut HashMap<NodeId, Sender<ServerCommands>>,
+    server_commands: &HashMap<NodeId, (Sender<ServerCommands>, Receiver<ServerCommands>)>,
+    path: &str,
+    n_servers: usize
+) {
+    let mut server = TextServerBaia::new(id, rcv, packet_send, rcv_flood, rcv_command, server_event_send, path);
+    thread::spawn(move || {
+        server.run();
+    });
+    text_servers.insert(id, server_commands[&id].0.clone());
+    set_node_types(MyNodeType::TextServer, n_servers, id);
+}
+
+fn spawn_media_server(
+    id: NodeId,
+    rcv: Receiver<Packet>,
+    packet_send: HashMap<NodeId, Sender<Packet>>,
+    rcv_flood: Receiver<BackGroundFlood>,
+    rcv_command: Receiver<ServerCommands>,
+    server_event_send: Sender<ServerEvent>,
+    media_servers: &mut HashMap<NodeId, Sender<ServerCommands>>,
+    server_commands: &HashMap<NodeId, (Sender<ServerCommands>, Receiver<ServerCommands>)>,
+    path: &str,
+    n_servers: usize
+) {
+    let mut server = MediaServerBaia::new(id, rcv, packet_send, rcv_flood, rcv_command, server_event_send, path);
+    thread::spawn(move || {
+        server.run();
+    });
+    media_servers.insert(id, server_commands[&id].0.clone());
+    set_node_types(MyNodeType::MediaServer, n_servers, id);
 }
 fn spawn_clients(
     config: &Config,
@@ -329,12 +400,16 @@ fn spawn_clients(
     web_client: &mut HashMap<NodeId, Sender<ContentCommands>>,
     flooding: &mut HashMap<NodeId, Sender<BackGroundFlood>>,
     chat_event_send: Sender<ChatClientEvent>,
-    web_event_send: Sender<WebBrowserEvents>
+    web_event_send: Sender<WebBrowserEvents>,
+    n_servers: usize
 ) {
+    let n_clients = config.client.len();
+
     for (i, cfg_client) in config.client.iter().cloned().enumerate() {
-        if cfg_client.connected_drone_ids.is_empty(){
+        if cfg_client.connected_drone_ids.is_empty() {
             topology_error(cfg_client.id, cfg_client.connected_drone_ids.clone());
         }
+
         let packet_send: HashMap<NodeId, Sender<Packet>> = cfg_client.connected_drone_ids.iter()
             .map(|nid| (*nid, packet_channels[nid].0.clone()))
             .collect();
@@ -342,42 +417,94 @@ fn spawn_clients(
         let rcv_flood = background_flood[&cfg_client.id].1.clone();
         flooding.insert(cfg_client.id, background_flood[&cfg_client.id].0.clone());
 
-
-        if i < 2 {
-            let rcv_command = command_chat_channel[&cfg_client.id].1.clone();
-            client.insert(cfg_client.id, command_chat_channel[&cfg_client.id].0.clone());
-
-            let mut client_instance = ChatClient::new(
-                cfg_client.id,
-                rcv_packet,
-                packet_send.clone(),
-                rcv_command,
-                chat_event_send.clone(),
-                rcv_flood,
-            );
-
-            thread::spawn(move || {
-                client_instance.run();
-            });
-            set_node_types(MyNodeType::ChatClient, config.client.len(), cfg_client.id);
-        } else {
-            let rcv_command = command_web_channel[&cfg_client.id].1.clone();
-            web_client.insert(cfg_client.id, command_web_channel[&cfg_client.id].0.clone());
-
-            let mut web_browser = WebBrowser::new(
-                cfg_client.id,
-                rcv_packet,
-                rcv_command,
-                packet_send.clone(),
-                rcv_flood,
-                web_event_send.clone()
-            );
-            thread::spawn(move || {
-                web_browser.run();
-            });
-            set_node_types(MyNodeType::WebBrowser, config.client.len(), cfg_client.id);
+        match (n_clients, n_servers) {
+            (1, _) => {
+                spawn_web_browser(cfg_client.id, rcv_packet, packet_send, rcv_flood,
+                                  command_web_channel, web_client, web_event_send.clone(), n_clients);
+            },
+            (2, _) => {
+                spawn_chat_client(cfg_client.id, rcv_packet, packet_send, rcv_flood,
+                                  command_chat_channel, client, chat_event_send.clone(), n_clients);
+            },
+            (3, 1) => {
+                spawn_chat_client(cfg_client.id, rcv_packet, packet_send, rcv_flood,
+                                  command_chat_channel, client, chat_event_send.clone(), n_clients);
+            },
+            (3, 2) | (3,3) => {
+                match i {
+                    0 | 1 => spawn_chat_client(cfg_client.id, rcv_packet, packet_send, rcv_flood,
+                                               command_chat_channel, client, chat_event_send.clone(), n_clients),
+                    2 => spawn_web_browser(cfg_client.id, rcv_packet, packet_send, rcv_flood,
+                                           command_web_channel, web_client, web_event_send.clone(), n_clients),
+                    _ => unreachable!()
+                }
+            },
+            _ => {
+                if i <  2 {
+                    spawn_chat_client(cfg_client.id, rcv_packet, packet_send, rcv_flood,
+                                      command_chat_channel, client, chat_event_send.clone(), n_clients);
+                } else {
+                    spawn_web_browser(cfg_client.id, rcv_packet, packet_send, rcv_flood,
+                                      command_web_channel, web_client, web_event_send.clone(), n_clients);
+                }
+            }
         }
     }
+}
+fn spawn_chat_client(
+    id: NodeId,
+    rcv_packet: Receiver<Packet>,
+    packet_send: HashMap<NodeId, Sender<Packet>>,
+    rcv_flood: Receiver<BackGroundFlood>,
+    command_chat_channel: &HashMap<NodeId, (Sender<CommandChat>, Receiver<CommandChat>)>,
+    client: &mut HashMap<NodeId, Sender<CommandChat>>,
+    chat_event_send: Sender<ChatClientEvent>,
+    n_clients: usize
+) {
+    let rcv_command = command_chat_channel[&id].1.clone();
+    client.insert(id, command_chat_channel[&id].0.clone());
+
+    let mut client_instance = ChatClient::new(
+        id,
+        rcv_packet,
+        packet_send,
+        rcv_command,
+        chat_event_send,
+        rcv_flood,
+    );
+
+    thread::spawn(move || {
+        client_instance.run();
+    });
+    set_node_types(MyNodeType::ChatClient, n_clients, id);
+}
+
+fn spawn_web_browser(
+    id: NodeId,
+    rcv_packet: Receiver<Packet>,
+    packet_send: HashMap<NodeId, Sender<Packet>>,
+    rcv_flood: Receiver<BackGroundFlood>,
+    command_web_channel: &HashMap<NodeId, (Sender<ContentCommands>, Receiver<ContentCommands>)>,
+    web_client: &mut HashMap<NodeId, Sender<ContentCommands>>,
+    web_event_send: Sender<WebBrowserEvents>,
+    n_clients: usize
+) {
+    let rcv_command = command_web_channel[&id].1.clone();
+    web_client.insert(id, command_web_channel[&id].0.clone());
+
+    let mut web_browser = WebBrowser::new(
+        id,
+        rcv_packet,
+        rcv_command,
+        packet_send,
+        rcv_flood,
+        web_event_send
+    );
+
+    thread::spawn(move || {
+        web_browser.run();
+    });
+    set_node_types(MyNodeType::WebBrowser, n_clients, id);
 }
 fn set_node_types(node_type: MyNodeType, n: usize, id: NodeId){
     if let Ok(mut state) = SHARED_STATE.write() {
@@ -449,7 +576,9 @@ fn create_simulation_controller(
     simulation_controller: ResMut<SimulationController>,
     chat_event_recv: Receiver<ChatClientEvent>,
     web_event_recv: Receiver<WebBrowserEvents>,
-    server_event_recv: Receiver<ServerEvent>
+    server_event_recv: Receiver<ServerEvent>,
+    web_active: bool,
+    chat_active: bool,
 ) -> SimulationController {
     SimulationController {
         node_event_send,
@@ -470,7 +599,9 @@ fn create_simulation_controller(
         incoming_message: HashMap::new(),
         messages: HashMap::new(),
         register_success: HashMap::new(),
-        background_flooding: simulation_controller.background_flooding.clone()
+        background_flooding: simulation_controller.background_flooding.clone(),
+        chat_active,
+        web_active
     }
 }
 

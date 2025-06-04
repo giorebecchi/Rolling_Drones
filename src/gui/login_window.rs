@@ -104,7 +104,9 @@ pub struct SimulationController {
     pub messages: HashMap<(NodeId,NodeId),Vec<String>>,
     pub incoming_message: HashMap<(NodeId,NodeId,NodeId), Vec<String>>,
     pub register_success: HashMap<(NodeId,NodeId),bool>,
-    pub background_flooding: HashMap<NodeId, Sender<BackGroundFlood>>
+    pub background_flooding: HashMap<NodeId, Sender<BackGroundFlood>>,
+    pub chat_active: bool,
+    pub web_active: bool,
 }
 
 #[derive(Default,Debug,Clone)]

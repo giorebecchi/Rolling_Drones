@@ -8,7 +8,7 @@ pub fn spawn_double_chain(
     clients: &mut SeenClients,
 ) -> Vec<NodeConfig>
 {
-    let config = parse_config("assets/configurations/double_chain.toml");
+    let config = parse_config();
     let node_count = config.client.len() + config.server.len() + config.drone.len();
 
     let nodes_per_row = if node_count % 2 == 0 {
