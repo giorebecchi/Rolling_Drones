@@ -3,12 +3,20 @@ use std::{fs, thread};
 use bagel_bomber::BagelBomber;
 use bevy::prelude::{ResMut};
 use crossbeam_channel::{unbounded, Receiver, Sender};
+use fungi_drone::FungiDrone;
+use Krusty_Club::Krusty_C;
+use LeDron_James::Drone as LeDron;
 use lockheedrustin_drone::LockheedRustin;
+use rustafarian_drone::RustafarianDrone;
+use rustbusters_drone::RustBustersDrone;
+use rusteze_drone::RustezeDrone;
+use skylink::SkyLinkDrone;
 use wg_2024::config::{Config};
 use wg_2024::controller::{DroneCommand, DroneEvent};
 use wg_2024::drone::Drone;
 use wg_2024::network::NodeId;
 use wg_2024::packet::Packet;
+use wg_2024_rust::drone::RustDrone;
 use crate::clients::chat_client::ChatClient;
 use crate::clients::web_browser::WebBrowser;
 use crate::common_things::common::{BackGroundFlood, ChatClientEvent, CommandChat, ContentCommands, ServerCommands, ServerEvent, WebBrowserEvents};
@@ -228,16 +236,16 @@ fn create_drone(
     i: usize
 ) -> Option<Box<dyn Drone>> {
     match i % 10 {
-        0 => Some(Box::new(LockheedRustin::new(id, node_event_send, controller_drone_recv, packet_recv, packet_send, pdr))),
-        1 => Some(Box::new(LockheedRustin::new(id, node_event_send, controller_drone_recv, packet_recv, packet_send, pdr))),
-        2 => Some(Box::new(LockheedRustin::new(id, node_event_send, controller_drone_recv, packet_recv, packet_send, pdr))),
-        3 => Some(Box::new(LockheedRustin::new(id, node_event_send, controller_drone_recv, packet_recv, packet_send, pdr))),
-        4 => Some(Box::new(LockheedRustin::new(id, node_event_send, controller_drone_recv, packet_recv, packet_send, pdr))),
+        0 => Some(Box::new(BagelBomber::new(id, node_event_send, controller_drone_recv, packet_recv, packet_send, pdr))),
+        1 => Some(Box::new(SkyLinkDrone::new(id, node_event_send, controller_drone_recv, packet_recv, packet_send, pdr))),
+        2 => Some(Box::new(FungiDrone::new(id, node_event_send, controller_drone_recv, packet_recv, packet_send, pdr))),
+        3 => Some(Box::new(RustafarianDrone::new(id, node_event_send, controller_drone_recv, packet_recv, packet_send, pdr))),
+        4 => Some(Box::new(RustezeDrone::new(id, node_event_send, controller_drone_recv, packet_recv, packet_send, pdr))),
         5 => Some(Box::new(LockheedRustin::new(id, node_event_send, controller_drone_recv, packet_recv, packet_send, pdr))),
-        6 => Some(Box::new(LockheedRustin::new(id, node_event_send, controller_drone_recv, packet_recv, packet_send, pdr))),
-        7 => Some(Box::new(LockheedRustin::new(id, node_event_send, controller_drone_recv, packet_recv, packet_send, pdr))),
-        8 => Some(Box::new(LockheedRustin::new(id, node_event_send, controller_drone_recv, packet_recv, packet_send, pdr))),
-        9 => Some(Box::new(LockheedRustin::new(id, node_event_send, controller_drone_recv, packet_recv, packet_send, pdr))),
+        6 => Some(Box::new(RustDrone::new(id, node_event_send, controller_drone_recv, packet_recv, packet_send, pdr))),
+        7 => Some(Box::new(RustBustersDrone::new(id, node_event_send, controller_drone_recv, packet_recv, packet_send, pdr))),
+        8 => Some(Box::new(LeDron::new(id, node_event_send, controller_drone_recv, packet_recv, packet_send, pdr))),
+        9 => Some(Box::new(Krusty_C::new(id, node_event_send, controller_drone_recv, packet_recv, packet_send, pdr))),
         _ => Some(Box::new(LockheedRustin::new(id, node_event_send, controller_drone_recv, packet_recv, packet_send, pdr))),
     }
 }
@@ -319,9 +327,12 @@ fn spawn_servers_baia(
                         1 => spawn_text_server(cfg_server.id, rcv, packet_send, rcv_flood, rcv_command,
                                                server_event_send.clone(), text_servers, server_commands,
                                                "assets/multimedia/paths/text_server1.txt", n_servers),
-                        _ => spawn_media_server(cfg_server.id, rcv, packet_send, rcv_flood, rcv_command,
+                        2 => spawn_media_server(cfg_server.id, rcv, packet_send, rcv_flood, rcv_command,
                                                 server_event_send.clone(), media_servers, server_commands,
                                                 "assets/multimedia/paths/media_server1.txt", n_servers),
+                        _=> spawn_media_server(cfg_server.id, rcv, packet_send, rcv_flood, rcv_command,
+                                               server_event_send.clone(), media_servers, server_commands,
+                                               "assets/multimedia/paths/media_server2.txt", n_servers),
 
                     }
                 } else {
