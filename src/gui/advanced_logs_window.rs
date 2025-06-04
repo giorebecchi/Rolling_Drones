@@ -63,6 +63,7 @@ fn log_window(
 
                     if log_info.show_graph {
                         ui.checkbox(&mut log_info.show_missed_connections, "Show missed connections");
+                        ui.checkbox(&mut log_info.show_incorrect_connections, "Show incorrect connections");
                     }
                 });
 
@@ -114,6 +115,7 @@ fn log_window(
                         } else {
                             (HashSet::new(), HashSet::new())
                         };
+
                         let mut actual_connections = HashSet::new();
                         for node_config in nodes.0.iter() {
                             if all_nodes_in_graph.contains(&node_config.id) {
@@ -132,6 +134,12 @@ fn log_window(
                             .cloned()
                             .collect();
 
+                        // Calculate incorrect connections (discovered but not actual)
+                        let incorrect_connections: Vec<(NodeId, NodeId)> = discovered_connections
+                            .difference(&actual_connections)
+                            .cloned()
+                            .collect();
+
                         ui.horizontal(|ui| {
                             ui.label(format!("Discovered: {} connections", discovered_connections.len()));
                             ui.label("|");
@@ -141,7 +149,21 @@ fn log_window(
                                 egui::Color32::RED,
                                 format!("Missed: {} connections", missed_connections.len())
                             );
+                            ui.label("|");
+                            ui.colored_label(
+                                egui::Color32::from_rgb(255, 140, 0), // Orange color for incorrect
+                                format!("Incorrect: {} connections", incorrect_connections.len())
+                            );
                         });
+
+                        // Show details of incorrect connections if any exist
+                        if !incorrect_connections.is_empty() && log_info.show_incorrect_connections {
+                            ui.collapsing("Incorrect connections details", |ui| {
+                                for (source, target) in &incorrect_connections {
+                                    ui.label(format!("  • Connection between {} and {} doesn't exist", source, target));
+                                }
+                            });
+                        }
 
                         let graph_response = ui.allocate_rect(
                             ui.available_rect_before_wrap().shrink(20.0),
@@ -162,12 +184,13 @@ fn log_window(
                                 connections.push((source, target));
                             }
 
-                            render_graph_visualization_with_missed(
+                            render_graph_visualization_with_errors(
                                 &painter,
                                 &graph_response.rect,
                                 all_nodes,
                                 connections,
-                                if log_info.show_missed_connections { missed_connections } else { vec![] }
+                                if log_info.show_missed_connections { missed_connections } else { vec![] },
+                                if log_info.show_incorrect_connections { incorrect_connections } else { vec![] }
                             );
 
                         } else if let Some(graph) = sim_log.server_graph.get(&node.0) {
@@ -190,12 +213,13 @@ fn log_window(
                                 }
                             }
 
-                            render_graph_visualization_with_missed(
+                            render_graph_visualization_with_errors(
                                 &painter,
                                 &graph_response.rect,
                                 all_nodes,
                                 connections,
-                                if log_info.show_missed_connections { missed_connections } else { vec![] }
+                                if log_info.show_missed_connections { missed_connections } else { vec![] },
+                                if log_info.show_incorrect_connections { incorrect_connections } else { vec![] }
                             );
                         }
                     } else {
@@ -263,7 +287,7 @@ fn log_window(
 
                                         ui.monospace(&route_str);
 
-                                    
+
                                         let reliability = calculate_route_reliability(route, &nodes);
                                         let reliability_color = if reliability >= 0.9 {
                                             egui::Color32::GREEN
@@ -280,7 +304,7 @@ fn log_window(
                                         );
                                     });
 
-                                
+
                                     ui.indent(format!("route_details_{}", idx), |ui| {
                                         ui.collapsing("Show node details", |ui| {
                                             for (i, &node_id) in route.iter().enumerate() {
@@ -410,14 +434,16 @@ struct LogInfo {
     drop_rate: HashMap<NodeId, (u64, usize)>,
     show_graph: bool,
     show_missed_connections: bool,
+    show_incorrect_connections: bool,
 }
 
-fn render_graph_visualization_with_missed(
+fn render_graph_visualization_with_errors(
     painter: &egui::Painter,
     rect: &egui::Rect,
     all_nodes: Vec<NodeId>,
     connections: Vec<(NodeId, NodeId)>,
-    missed_connections: Vec<(NodeId, NodeId)>
+    missed_connections: Vec<(NodeId, NodeId)>,
+    incorrect_connections: Vec<(NodeId, NodeId)>
 ) {
     let mut node_positions = HashMap::new();
 
@@ -433,6 +459,7 @@ fn render_graph_visualization_with_missed(
             node_positions.insert(*node_id, egui::pos2(x, y));
         }
 
+        // Draw missed connections (dashed red lines)
         for (source, target) in &missed_connections {
             if let (Some(start_pos), Some(end_pos)) = (node_positions.get(source), node_positions.get(target)) {
                 let num_dashes = 10;
@@ -462,7 +489,37 @@ fn render_graph_visualization_with_missed(
             }
         }
 
-       
+        // Draw incorrect connections (dotted orange lines)
+        for (source, target) in &incorrect_connections {
+            if let (Some(start_pos), Some(end_pos)) = (node_positions.get(source), node_positions.get(target)) {
+                let num_dots = 20;
+                let dot_length = 0.3 / num_dots as f32;
+                let gap_length = 0.7 / num_dots as f32;
+
+                for i in 0..num_dots {
+                    let t_start = (i as f32) * (dot_length + gap_length);
+                    let t_end = t_start + dot_length;
+
+                    if t_end <= 1.0 {
+                        let dot_start = egui::pos2(
+                            start_pos.x + (end_pos.x - start_pos.x) * t_start,
+                            start_pos.y + (end_pos.y - start_pos.y) * t_start
+                        );
+                        let dot_end = egui::pos2(
+                            start_pos.x + (end_pos.x - start_pos.x) * t_end,
+                            start_pos.y + (end_pos.y - start_pos.y) * t_end
+                        );
+
+                        painter.line_segment(
+                            [dot_start, dot_end],
+                            egui::Stroke::new(3.0, egui::Color32::from_rgb(255, 140, 0)),
+                        );
+                    }
+                }
+            }
+        }
+
+        // Draw regular connections
         for (source, target) in &connections {
             if let (Some(start_pos), Some(end_pos)) = (node_positions.get(source), node_positions.get(target)) {
                 painter.line_segment(
@@ -472,6 +529,7 @@ fn render_graph_visualization_with_missed(
             }
         }
 
+        // Draw nodes
         for (node_id, pos) in &node_positions {
             painter.circle(
                 *pos,
@@ -490,20 +548,27 @@ fn render_graph_visualization_with_missed(
     }
 }
 
+fn render_graph_visualization_with_missed(
+    painter: &egui::Painter,
+    rect: &egui::Rect,
+    all_nodes: Vec<NodeId>,
+    connections: Vec<(NodeId, NodeId)>,
+    missed_connections: Vec<(NodeId, NodeId)>
+) {
+    render_graph_visualization_with_errors(painter, rect, all_nodes, connections, missed_connections, vec![])
+}
+
 fn render_graph_visualization(
     painter: &egui::Painter,
     rect: &egui::Rect,
     all_nodes: Vec<NodeId>,
     connections: Vec<(NodeId, NodeId)>
 ) {
-    render_graph_visualization_with_missed(painter, rect, all_nodes, connections, vec![])
+    render_graph_visualization_with_errors(painter, rect, all_nodes, connections, vec![], vec![])
 }
 
 fn get_node_pdr(node: &NodeConfig) -> f32 {
-
-     node.pdr
-
-
+    node.pdr
 }
 
 fn calculate_route_reliability(route: &[NodeId], nodes: &NodesConfig) -> f32 {

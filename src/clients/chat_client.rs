@@ -500,6 +500,7 @@ impl ChatClient {
 
     pub fn handle_flood_req(& mut self, packet: Packet) {
         if let PacketType::FloodRequest(mut flood_request) = packet.clone().pack_type {
+            println!("chatclient {} flood {:?}", self.config.id, flood_request);
             //check if the pair (flood_id, initiator id) has already been received -> self.visited_nodes
             if self.visited_nodes.contains(&(flood_request.flood_id, flood_request.initiator_id)){
                 flood_request.path_trace.push((self.config.id.clone(), NodeType::Client));

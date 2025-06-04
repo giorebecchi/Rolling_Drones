@@ -10,7 +10,7 @@ pdr = 0.00
 
 [[drone]]
 id = 3
-connected_node_ids = [2,4,9]
+connected_node_ids = [2,4,9,10]
 pdr = 0.00
 
 [[drone]]
@@ -30,6 +30,10 @@ connected_drone_ids = [5]
 [[client]]
 id = 7
 connected_drone_ids = [1]
+
+[[client]]
+id = 10
+connected_drone_ids = [3]
 
 [[server]]
 id = 8

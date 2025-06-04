@@ -1,5 +1,6 @@
 use std::collections::{HashMap, HashSet};
 use std::{fs, thread};
+use bagel_bomber::BagelBomber;
 use bevy::prelude::{ResMut};
 use crossbeam_channel::{unbounded, Receiver, Sender};
 use lockheedrustin_drone::LockheedRustin;
@@ -125,6 +126,10 @@ pub fn start_simulation(
     thread::spawn(move || {
         controller.run();
     });
+    if let Ok(mut state)=SHARED_STATE.write(){
+        state.ready_setup=true;
+        state.is_updated=true;
+    }
 }
 
 fn setup_communication_channels(config: &Config) -> (
@@ -174,7 +179,7 @@ fn spawn_drones(
     packet_channels: &HashMap<NodeId, (Sender<Packet>, Receiver<Packet>)>,
     node_event_send: Sender<DroneEvent>
 ) {
-    for cfg_drone in config.drone.iter().cloned() {
+    for (i,cfg_drone) in config.drone.iter().cloned().enumerate() {
         if cfg_drone.pdr>1.0{
             if let Ok(mut state)= SHARED_STATE.write(){
                 state.wrong_pdr.insert(cfg_drone.id, true);
@@ -199,6 +204,7 @@ fn spawn_drones(
                 packet_recv,
                 packet_send,
                 cfg_drone.pdr,
+                i
             );
 
             if let Some(mut drone) = drone {
@@ -214,8 +220,9 @@ fn create_drone(
     packet_recv: Receiver<Packet>,
     packet_send: HashMap<u8, Sender<Packet>>,
     pdr: f32,
+    i: usize
 ) -> Option<Box<dyn Drone>> {
-    match id % 10 {
+    match i % 10 {
         0 => Some(Box::new(LockheedRustin::new(id, node_event_send, controller_drone_recv, packet_recv, packet_send, pdr))),
         1 => Some(Box::new(LockheedRustin::new(id, node_event_send, controller_drone_recv, packet_recv, packet_send, pdr))),
         2 => Some(Box::new(LockheedRustin::new(id, node_event_send, controller_drone_recv, packet_recv, packet_send, pdr))),

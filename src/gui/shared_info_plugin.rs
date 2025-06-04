@@ -65,7 +65,8 @@ pub struct SeenClients{
     pub clients : Vec<(MyNodeType,NodeId)>,
     clients_len: usize,
     pub servers: Vec<(MyNodeType, NodeId)>,
-    servers_len: usize
+    servers_len: usize,
+    pub ready_setup: bool,
 }
 #[derive(Resource, Default)]
 pub struct VerifyTopology{
@@ -86,6 +87,8 @@ fn sync_before_setup(
                 seen_clients.clients_len+=state.n_clients;
                 seen_clients.servers.extend(state.server_types.clone());
                 seen_clients.servers_len+=state.n_servers;
+                seen_clients.ready_setup=state.ready_setup;
+                println!("state: {:?}",state.ready_setup);
 
 
             }
@@ -139,8 +142,8 @@ fn evaluate_state(
     mut next_state: ResMut<NextState<AppState>>
 ){
 
-    if seen_clients.clients_len==seen_clients.clients.len() &&seen_clients.servers_len==seen_clients.servers.len(){
-
+    if seen_clients.clients_len==seen_clients.clients.len()&&seen_clients.servers_len==seen_clients.servers.len()&&seen_clients.ready_setup{
+        println!("is it true {}", seen_clients.ready_setup);
         next_state.set(AppState::InGame);
 
     }

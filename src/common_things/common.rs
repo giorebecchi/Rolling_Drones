@@ -67,6 +67,7 @@ pub enum ServerCommands{
 //    ChatPacketInfo(NodeId, MyNodeType, ChatEvent, u64)  //(id server, server_type (ChatServer, TextServer,...), type of message, session_id)
 //}
 
+#[derive(Debug)]
 pub enum ServerEvent{
     Graph(NodeId, Graph<(NodeId, wg_2024::packet::NodeType), f64, petgraph::Directed>),
     TextPacketInfo(NodeId, MyNodeType, TextServerEvent, u64), //(id server, server_type (ChatServer, TextServer,...), type of message, session_id)
@@ -196,6 +197,7 @@ pub enum BackGroundFlood{
 }
 
 //from client to SC
+#[derive(Debug)]
 pub enum WebBrowserEvents{ //not complete
     TypeClient(ClientType, NodeId), //type and id client, sent to sc at the start
     MediaServers(NodeId, Vec<NodeId>), //node id client, list of media servers found after the SearchTypeServers command is sent
@@ -208,7 +210,7 @@ pub enum WebBrowserEvents{ //not complete
     InfoRequest(NodeId, ContentRequest,  u64),
     Graph(NodeId, UnGraphMap<NodeId, u32>)
 }
-#[derive(Clone)]
+#[derive(Clone, Debug)]
 pub enum ContentType{
     TextServerList(u64), //client sends to SC when {ContentType} is asked to server (u64 is #fragments)
     MediaServerList(u64),//server sends to SC when {ContentType} is sent back to client (u64 is #fragments)
@@ -217,7 +219,7 @@ pub enum ContentType{
     SavedMedia(u64),
     SavedText(u64),
 }
-
+#[derive(Debug)]
 pub enum ContentRequest{
     AskTypes(u64),
     GetList(u64),

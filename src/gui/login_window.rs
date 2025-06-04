@@ -167,7 +167,7 @@ pub fn main() {
         .add_systems(Update, (ui_settings,sync_log))
         .add_systems(Startup, setup_camera)
         .add_systems(OnEnter(AppState::SetUp), start_simulation)
-        .add_systems(OnEnter(AppState::InGame), (setup_network))
+        .add_systems(OnEnter(AppState::InGame), (setup_network,initiate_flood))
         .add_systems(Update , (draw_connections,set_up_bundle).run_if(in_state(AppState::InGame)))
 
         .run();
@@ -466,7 +466,7 @@ fn ui_settings(
                         MyNodeType::ChatClient,
                     ]);
 
-                    let mut client_log = String::with_capacity(1024); // Pre-allocate
+                    let mut client_log = String::with_capacity(1024);
                     let mut server_log = String::with_capacity(1024);
 
 
