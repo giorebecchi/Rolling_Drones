@@ -21,7 +21,7 @@ use crate::servers::Chat_max::Server as ChatMax;
 use crate::servers::Text_max::Server as TextMax;
 
 pub fn parse_config(file: &str) -> Config {
-    let file_str = fs::read_to_string(file).unwrap();
+    let file_str = fs::read_to_string("assets/configurations/sub_net.toml").unwrap();
     toml::from_str(&file_str).unwrap()
 }
 pub fn start_simulation(
@@ -263,25 +263,20 @@ fn spawn_servers_baia(
                 });
                 chat_servers.insert(cfg_server.id, server_commands[&cfg_server.id].0.clone());
                 set_node_types(MyNodeType::ChatServer, config.server.len(), cfg_server.id);
+                println!("spawned server: {}",cfg_server.id);
             },
             1 => {
-                let mut text_server_baia = TextServerBaia::new(
-                    cfg_server.id,
-                    rcv,
-                    packet_send,
-                    rcv_flood,
-                    rcv_command.clone(),
-                    server_event_send.clone(),
-                    "assets/multimedia/paths/text_server1.txt"
-                );
+                let mut server_baia = Server::new(cfg_server.id, rcv, packet_send, rcv_flood, rcv_command.clone(), server_event_send.clone());
                 thread::spawn(move || {
-                    text_server_baia.run();
+                    server_baia.run();
                 });
-                text_servers.insert(cfg_server.id, server_commands[&cfg_server.id].0.clone());
-                set_node_types(MyNodeType::TextServer, config.server.len(), cfg_server.id);
+                chat_servers.insert(cfg_server.id, server_commands[&cfg_server.id].0.clone());
+                set_node_types(MyNodeType::ChatServer, config.server.len(), cfg_server.id);
+                println!("spawned server: {}",cfg_server.id);
 
             },
             2 => {
+                println!("shouldn't be here");
                 let mut media_server_baia = MediaServerBaia::new(
                     cfg_server.id,
                     rcv,
@@ -500,6 +495,14 @@ fn spawn_servers_max(
 
         match i {
             0 => {
+                let mut server_max = ChatMax::new(cfg_server.id, rcv, packet_send, rcv_flood, rcv_command.clone(), server_event_send.clone());
+                thread::spawn(move || {
+                    server_max.run();
+                });
+                chat_servers.insert(cfg_server.id, server_commands[&cfg_server.id].0.clone());
+                set_node_types(MyNodeType::ChatServer, config.server.len(), cfg_server.id);
+            },
+            1=>{
                 let mut server_max = ChatMax::new(cfg_server.id, rcv, packet_send, rcv_flood, rcv_command.clone(), server_event_send.clone());
                 thread::spawn(move || {
                     server_max.run();
