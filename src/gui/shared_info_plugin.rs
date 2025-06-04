@@ -17,6 +17,7 @@ pub static SHARED_STATE: Lazy<Arc<RwLock<ThreadInfo>>> = Lazy::new(|| {
 
 #[derive(Default,Debug)]
 pub struct ThreadInfo {
+    pub nodes: HashMap<NodeId, NodeCategory>,
     pub n_clients: usize,
     pub client_types: Vec<(MyNodeType, NodeId)>,
     pub n_servers: usize,
@@ -60,8 +61,14 @@ impl Plugin for BackendBridgePlugin {
             .add_systems(Update, check_topology);
     }
 }
+#[derive(Clone, Copy, Debug)]
+pub enum NodeCategory {
+    Client(MyNodeType),
+    Server(MyNodeType),
+}
 #[derive(Resource,Default)]
 pub struct SeenClients{
+    pub nodes: HashMap<NodeId, NodeCategory>,
     pub clients : Vec<(MyNodeType,NodeId)>,
     clients_len: usize,
     pub servers: Vec<(MyNodeType, NodeId)>,
@@ -88,7 +95,7 @@ fn sync_before_setup(
                 seen_clients.servers.extend(state.server_types.clone());
                 seen_clients.servers_len+=state.n_servers;
                 seen_clients.ready_setup=state.ready_setup;
-                println!("state: {:?}",state.ready_setup);
+                seen_clients.nodes=state.nodes.clone();
 
 
             }

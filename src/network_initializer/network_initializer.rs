@@ -21,7 +21,7 @@ use crate::clients::chat_client::ChatClient;
 use crate::clients::web_browser::WebBrowser;
 use crate::common_things::common::{BackGroundFlood, ChatClientEvent, CommandChat, ContentCommands, ServerCommands, ServerEvent, WebBrowserEvents};
 use crate::gui::login_window::SimulationController;
-use crate::gui::shared_info_plugin::SHARED_STATE;
+use crate::gui::shared_info_plugin::{NodeCategory, SHARED_STATE};
 use crate::servers::ChatServer::Server;
 use crate::simulation_control::simulation_control::MyNodeType;
 use crate::servers::TextServerFillo::Server as TextServerBaia;
@@ -118,9 +118,9 @@ pub fn start_simulation(
         packet_channels,
         client.clone(),
         web_client.clone(),
-        text_servers,
-        media_servers,
-        chat_servers,
+        text_servers.clone(),
+        media_servers.clone(),
+        chat_servers.clone(),
         background_flood
     );
     let web_active=!web_client.is_empty();
@@ -139,8 +139,25 @@ pub fn start_simulation(
     thread::spawn(move || {
         controller.run();
     });
+    let mut nodes=HashMap::new();
+    for client in client.keys(){
+        nodes.insert(*client, NodeCategory::Client(MyNodeType::ChatClient));
+    }
+    for web in web_client.keys(){
+        nodes.insert(*web, NodeCategory::Client(MyNodeType::WebBrowser));
+    }
+    for text in text_servers.keys(){
+        nodes.insert(*text, NodeCategory::Server(MyNodeType::TextServer));
+    }
+    for media in media_servers.keys(){
+        nodes.insert(*media, NodeCategory::Server(MyNodeType::MediaServer));
+    }
+    for chat in chat_servers.keys(){
+        nodes.insert(*chat, NodeCategory::Server(MyNodeType::ChatServer));
+    }
     if let Ok(mut state)=SHARED_STATE.write(){
         state.ready_setup=true;
+        state.nodes=nodes;
         state.is_updated=true;
     }
 }
