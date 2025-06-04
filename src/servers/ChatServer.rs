@@ -371,7 +371,7 @@ impl Server{
                     for (idd, neighbour) in self.packet_send.clone() {
                         if idd == previous {
                         } else {
-                            println!("i am the chat server {:?}, i am forwarding the floodrequest to {:?}, flood request: {:?}",self.server_id,idd, new_packet);
+                            // println!("i am the chat server {:?}, i am forwarding the floodrequest to {:?}, flood request: {:?}",self.server_id,idd, new_packet);
                             neighbour.send(new_packet.clone()).unwrap();
                         }
                     }
@@ -396,62 +396,69 @@ impl Server{
             },
             session_id: s_id,
         };
-        println!("i am the chatserver {:?} the flood response generated is: {:?}", self.server_id,fr);
+        // println!("i am the chatserver {:?} the flood response generated is: {:?}", self.server_id,fr);
         fr
     }
 
     fn handle_flood_response(&mut self, p:Packet){
-        //println!("chat server flood response: {}", p.pack_type);
-        if let PacketType::FloodResponse(mut flood) = p.pack_type{
-             println!("server {} has received flood response {}", self.server_id,flood.clone());
-            let mut safetoadd = true;
-            for i in self.flooding.iter(){
-                if i.flood_id<flood.flood_id{
-                    println!("the server is starting to receive new flood responses");
-                    self.flooding.clear();
-                    break;
-                }else if i.flood_id==flood.flood_id{
-
-                }else { safetoadd = false; break; }
-            }
-            if safetoadd {
-                self.flooding.push(flood.clone());
-                
-                let mut prev;
-                match self.find_node(self.server_id, NodeType::Server) {
-                    None => { prev = self.neigh_map.add_node((self.server_id, NodeType::Server))}
-                    Some(ni) => { prev = ni }
+        println!("chat server flood response: {}", p.pack_type);
+        if let PacketType::FloodResponse(mut flood) = p.clone().pack_type{
+            // println!("server {} has received flood response {}", self.server_id,flood.clone());
+            if flood.path_trace[0].0 == self.server_id {
+                let mut safetoadd = true;
+                for i in self.flooding.iter() {
+                    if i.flood_id < flood.flood_id {
+                        println!("the server is starting to receive new flood responses");
+                        self.flooding.clear();
+                        break;
+                    } else if i.flood_id == flood.flood_id {} else {
+                        safetoadd = false;
+                        break;
+                    }
                 }
+                if safetoadd {
+                    self.flooding.push(flood.clone());
 
-                for &(j, k) in flood.path_trace.iter().skip(1) {
-                    if let Some(&(prev_id, prev_nt)) = self.neigh_map.node_weight(prev) {
-                        println!("trying to connect {:?} to {:?}", j, prev_id);
-                        if self.node_exists(j.clone(), k.clone()) {
-                            let next = self.find_node(j.clone(), k.clone()).unwrap();
+                    let mut prev;
+                    match self.find_node(self.server_id, NodeType::Server) {
+                        None => { prev = self.neigh_map.add_node((self.server_id, NodeType::Server)) }
+                        Some(ni) => { prev = ni }
+                    }
+
+                    for &(j, k) in flood.path_trace.iter().skip(1) {
+                        if let Some(&(prev_id, prev_nt)) = self.neigh_map.node_weight(prev) {
+                            // println!("trying to connect {:?} to {:?}", j, prev_id);
+                            if self.node_exists(j.clone(), k.clone()) {
+                                let next = self.find_node(j.clone(), k.clone()).unwrap();
+                                // println!("trying to connect {:?} to {:?}", prev, next);
                                 if self.neigh_map.find_edge(prev, next).is_none() {
                                     self.neigh_map.add_edge(prev, next, 0.0);
                                 }
                                 if self.neigh_map.find_edge(next, prev).is_none() {
                                     self.neigh_map.add_edge(next, prev, 0.0);
                                 }
-                            
-                            prev = next;
-                        } else {
-                            let newnodeid = self.neigh_map.add_node((j.clone(), k.clone()));
-                                    self.stats.insert(newnodeid.clone(), drops{dropped:0, forwarded:1});
-                                    if self.neigh_map.find_edge(prev, newnodeid).is_none() {
-                                        self.neigh_map.add_edge(prev, newnodeid, 0.0);
-                                    }
-                                    if self.neigh_map.find_edge(newnodeid, prev).is_none() {
-                                        self.neigh_map.add_edge(newnodeid, prev, 0.0);
-                                    }
-                            prev = newnodeid;
+
+                                prev = next;
+                            } else {
+                                let newnodeid = self.neigh_map.add_node((j.clone(), k.clone()));
+                                self.stats.insert(newnodeid.clone(), drops { dropped: 0, forwarded: 1 });
+                                if self.neigh_map.find_edge(prev, newnodeid).is_none() {
+                                    self.neigh_map.add_edge(prev, newnodeid, 0.0);
+                                }
+                                if self.neigh_map.find_edge(newnodeid, prev).is_none() {
+                                    self.neigh_map.add_edge(newnodeid, prev, 0.0);
+                                }
+                                prev = newnodeid;
+                            }
                         }
                     }
+                    println!("graph del chatserver {:?}, {:?}", self.server_id, self.neigh_map);
+                } else {
+                    println!("you received an outdated version of the flooding");
                 }
-                println!("graph del chatserver {:?}, {:?}", self.server_id,self.neigh_map);
-            }else {
-                println!("you received an outdated version of the flooding");
+            }else { 
+                println!("forwarding the flood because it is not mine");
+                self.forward_packet(p);
             }
         }
     }
