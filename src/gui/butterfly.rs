@@ -8,7 +8,7 @@ pub fn spawn_butterfly(
     clients: &mut SeenClients,
 ) -> Vec<NodeConfig>
 {
-    let config = parse_config("assets/configurations/double_chain.toml");
+    let config = parse_config();
     let horizontal_spacing = 100.0;
     let vertical_spacing = 60.0;
 

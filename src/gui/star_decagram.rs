@@ -8,7 +8,7 @@ pub fn spawn_star_decagram(
     clients: &mut SeenClients
 ) -> Vec<NodeConfig>
 {
-    let config = parse_config("assets/configurations/double_chain.toml");
+    let config = parse_config();
     let radius = 200.0;
     let mut nodes = Vec::new();
 
