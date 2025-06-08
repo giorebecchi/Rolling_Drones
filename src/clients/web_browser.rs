@@ -592,6 +592,20 @@ impl WebBrowser {
     pub fn handle_flood_response(& mut self, packet: Packet){
         if let PacketType::FloodResponse(flood_response) = packet.clone().pack_type {
             if !flood_response.path_trace.is_empty(){
+                
+                let dest = if let Some(dest) = flood_response.path_trace.get(0){
+                    dest.clone()
+                }else { 
+                    println!("no path trace");
+                    return;
+                };
+                
+                if dest.1 != NodeType::Client {
+                    println!("web browser needs to forward the flood response to {:?} {}", dest.1, dest.0);
+                    self.send_flooding_packet(packet);
+                    return;
+                }
+                
                 for (node_id, node_type) in &flood_response.path_trace{
                     if *node_type == NodeType::Server && !self.servers.contains(&node_id){
                         self.servers.push(*node_id); //no duplicates
