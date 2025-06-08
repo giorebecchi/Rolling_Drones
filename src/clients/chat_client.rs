@@ -1,5 +1,6 @@
 use std::collections::{HashMap, HashSet};
 use crossbeam_channel::{select_biased, Receiver, Sender};
+use egui::debug_text::print;
 use petgraph::algo::dijkstra;
 use petgraph::{Direction};
 use petgraph::graphmap::{UnGraphMap};
@@ -500,7 +501,7 @@ impl ChatClient {
 
     pub fn handle_flood_req(& mut self, packet: Packet) {
         if let PacketType::FloodRequest(mut flood_request) = packet.clone().pack_type {
-            println!("chatclient {} flood {:?}", self.config.id, flood_request);
+            //println!("chatclient {} flood {:?}", self.config.id, flood_request);
             //check if the pair (flood_id, initiator id) has already been received -> self.visited_nodes
             if self.visited_nodes.contains(&(flood_request.flood_id, flood_request.initiator_id)){
                 flood_request.path_trace.push((self.config.id.clone(), NodeType::Client));
@@ -546,6 +547,20 @@ impl ChatClient {
 
     pub fn handle_flood_response(& mut self, packet: Packet){
         if let PacketType::FloodResponse(flood_response) = packet.clone().pack_type {
+            //println!("flood response {:?}", flood_response);
+            
+            let dest = if let Some(dest ) = flood_response.path_trace.get(0){
+                dest.clone()
+            }else {
+                println!("no path trace found");
+                return;
+            };
+            
+            if dest.1 != NodeType::Client {
+                println!("this flood response isn't for the chat client, forwarding to {} of type {:?}", dest.0, dest.1);
+                self.send_flooding_packet(packet);
+                return;
+            }
 
             if !flood_response.path_trace.is_empty(){
                 for (node_id, node_type) in &flood_response.path_trace{

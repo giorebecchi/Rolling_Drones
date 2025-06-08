@@ -401,7 +401,7 @@ impl Server{
     }
 
     fn handle_flood_response(&mut self, p:Packet){
-        println!("chat server flood response: {}", p.pack_type);
+        //println!("chat server flood response: {}", p.pack_type);
         if let PacketType::FloodResponse(mut flood) = p.clone().pack_type{
             // println!("server {} has received flood response {}", self.server_id,flood.clone());
             if flood.path_trace[0].0 == self.server_id {
@@ -452,7 +452,7 @@ impl Server{
                             }
                         }
                     }
-                    println!("graph del chatserver {:?}, {:?}", self.server_id, self.neigh_map);
+                    //println!("graph del chatserver {:?}, {:?}", self.server_id, self.neigh_map);
                 } else {
                     println!("you received an outdated version of the flooding");
                 }
