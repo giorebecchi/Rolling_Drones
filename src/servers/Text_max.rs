@@ -98,9 +98,6 @@ impl Server {
                                 },
                                 ServerCommands::RemoveSender(id)=>{
                                     self.remove_drone(id);
-                                },
-                                ServerCommands::TopologyChanged=>{
-                                    self.floading();
                                 }
                             }
                         }

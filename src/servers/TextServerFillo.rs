@@ -114,9 +114,6 @@ impl Server{
                             },
                             ServerCommands::RemoveSender(id)=>{
                                 self.remove_sender(id);
-                            },
-                            ServerCommands::TopologyChanged=>{
-                                //todo
                             }
                         }
                     }
