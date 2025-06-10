@@ -3,7 +3,10 @@ name = "Rolling_Drones"
 version = "0.1.0"
 edition = "2021"
 [features]
-default = []
+default = ["chat"]
+web = []
+chat = []
+full = []
 max = []
 
 
@@ -33,8 +36,6 @@ bincode = "1.3.3"
 rolling_drone = { git = "https://github.com/giorebecchi/RollingDrone.git"}
 base64 = "0.21.7"
 egui = "0.31.1"
-log = "0.4.26"
-walkdir = "2"
 infer = "0.15"
 
 [dev-dependencies]
