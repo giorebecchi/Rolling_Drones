@@ -643,6 +643,9 @@ fn spawn_servers_max(
     chat_servers: &mut HashMap<NodeId, Sender<ServerCommands>>,
     server_event_send: Sender<ServerEvent>
 ) {
+    let n_clients = config.client.len();
+    let n_servers = config.server.len();
+
     for (i, cfg_server) in config.server.iter().cloned().enumerate() {
         if cfg_server.connected_drone_ids.is_empty(){
             topology_error(cfg_server.id, cfg_server.connected_drone_ids.clone());
@@ -659,43 +662,98 @@ fn spawn_servers_max(
 
         let rcv_command = server_commands[&cfg_server.id].1.clone();
 
-        match i {
-            0 => {
-                let mut server_max = ChatMax::new(cfg_server.id, rcv, packet_send, rcv_flood, rcv_command.clone(), server_event_send.clone());
-                thread::spawn(move || {
-                    server_max.run();
-                });
-                chat_servers.insert(cfg_server.id, server_commands[&cfg_server.id].0.clone());
-                set_node_types(MyNodeType::ChatServer, config.server.len(), cfg_server.id);
+        match (n_clients, n_servers) {
+            (1, 1) => {
+                spawn_text_server_max(cfg_server.id, rcv, packet_send, rcv_flood, rcv_command,
+                                  server_event_send.clone(), text_servers, server_commands,
+                                  "assets/multimedia/paths/text_server1.txt", n_servers);
             },
-            1=>{
-                let mut server_max = ChatMax::new(cfg_server.id, rcv, packet_send, rcv_flood, rcv_command.clone(), server_event_send.clone());
-                thread::spawn(move || {
-                    server_max.run();
-                });
-                chat_servers.insert(cfg_server.id, server_commands[&cfg_server.id].0.clone());
-                set_node_types(MyNodeType::ChatServer, config.server.len(), cfg_server.id);
+            (2, 1) => {
+                spawn_chat_server_max(cfg_server.id, rcv, packet_send, rcv_flood, rcv_command,
+                                  server_event_send.clone(), chat_servers, server_commands, n_servers);
+            },
+            (2, 2) => {
+                spawn_chat_server_max(cfg_server.id, rcv, packet_send, rcv_flood, rcv_command,
+                                  server_event_send.clone(), chat_servers, server_commands, n_servers);
+            },
+            (3, 1) => {
+                spawn_chat_server_max(cfg_server.id, rcv, packet_send, rcv_flood, rcv_command,
+                                  server_event_send.clone(), chat_servers, server_commands, n_servers);
+            },
+            (3, 2) => {
+                match i {
+                    0 => spawn_chat_server_max(cfg_server.id, rcv, packet_send, rcv_flood, rcv_command,
+                                           server_event_send.clone(), chat_servers, server_commands, n_servers),
+                    1 => spawn_text_server_max(cfg_server.id, rcv, packet_send, rcv_flood, rcv_command,
+                                           server_event_send.clone(), text_servers, server_commands,
+                                           "assets/multimedia/paths/text_server1.txt", n_servers),
+                    _ => unreachable!()
+                }
+            },
+            (1, 3) => {
+                match i {
+                    _ => spawn_text_server_max(cfg_server.id, rcv, packet_send, rcv_flood, rcv_command,
+                                           server_event_send.clone(), text_servers, server_commands,
+                                           "assets/multimedia/paths/text_server1.txt", n_servers),
+
+                }
             },
             _ => {
-                let mut text_server_max = TextMax::new(
-                    cfg_server.id,
-                    rcv,
-                    packet_send,
-                    rcv_command.clone(),
-                    server_event_send.clone(),
-                    "assets/multimedia/path_max/max_server.txt",
-                    rcv_flood
-                );
-                thread::spawn(move || {
-                    text_server_max.run();
-                });
-                text_servers.insert(cfg_server.id, server_commands[&cfg_server.id].0.clone());
-                set_node_types(MyNodeType::TextServer, config.server.len(), cfg_server.id);
-            }
+                if n_servers >= 3 {
+                    match i  {
+                        0 => spawn_chat_server_max(cfg_server.id, rcv, packet_send, rcv_flood, rcv_command,
+                                               server_event_send.clone(), chat_servers, server_commands, n_servers),
+                        _=> spawn_text_server_max(cfg_server.id, rcv, packet_send, rcv_flood, rcv_command,
+                                               server_event_send.clone(), text_servers, server_commands,
+                                               "assets/multimedia/paths/media_server2.txt", n_servers),
 
+                    }
+                } else {
+                    spawn_chat_server_max(cfg_server.id, rcv, packet_send, rcv_flood, rcv_command,
+                                      server_event_send.clone(), chat_servers, server_commands, n_servers);
+                }
+            }
         }
     }
 }
+fn spawn_chat_server_max(
+    id: NodeId,
+    rcv: Receiver<Packet>,
+    packet_send: HashMap<NodeId, Sender<Packet>>,
+    rcv_flood: Receiver<BackGroundFlood>,
+    rcv_command: Receiver<ServerCommands>,
+    server_event_send: Sender<ServerEvent>,
+    chat_servers: &mut HashMap<NodeId, Sender<ServerCommands>>,
+    server_commands: &HashMap<NodeId, (Sender<ServerCommands>, Receiver<ServerCommands>)>,
+    n_servers: usize
+) {
+    let mut server = ChatMax::new(id, rcv, packet_send, rcv_flood, rcv_command, server_event_send);
+    thread::spawn(move || {
+        server.run();
+    });
+    chat_servers.insert(id, server_commands[&id].0.clone());
+    set_node_types(MyNodeType::ChatServer, n_servers, id);
+}
+fn spawn_text_server_max(
+    id: NodeId,
+    rcv: Receiver<Packet>,
+    packet_send: HashMap<NodeId, Sender<Packet>>,
+    rcv_flood: Receiver<BackGroundFlood>,
+    rcv_command: Receiver<ServerCommands>,
+    server_event_send: Sender<ServerEvent>,
+    text_servers: &mut HashMap<NodeId, Sender<ServerCommands>>,
+    server_commands: &HashMap<NodeId, (Sender<ServerCommands>, Receiver<ServerCommands>)>,
+    path: &str,
+    n_servers: usize
+) {
+    let mut server = TextMax::new(id, rcv, packet_send, rcv_command, server_event_send, path,rcv_flood);
+    thread::spawn(move || {
+        server.run();
+    });
+    text_servers.insert(id, server_commands[&id].0.clone());
+    set_node_types(MyNodeType::TextServer, n_servers, id);
+}
+
 fn topology_error(id: NodeId, connected_ids: Vec<NodeId>){
     if let Ok(mut state) = SHARED_STATE.write(){
         state.wrong_connections.insert(id, connected_ids);
