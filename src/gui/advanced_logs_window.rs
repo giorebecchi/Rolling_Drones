@@ -75,152 +75,163 @@ fn log_window(
                         if ui.button("Hide Graph").clicked() {
                             log_info.show_graph = false;
                         }
-                        ui.label("Topology:");
 
-                        let (discovered_connections, all_nodes_in_graph) = if let Some(graph) = sim_log.graph.get(&node.0) {
-                            let mut connections = HashSet::new();
-                            let mut nodes_set = HashSet::new();
+                        ui.collapsing("Network Topology Graph", |ui| {
+                            ui.label("Topology:");
 
-                            for node_id in graph.node_identifiers() {
-                                nodes_set.insert(node_id);
-                            }
+                            let (discovered_connections, all_nodes_in_graph) = if let Some(graph) = sim_log.graph.get(&node.0) {
+                                let mut connections = HashSet::new();
+                                let mut nodes_set = HashSet::new();
 
-                            for edge in graph.edge_references() {
-                                let (source, target, _) = edge.clone();
-                                connections.insert((source.min(target), source.max(target)));
-                            }
-                            (connections, nodes_set)
-                        } else if let Some(graph) = sim_log.server_graph.get(&node.0) {
-                            let mut connections = HashSet::new();
-                            let mut nodes_set = HashSet::new();
-
-                            for node_index in graph.node_indices() {
-                                if let Some((node_id, _)) = graph.node_weight(node_index) {
-                                    nodes_set.insert(*node_id);
+                                for node_id in graph.node_identifiers() {
+                                    nodes_set.insert(node_id);
                                 }
-                            }
 
-                            for edge in graph.edge_references() {
-                                let source_idx = edge.source();
-                                let target_idx = edge.target();
-
-                                if let (Some((source_id, _)), Some((target_id, _))) =
-                                    (graph.node_weight(source_idx), graph.node_weight(target_idx)) {
-                                    let min_id = (*source_id).min(*target_id);
-                                    let max_id = (*source_id).max(*target_id);
-                                    connections.insert((min_id, max_id));
+                                for edge in graph.edge_references() {
+                                    let (source, target, _) = edge.clone();
+                                    connections.insert((source.min(target), source.max(target)));
                                 }
-                            }
-                            (connections, nodes_set)
-                        } else {
-                            (HashSet::new(), HashSet::new())
-                        };
+                                (connections, nodes_set)
+                            } else if let Some(graph) = sim_log.server_graph.get(&node.0) {
+                                let mut connections = HashSet::new();
+                                let mut nodes_set = HashSet::new();
 
-                        let mut actual_connections = HashSet::new();
-                        for node_config in nodes.0.iter() {
-                            if all_nodes_in_graph.contains(&node_config.id) {
-                                for &connected_id in &node_config.connected_node_ids {
-                                    if all_nodes_in_graph.contains(&connected_id) {
-                                        let min_id = node_config.id.min(connected_id);
-                                        let max_id = node_config.id.max(connected_id);
-                                        actual_connections.insert((min_id, max_id));
+                                for node_index in graph.node_indices() {
+                                    if let Some((node_id, _)) = graph.node_weight(node_index) {
+                                        nodes_set.insert(*node_id);
+                                    }
+                                }
+
+                                for edge in graph.edge_references() {
+                                    let source_idx = edge.source();
+                                    let target_idx = edge.target();
+
+                                    if let (Some((source_id, _)), Some((target_id, _))) =
+                                        (graph.node_weight(source_idx), graph.node_weight(target_idx)) {
+                                        let min_id = (*source_id).min(*target_id);
+                                        let max_id = (*source_id).max(*target_id);
+                                        connections.insert((min_id, max_id));
+                                    }
+                                }
+                                (connections, nodes_set)
+                            } else {
+                                (HashSet::new(), HashSet::new())
+                            };
+
+                            let mut actual_connections = HashSet::new();
+                            for node_config in nodes.0.iter() {
+                                if all_nodes_in_graph.contains(&node_config.id) {
+                                    for &connected_id in &node_config.connected_node_ids {
+                                        if all_nodes_in_graph.contains(&connected_id) {
+                                            let min_id = node_config.id.min(connected_id);
+                                            let max_id = node_config.id.max(connected_id);
+                                            actual_connections.insert((min_id, max_id));
+                                        }
                                     }
                                 }
                             }
-                        }
 
-                        let missed_connections: Vec<(NodeId, NodeId)> = actual_connections
-                            .difference(&discovered_connections)
-                            .cloned()
-                            .collect();
+                            let missed_connections: Vec<(NodeId, NodeId)> = actual_connections
+                                .difference(&discovered_connections)
+                                .cloned()
+                                .collect();
 
-                        let incorrect_connections: Vec<(NodeId, NodeId)> = discovered_connections
-                            .difference(&actual_connections)
-                            .cloned()
-                            .collect();
+                            let incorrect_connections: Vec<(NodeId, NodeId)> = discovered_connections
+                                .difference(&actual_connections)
+                                .cloned()
+                                .collect();
 
-                        ui.horizontal(|ui| {
-                            ui.label(format!("Discovered: {} connections", discovered_connections.len()));
-                            ui.label("|");
-                            ui.label(format!("Actual: {} connections", actual_connections.len()));
-                            ui.label("|");
-                            ui.colored_label(
-                                egui::Color32::RED,
-                                format!("Missed: {} connections", missed_connections.len())
-                            );
-                            ui.label("|");
-                            ui.colored_label(
-                                egui::Color32::from_rgb(255, 140, 0),
-                                format!("Incorrect: {} connections", incorrect_connections.len())
-                            );
-                        });
-
-
-                        if !incorrect_connections.is_empty() && log_info.show_incorrect_connections {
-                            ui.collapsing("Incorrect connections details", |ui| {
-                                for (source, target) in &incorrect_connections {
-                                    ui.label(format!("  • Connection between {} and {} doesn't exist", source, target));
-                                }
+                            ui.horizontal(|ui| {
+                                ui.label(format!("Discovered: {} connections", discovered_connections.len()));
+                                ui.label("|");
+                                ui.label(format!("Actual: {} connections", actual_connections.len()));
+                                ui.label("|");
+                                ui.colored_label(
+                                    egui::Color32::RED,
+                                    format!("Missed: {} connections", missed_connections.len())
+                                );
+                                ui.label("|");
+                                ui.colored_label(
+                                    egui::Color32::from_rgb(255, 140, 0),
+                                    format!("Incorrect: {} connections", incorrect_connections.len())
+                                );
                             });
-                        }
 
-                        let graph_response = ui.allocate_rect(
-                            ui.available_rect_before_wrap().shrink(20.0),
-                            egui::Sense::hover()
-                        );
-                        let painter = ui.painter_at(graph_response.rect);
+                            egui::Frame::new()
+                                .fill(egui::Color32::from_gray(240))
+                                .stroke(egui::Stroke::new(1.0, egui::Color32::from_gray(180)))
+                                .inner_margin(5.0)
+                                .show(ui, |ui| {
+                                    egui::ScrollArea::both()
+                                        .max_height(300.0)
+                                        .max_width(ui.available_width())
+                                        .show(ui, |ui| {
+                                            let graph_size = egui::vec2(
+                                                ui.available_width().max(400.0),
+                                                280.0
+                                            );
 
-                        if let Some(graph) = sim_log.graph.get(&node.0) {
-                            let mut all_nodes = Vec::new();
-                            let mut connections = Vec::new();
+                                            let graph_response = ui.allocate_rect(
+                                                egui::Rect::from_min_size(ui.cursor().min, graph_size),
+                                                egui::Sense::hover()
+                                            );
 
-                            for node_id in graph.node_identifiers() {
-                                all_nodes.push(node_id);
-                            }
+                                            let painter = ui.painter_at(graph_response.rect);
 
-                            for edge in graph.edge_references() {
-                                let (source, target, _) = edge.clone();
-                                connections.push((source, target));
-                            }
+                                            if let Some(graph) = sim_log.graph.get(&node.0) {
+                                                let mut all_nodes = Vec::new();
+                                                let mut connections = Vec::new();
 
-                            render_graph_visualization_with_errors(
-                                &painter,
-                                &graph_response.rect,
-                                all_nodes,
-                                connections,
-                                if log_info.show_missed_connections { missed_connections } else { vec![] },
-                                if log_info.show_incorrect_connections { incorrect_connections } else { vec![] }
-                            );
+                                                for node_id in graph.node_identifiers() {
+                                                    all_nodes.push(node_id);
+                                                }
 
-                        } else if let Some(graph) = sim_log.server_graph.get(&node.0) {
-                            let mut all_nodes = Vec::new();
-                            let mut connections = Vec::new();
+                                                for edge in graph.edge_references() {
+                                                    let (source, target, _) = edge.clone();
+                                                    connections.push((source, target));
+                                                }
 
-                            for node_index in graph.node_indices() {
-                                if let Some((node_id, _node_type)) = graph.node_weight(node_index) {
-                                    all_nodes.push(*node_id);
-                                }
-                            }
+                                                render_graph_visualization_with_errors(
+                                                    &painter,
+                                                    &graph_response.rect,
+                                                    all_nodes,
+                                                    connections,
+                                                    if log_info.show_missed_connections { missed_connections } else { vec![] },
+                                                    if log_info.show_incorrect_connections { incorrect_connections } else { vec![] }
+                                                );
 
-                            for edge in graph.edge_references() {
-                                let source_idx = edge.source();
-                                let target_idx = edge.target();
+                                            } else if let Some(graph) = sim_log.server_graph.get(&node.0) {
+                                                let mut all_nodes = Vec::new();
+                                                let mut connections = Vec::new();
 
-                                if let (Some((source_id, _)), Some((target_id, _))) =
-                                    (graph.node_weight(source_idx), graph.node_weight(target_idx)) {
-                                    connections.push((*source_id, *target_id));
-                                }
-                            }
+                                                for node_index in graph.node_indices() {
+                                                    if let Some((node_id, _node_type)) = graph.node_weight(node_index) {
+                                                        all_nodes.push(*node_id);
+                                                    }
+                                                }
 
-                            render_graph_visualization_with_errors(
-                                &painter,
-                                &graph_response.rect,
-                                all_nodes,
-                                connections,
-                                if log_info.show_missed_connections { missed_connections } else { vec![] },
-                                if log_info.show_incorrect_connections { incorrect_connections } else { vec![] }
-                            );
-                        }
+                                                for edge in graph.edge_references() {
+                                                    let source_idx = edge.source();
+                                                    let target_idx = edge.target();
+
+                                                    if let (Some((source_id, _)), Some((target_id, _))) =
+                                                        (graph.node_weight(source_idx), graph.node_weight(target_idx)) {
+                                                        connections.push((*source_id, *target_id));
+                                                    }
+                                                }
+
+                                                render_graph_visualization_with_errors(
+                                                    &painter,
+                                                    &graph_response.rect,
+                                                    all_nodes,
+                                                    connections,
+                                                    if log_info.show_missed_connections { missed_connections } else { vec![] },
+                                                    if log_info.show_incorrect_connections { incorrect_connections } else { vec![] }
+                                                );
+                                            }
+                                        });
+                                });
+                        });
                     } else {
                         ui.label("No graph data available. Try requesting topology data first.");
                         if ui.button("Hide Graph View").clicked() {
@@ -446,9 +457,10 @@ fn render_graph_visualization_with_errors(
     let mut node_positions = HashMap::new();
 
     if !all_nodes.is_empty() {
+        let padding = 30.0;
         let center_x = rect.center().x;
         let center_y = rect.center().y;
-        let radius = rect.height() * 0.4;
+        let radius = (rect.height().min(rect.width()) - padding * 2.0) * 0.4;
 
         for (i, node_id) in all_nodes.iter().enumerate() {
             let angle = 2.0 * std::f32::consts::PI * (i as f32) / (all_nodes.len() as f32);
@@ -527,7 +539,7 @@ fn render_graph_visualization_with_errors(
         for (node_id, pos) in &node_positions {
             painter.circle(
                 *pos,
-                15.0,
+                12.0,
                 egui::Color32::from_rgb(100, 100, 255),
                 egui::Stroke::new(1.0, egui::Color32::BLACK)
             );
@@ -536,7 +548,7 @@ fn render_graph_visualization_with_errors(
                 egui::Align2::CENTER_CENTER,
                 format!("{}", node_id),
                 egui::FontId::default(),
-                egui::Color32::BLACK,
+                egui::Color32::WHITE,
             );
         }
     }
