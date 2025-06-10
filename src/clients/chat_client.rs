@@ -1,6 +1,5 @@
 use std::collections::{HashMap, HashSet};
 use crossbeam_channel::{select_biased, Receiver, Sender};
-use egui::debug_text::print;
 use petgraph::algo::dijkstra;
 use petgraph::{Direction};
 use petgraph::graphmap::{UnGraphMap};
@@ -70,7 +69,7 @@ impl ChatClient {
             select_biased! {
                 recv(self.receiver_msg) -> message =>{
                     if let Ok(message) = message {
-                        self.build_topology();
+                        // self.build_topology();
                         self.handle_incoming(message)
                     }
                 }
@@ -82,7 +81,7 @@ impl ChatClient {
                 
                 recv(self.receiver_commands) -> command =>{
                     if let Ok(command) = command {
-                        self.build_topology();
+                        // self.build_topology();
                         self.handle_sim_command(command);
                     }
                 }
@@ -168,11 +167,14 @@ impl ChatClient {
     }
     
     pub fn handle_topology(& mut self){
+        self.flood.clear();
+        //self.topology.clear();
         self.initiate_flooding();
-        println!("initiating new flooding");
+        //println!("initiating new flooding");
     }
 
     pub fn search_chat_servers(&mut self) {
+        //println!("topology here: {:?}", self.topology);
         for server in self.servers.clone(){
             self.ask_server_type(server);
         }
@@ -204,6 +206,7 @@ impl ChatClient {
                         }
                     }
                     if let Some(next_hop) = route.get(1){
+                        //println!("next hop: {:?}", next_hop);
                         self.send_packet(next_hop, packet);
                     }else { println!("No next hop found") }
                 }
@@ -400,13 +403,14 @@ impl ChatClient {
         }
     }
 
-    pub fn handle_nacks(& mut self, mut packet: Packet){
+    pub fn handle_nacks(& mut self, packet: Packet){
         if let PacketType::Nack(nack) = packet.clone().pack_type{
             match nack.nack_type{
                 NackType::ErrorInRouting(id) => {
                     if !self.problematic_nodes.contains(&id){
                         self.problematic_nodes.push(id);
                     }
+                    self.topology.remove_edge(self.config.id.clone(), id);
                     self.resend_fragment_lost(packet);
                 }
                 NackType::Dropped => {
@@ -528,22 +532,22 @@ impl ChatClient {
     }
 
 
-    pub fn build_topology(& mut self) {
-    self.topology.clear();
-
-    for resp in &self.flood {
-        let path = &resp.path_trace;
-            for pair in path.windows(2) {
-                let (src, _) = pair[0];
-                let (dst, _) = pair[1];
-
-                self.node_data.insert(src, NodeData::new());
-                self.node_data.insert(dst, NodeData::new());
-
-                self.topology.add_edge(src.clone(), dst.clone(), 1); // use 1 as weight (hop)
-            }
-        }
-    }
+    // pub fn build_topology(& mut self) {
+    // self.topology.clear();
+    // 
+    // for resp in &self.flood {
+    //     let path = &resp.path_trace;
+    //         for pair in path.windows(2) {
+    //             let (src, _) = pair[0];
+    //             let (dst, _) = pair[1];
+    // 
+    //             self.node_data.insert(src, NodeData::new());
+    //             self.node_data.insert(dst, NodeData::new());
+    // 
+    //             self.topology.add_edge(src.clone(), dst.clone(), 1); // use 1 as weight (hop)
+    //         }
+    //     }
+    // }
 
     pub fn handle_flood_response(& mut self, packet: Packet){
         if let PacketType::FloodResponse(flood_response) = packet.clone().pack_type {
@@ -568,11 +572,25 @@ impl ChatClient {
                         self.servers.push(*node_id); //no duplicates
                     }
                 }
-
-                self.flood.push(flood_response); //storing all the flood responses to then access the path traces and find the quickest one
+                 
                 // println!("flood_response: {:?}", self.flood);
             }
+            
+            self.flood.push(flood_response.clone()); //storing all the flood responses to then access the path traces and find the quickest one
+           
+            let path = &flood_response.path_trace;
+            for pair in path.windows(2) {
+                let (src, _) = pair[0];
+                let (dst, _) = pair[1];
+                
+                 if !self.topology.contains_edge(src.clone(), dst.clone()){
+                    self.node_data.insert(src, NodeData::new());
+                    self.node_data.insert(dst, NodeData::new());
 
+                    self.topology.add_edge(src.clone(), dst.clone(), 1);
+                 }
+            }
+            
         }
     }
 
