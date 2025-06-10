@@ -115,6 +115,7 @@ impl ChatClient {
                 self.send_message(message_to_send, id_server);
             }
             CommandChat::SearchChatServers => {
+                //println!("id: {} top: {:?}",self.config.id, self.topology);
                 self.search_chat_servers();
             }
             CommandChat::SendTopologyGraph => {
@@ -551,7 +552,23 @@ impl ChatClient {
 
     pub fn handle_flood_response(& mut self, packet: Packet){
         if let PacketType::FloodResponse(flood_response) = packet.clone().pack_type {
-            //println!("flood response {:?}", flood_response);
+            //println!("id: {}, flood response {:?}", self.config.id, flood_response);
+
+            let path = &flood_response.path_trace;
+            //println!("id: {} path: {:?}", self.config.id, path);
+            for pair in path.windows(2) {
+                //println!("id: {} pair: {:?} -> {:?} from path: {:?} ", self.config.id, pair[0], pair[1], path);
+                let (src, _) = pair[0];
+                let (dst, _) = pair[1];
+
+                if !self.topology.contains_edge(src.clone(), dst.clone()){
+                    //println!("dentro: id: {} {:?} -> {:?}",self.config.id, pair[0], pair[1]);
+                    self.node_data.insert(src, NodeData::new());
+                    self.node_data.insert(dst, NodeData::new());
+
+                    self.topology.add_edge(src.clone(), dst.clone(), 1);
+                }
+            }
             
             let dest = if let Some(dest ) = flood_response.path_trace.get(0){
                 dest.clone()
@@ -560,8 +577,8 @@ impl ChatClient {
                 return;
             };
             
-            if dest.1 != NodeType::Client {
-                println!("this flood response isn't for the chat client, forwarding to {} of type {:?}", dest.0, dest.1);
+            if dest != (self.config.id, NodeType::Client) {
+                //println!("this flood response isn't for the chat client, forwarding to {} of type {:?}", dest.0, dest.1);
                 self.send_flooding_packet(packet);
                 return;
             }
@@ -575,21 +592,9 @@ impl ChatClient {
                  
                 // println!("flood_response: {:?}", self.flood);
             }
+
             
             self.flood.push(flood_response.clone()); //storing all the flood responses to then access the path traces and find the quickest one
-           
-            let path = &flood_response.path_trace;
-            for pair in path.windows(2) {
-                let (src, _) = pair[0];
-                let (dst, _) = pair[1];
-                
-                 if !self.topology.contains_edge(src.clone(), dst.clone()){
-                    self.node_data.insert(src, NodeData::new());
-                    self.node_data.insert(dst, NodeData::new());
-
-                    self.topology.add_edge(src.clone(), dst.clone(), 1);
-                 }
-            }
             
         }
     }
