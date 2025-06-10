@@ -4,7 +4,7 @@
 
 ## 🌐 Overview
 
-Welcome to a cutting-edge simulation environment where **clients**, **servers**, and **drones** come together in a symphony of concurrent communication. This project demonstrates the power of Rust's threading model combined with real-time visualization to create a robust network topology simulator.
+Welcome to a cutting-edge simulation environment where **clients**, **servers**, and **drones**. This project demonstrates the power of Rust's threading model combined with real-time visualization to create a robust network topology simulator.
 
 ## 🚀 Quick Start
 
@@ -12,36 +12,57 @@ Welcome to a cutting-edge simulation environment where **clients**, **servers**,
 # Recommended way to run (optimized performance)
 cargo run --release
 ```
-```bash
-# Run with specific features
-cargo run --release --features <feature_name>
-```
 
 ## 🎯 Features & Topologies
 
 ### `--features max`
-The ultimate stress test! Leverages high-performance servers:
+```bash
+# Run with max feature and default topology
+cargo run --release --features max
+```
+High-performance servers:
 - 🔧 Default servers by **@X-baia**
 - 🚀 Optional servers by **@malchioman** to have TextServers combined with MediaServers!
 
-### `--features chat`
+### `--features chat max`
+```bash
+# Run with max feature and chat topology
+cargo run --release --features "chat,max"
+```
 Deploy a chat ecosystem:
 - 💬 **3 ChatClients** (individual threads)
 - 🗨️ **1 ChatServer** facilitating real-time communication
 - Perfect for testing concurrent message handling
 
 ### `--features web`
+```bash
+# Run with web topology
+cargo run --release --features web
+```
 Spin up a web services topology:
-- 🌐 **1 Web Browser** client
-- 📄 **1 TextServer** - The intelligent metadata broker
+- 🌐 **1 Web Browser** client by **@chiarastrozzii**
+- 📄 **1 TextServer** - The information point
 - 🎬 **2 MediaServers** - Content delivery specialists
 - Smart routing: TextServer analyzes requests and directs traffic to the appropriate MediaServer, and should find the best route!
+- With '--features web max' you would deploy a network with 3 TextServers that can act also as MediaServers!
+```bash
+# Run with max feature and web topology
+cargo run --release --features "web,max"
+```
 
 ### `--features full`
+```bash
+# Run with full topology
+cargo run --release --features full
+```
 **The complete package!** Combines all topologies into one massive simulation:
 - All chat components
 - All web components
 - Maximum concurrency demonstration
+```bash
+# Run with max feature and full topology
+cargo run --release --features "full,max"
+```
 
 ## 🏗️ Architecture Highlights
 
@@ -55,14 +76,14 @@ Every component runs in its own thread:
 ### 📡 **Communication Infrastructure**
 - **crossbeam_channel**: High-performance message passing
 - **Drone Network**: Virtual packet carriers threading through the topology
-- **Lazy<Arc<RwLock>>**: Ensures thread-safe synchronization between the Simulation Controller and GUI
+- **RwLock**: Ensures thread-safe synchronization between the Simulation Controller and GUI
 
 ### 🎮 **Simulation Controller**
-The brain of the operation:
 - 🗺️ Maintains complete topology knowledge
 - 📊 Tracks every packet in flight
 - 🔄 Bridges backend simulation with frontend visualization
 - 🔒 Thread-safe data sharing via `RwLock`
+- **@giorebecchi**
 
 ### 🎨 **Real-Time Visualization**
 Powered by:
