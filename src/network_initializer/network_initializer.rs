@@ -30,7 +30,7 @@ use crate::servers::Chat_max::Server as ChatMax;
 use crate::servers::Text_max::Server as TextMax;
 
 pub fn parse_config() -> Config {
-    let file_str = fs::read_to_string("assets/configurations/chat_topology.toml").unwrap();
+    let file_str = fs::read_to_string("assets/configurations/web_topology.toml").unwrap();
     toml::from_str(&file_str).unwrap()
 }
 pub fn start_simulation(
@@ -323,10 +323,10 @@ fn spawn_servers_baia(
                     _ => unreachable!()
                 }
             },
-            (3, 3) => {
+            (1, 3) => {
                 match i {
-                    0 => spawn_chat_server(cfg_server.id, rcv, packet_send, rcv_flood, rcv_command,
-                                           server_event_send.clone(), chat_servers, server_commands, n_servers),
+                    0 => spawn_media_server(cfg_server.id, rcv, packet_send, rcv_flood, rcv_command,
+                                           server_event_send.clone(), media_servers, server_commands,"assets/multimedia/paths/media_server2.txt", n_servers),
                     1 => spawn_text_server(cfg_server.id, rcv, packet_send, rcv_flood, rcv_command,
                                            server_event_send.clone(), text_servers, server_commands,
                                            "assets/multimedia/paths/text_server1.txt", n_servers),
