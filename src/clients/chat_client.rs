@@ -7,7 +7,7 @@ use wg_2024::config::{Client};
 use wg_2024::network::{NodeId, SourceRoutingHeader};
 use wg_2024::packet::{FloodRequest, FloodResponse, Fragment, NackType, NodeType, Packet, PacketType};
 use crate::clients::assembler::{Fragmentation, NodeData};
-use crate::common_things::common::{ChatRequest, MessageChat, CommandChat, ChatResponse, ServerType, ChatClientEvent, ClientType, BackGroundFlood, ChatEvent, WebBrowserEvents, ContentRequest, RequestEvent};
+use crate::common_things::common::{ChatRequest, MessageChat, CommandChat, ChatResponse, ServerType, ChatClientEvent, ClientType, BackGroundFlood, RequestEvent};
 use crate::common_things::common::ChatClientEvent::{ClientList, ClientType as OtherClientType, IncomingMessage, RegisteredSuccess};
 
 pub struct ChatClient {
@@ -319,7 +319,7 @@ impl ChatClient {
         }
     }
     //incoming messages
-    pub fn handle_fragments(& mut self, mut packet: Packet){ //doesn't perfectly respect the protocol [uses hashmap instead of the vector]
+    pub fn handle_fragments(& mut self, packet: Packet){ //doesn't perfectly respect the protocol [uses hashmap instead of the vector]
         // println!("received packet by server: {}", packet);
         let src_id = packet.routing_header.hops.first().unwrap();
         let check = (packet.session_id, *src_id);

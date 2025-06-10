@@ -1,13 +1,9 @@
 use std::collections::HashMap;
-use std::error::Error;
 use std::string::String;
-use wg_2024::packet;
-use wg_2024::controller;
-use serde::{Serialize, Deserialize};
+use serde::Serialize;
 use serde::de::DeserializeOwned;
-use serde::de::Unexpected::Str;
 use wg_2024::network::{NodeId, SourceRoutingHeader};
-use wg_2024::packet::{Fragment, NodeType, Packet, FRAGMENT_DSIZE};
+use wg_2024::packet::{Fragment, Packet, FRAGMENT_DSIZE};
 use crate::common_things::common::{ChatRequest, ChatResponse, MediaServer, ServerType, TextServer, WebBrowserCommands};
 use crate::common_things::common::MessageChat;
 
@@ -121,7 +117,7 @@ pub fn main(){
         from_id: 12,
         to_id: 9
     };
-    let mut session_id = 0;
+    let session_id = 0;
 
     let serialized_message = message_test.stringify();
     println!("serialized msg: {}", serialized_message);

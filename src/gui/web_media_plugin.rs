@@ -68,15 +68,7 @@ impl Default for TextFileCache {
 }
 
 impl TextFileCache {
-    fn new() -> Self {
-        Self {
-            file_lines: HashMap::new(),
-            current_page: HashMap::new(),
-            total_lines: HashMap::new(),
-            lines_per_page: 50, // Adjustable based on performance needs
-            page_input: HashMap::new(),
-        }
-    }
+
 
     fn load_file(&mut self, window_id: NodeId, path: &str) -> Result<(), std::io::Error> {
         let file = fs::File::open(path)?;
@@ -154,7 +146,7 @@ fn window_format(
     mut state: ResMut<ImageState>,
     asset_server: Res<AssetServer>,
     mut contexts: EguiContexts,
-    mut sim: ResMut<SimulationController>,
+    sim: ResMut<SimulationController>,
     mut open_windows: ResMut<OpenWindows>,
     images: Res<Assets<Image>>,
     mut web_state: ResMut<WebState>,

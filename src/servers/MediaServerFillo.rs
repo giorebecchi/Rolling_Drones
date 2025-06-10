@@ -4,7 +4,6 @@ use std::collections::{BinaryHeap, HashMap, HashSet};
 use std::fmt::Debug;
 use std::fs;
 use petgraph::graph::{Graph, NodeIndex};
-use petgraph::algo::{astar, dijkstra};
 use std::fs::File;
 use std::io::{self, BufRead};
 use std::path::Path;
@@ -16,7 +15,7 @@ use petgraph::prelude::EdgeRef;
 use serde::Serialize;
 use wg_2024::network::{NodeId, SourceRoutingHeader};
 use wg_2024::packet;
-use wg_2024::packet::{Ack, FloodRequest, FloodResponse, Fragment, Nack, NackType, NodeType, Packet, PacketType};
+use wg_2024::packet::{Ack, FloodRequest, FloodResponse, Fragment, NackType, NodeType, Packet, PacketType};
 use crate::common_things::common::*;
 use crate::servers::assembler::*;
 use crate::simulation_control::simulation_control::MyNodeType;
@@ -336,8 +335,8 @@ impl Server{
                 NackType::ErrorInRouting(crashed_id) => {
                     println!("sono il media {:?} ho ricevuto un errorinrouting with route {:?}, the drone that crashed is {:?}", self.server_id, packet.routing_header.hops, crashed_id.clone());
                     let node1 = self.find_node(crashed_id, NodeType::Drone).unwrap_or_default();
-                    let mut node1;
-                    let mut node2;
+                    let node1;
+                    let node2;
                     if self.node_exists(crashed_id, NodeType::Drone){
                         node1 = self.find_node(crashed_id, NodeType::Drone).unwrap_or_default();
                     } else if  self.node_exists(crashed_id, NodeType::Client){
@@ -456,7 +455,7 @@ impl Server{
 
     fn handle_flood_response(&mut self, p:Packet){
         //println!("media server flood response: {}", p.pack_type);
-        if let PacketType::FloodResponse(mut flood) = p.clone().pack_type{
+        if let PacketType::FloodResponse(flood) = p.clone().pack_type{
             // println!("server {} has received flood response {}", self.server_id,flood.clone());
             if flood.path_trace[0].0 == self.server_id {
                 let mut safetoadd = true;

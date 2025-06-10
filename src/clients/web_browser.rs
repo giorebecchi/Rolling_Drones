@@ -1,4 +1,4 @@
-use crate::common_things::common::{BackGroundFlood, ContentRequest, ContentType};
+use crate::common_things::common::{BackGroundFlood, ContentRequest};
 use std::collections::{HashMap, HashSet};
 use std::fs;
 use base64::Engine;
@@ -12,7 +12,6 @@ use crate::clients::assembler::{Fragmentation, NodeData};
 use crate::common_things::common::{ChatRequest, ClientType, ContentCommands, FileMetaData, MediaId, MediaServer, ServerType, TextServer, WebBrowserCommands, WebBrowserEvents};
 use crate::common_things::common::WebBrowserEvents::TypeClient;
 use base64::engine::general_purpose::STANDARD as BASE64;
-use egui::debug_text::print;
 use petgraph::prelude::UnGraphMap;
 
 pub struct WebBrowser {
