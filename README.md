@@ -11,7 +11,8 @@ Welcome to a cutting-edge simulation environment where **clients**, **servers**,
 ```bash
 # Recommended way to run (optimized performance)
 cargo run --release
-
+```
+```bash
 # Run with specific features
 cargo run --release --features <feature_name>
 ```
