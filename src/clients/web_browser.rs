@@ -78,7 +78,7 @@ impl WebBrowser {
             select_biased! {
                  recv(self.receiver_msg) -> message =>{
                     if let Ok(message) = message {
-                        self.build_topology();
+                        //self.build_topology();
                         self.handle_messages(message)
                     }
                 }
@@ -89,9 +89,9 @@ impl WebBrowser {
                 }
                 recv(self.receiver_commands) -> command =>{
                     if let Ok(command) = command {
-                        self.build_topology();
+                        //self.build_topology();
                         self.handle_commands(command);
-                        println!("topology: {:?}", self.topology_graph);
+                        //println!("topology: {:?}", self.topology_graph);
                     }
                 }
                
@@ -591,6 +591,17 @@ impl WebBrowser {
     pub fn handle_flood_response(& mut self, packet: Packet){
         if let PacketType::FloodResponse(flood_response) = packet.clone().pack_type {
             if !flood_response.path_trace.is_empty(){
+
+                let path = &flood_response.path_trace;
+                for pair in path.windows(2) {
+                    let (src, _) = pair[0];
+                    let (dst, _) = pair[1];
+
+                    self.node_data.insert(src, NodeData::new());
+                    self.node_data.insert(dst, NodeData::new());
+
+                    self.topology_graph.add_edge(src.clone(), dst.clone(), 1); // use 1 as weight (hop), could me modified for the nack
+                }
                 
                 let dest = if let Some(dest) = flood_response.path_trace.get(0){
                     dest.clone()
@@ -599,8 +610,8 @@ impl WebBrowser {
                     return;
                 };
                 
-                if dest.1 != NodeType::Client {
-                    println!("web browser needs to forward the flood response to {:?} {}", dest.1, dest.0);
+                if dest != (self.config.id, NodeType::Client) {
+                    //println!("web browser needs to forward the flood response to {:?} {}", dest.1, dest.0);
                     self.send_flooding_packet(packet);
                     return;
                 }
@@ -655,22 +666,22 @@ impl WebBrowser {
         }
     }
 
-    pub fn build_topology(& mut self){
-        self.topology_graph.clear();
-
-        for resp in &self.flood{
-            let path = &resp.path_trace;
-            for pair in path.windows(2) {
-                let (src, _) = pair[0];
-                let (dst, _) = pair[1];
-
-                self.node_data.insert(src, NodeData::new());
-                self.node_data.insert(dst, NodeData::new());
-
-                self.topology_graph.add_edge(src.clone(), dst.clone(), 1); // use 1 as weight (hop), could me modified for the nack
-            }
-        }
-    }
+    // pub fn build_topology(& mut self){
+    //     self.topology_graph.clear();
+    // 
+    //     for resp in &self.flood{
+    //         let path = &resp.path_trace;
+    //         for pair in path.windows(2) {
+    //             let (src, _) = pair[0];
+    //             let (dst, _) = pair[1];
+    // 
+    //             self.node_data.insert(src, NodeData::new());
+    //             self.node_data.insert(dst, NodeData::new());
+    // 
+    //             self.topology_graph.add_edge(src.clone(), dst.clone(), 1); // use 1 as weight (hop), could me modified for the nack
+    //         }
+    //     }
+    // }
 
 
     pub fn find_route(& mut self, destination_id: &NodeId)-> Result<Vec<NodeId>, String>{
