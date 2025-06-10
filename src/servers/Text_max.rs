@@ -12,10 +12,9 @@ use std::path::{Path, PathBuf};
 use wg_2024::network::{NodeId, SourceRoutingHeader};
 use wg_2024::packet::{Ack, FloodRequest, Fragment, Nack, NackType, NodeType, Packet, PacketType};
 use bevy::utils::HashSet;
-
-use rand::Rng;
 use std::io::{Read};
 use infer;
+use crate::simulation_control::simulation_control::MyNodeType;
 
 pub struct Server{
     server_id: NodeId,
@@ -68,11 +67,8 @@ impl Server {
         }
     }
     pub fn run(&mut self) {
-        let path = self.path.clone();
         self.load_image_paths_from_file();
         self.load_text_paths_from_file();
-        println!("{:?}", self.file_list);
-        println!("{:?}", self.media_list);
         self.floading();
 
 
@@ -89,6 +85,25 @@ impl Server {
                     recv(self.rcv_flood) -> flood => {
                         if let Ok(_) = flood {
                             self.floading();
+                        }
+                    }
+                    recv(self.rcv_command) -> sc_command => {
+                        if let Ok(command) = sc_command {
+                            match command {
+                                ServerCommands::SendTopologyGraph=>{
+                                   let _ = self.send_event.send(ServerEvent::GraphMax(self.server_id, self.nodes_map.clone()));
+                                },
+                                ServerCommands::AddSender(id, sender)=>{
+                                    self.packet_send.insert(id, sender);
+                                    self.floading()
+                                },
+                                ServerCommands::RemoveSender(id)=>{
+                                    self.remove_drone(id);
+                                },
+                                ServerCommands::TopologyChanged=>{
+                                    self.floading();
+                                }
+                            }
                         }
                     }
                 }
@@ -126,7 +141,6 @@ impl Server {
         let frag_idx = fragment.fragment_index as usize;
 
         if frag_idx >= total_frags {
-            eprintln!("[WARN] Frammento idx={} fuori range per session {}", frag_idx, session);
             return;
         }
 
@@ -172,7 +186,6 @@ impl Server {
         let who_ask = if let Some(first_hop) = packet.routing_header.hops.get(0).cloned() {
             first_hop
         } else {
-            eprintln!("[WARN] routing_header.hops vuoto: impossibile ricavare chi ha chiesto");
             return;
         };
 
@@ -211,25 +224,13 @@ impl Server {
                     self.fragment_send.remove(&session);
                 }
             } else {
-                eprintln!(
-                    "[WARN] handle_ack: counter già a 0 per session {}",
-                    session
-                );
             }
         } else {
-            eprintln!(
-                "[WARN] handle_ack: session {} non trovata in fragment_send. Ignoro.",
-                session
-            );
         }
     }
     fn handle_nack(&mut self, fragment: Nack, position: &u64, session: &u64) {
 
         if !self.fragment_send.contains_key(session) {
-            eprintln!(
-                "[WARN] handle_nack: session {} NON trovata in fragment_send. Esco.",
-                session
-            );
             return;
         }
 
@@ -239,19 +240,11 @@ impl Server {
 
         // 3. Se buffer vuoto, niente da ritrasmettere
         if buf_len == 0 {
-            eprintln!(
-                "[WARN] handle_nack: buffer vuoto per session {}. Esco.",
-                session
-            );
             return;
         }
 
         let nacked_idx = fragment.fragment_index as usize;
         if nacked_idx >= buf_len {
-            eprintln!(
-                "[WARN] handle_nack: fragment_index {} >= buf_len {} per session {}. Esco.",
-                nacked_idx, buf_len, session
-            );
             return;
         }
 
@@ -357,7 +350,6 @@ impl Server {
                 if w == false{
                     let risposta = Risposta::Text(TextServer::ServerTypeReq);
                     let mut rng = rand::thread_rng();
-                    let session: u64 = rng.gen_range(0..100);
                     self.send_response(last_node, risposta);
                 }
             }
@@ -378,8 +370,8 @@ impl Server {
         let next = packet.routing_header.hops[1];
         // Invia il pacchetto al prossimo nodo
         if let Some(sender) = self.packet_send.get_mut(&next) {
-            if let Err(e) = sender.send(packet) {
-                eprintln!("Errore nell'invio del pacchetto a {}: {:?}", next, e);
+            if let Err(_) = sender.send(packet) {
+
             }
         }
     }
@@ -427,7 +419,6 @@ impl Server {
         None
     }
     fn floading(&self) {
-        println!("server {} is starting a flooding", self.server_id);
         let flood_id = 0;
         let flood = Packet {
             routing_header: SourceRoutingHeader { hop_index: 1, hops: Vec::new() },
@@ -441,7 +432,6 @@ impl Server {
         for (id, neighbour) in self.packet_send.clone() {
             if id == self.server_id {} else {
                 neighbour.send(flood.clone()).unwrap();
-                println!("fload request mandata a {}", id)
             }
         }
     }
@@ -467,9 +457,7 @@ impl Server {
                             self.media_others.insert(id_client, v);
                         } else {}
                     }
-                    MediaServer::SendMedia(_) => {
-                        println!("non dovrei ricevre questo messaggio ")
-                    }
+                    MediaServer::SendMedia(_) => {}
                 }
             }
             ComandoText::Text(text) => {
@@ -482,9 +470,7 @@ impl Server {
                         let response = Risposta::Media(MediaServer::SendPath(self.get_list()));
                         self.send_response(id_client, response);
                     }
-                    _ => {
-                        println!("non dovrei ricevere questo messaggio ")
-                    }
+                    _ => {}
                 }
             }
             ComandoText::Chat(chat) => {
@@ -529,10 +515,10 @@ impl Server {
                                         let response = Risposta::Media(MediaServer::SendMedia(file));
                                         self.send_response(id_client, response);
                                     }
-                                    Err(err_msg) => {}
+                                    _ => {}
                                 }
                             }
-                            Err(e) => {}
+                            _ => {}
                         }
                     }
 
@@ -567,7 +553,7 @@ impl Server {
                     }
                 }
             }
-            ComandoText::ChatClient(req) => {}
+            ComandoText::ChatClient(_) => {}
         }
     }
     fn send_response(&mut self, id: NodeId, response: Risposta) {
@@ -576,15 +562,54 @@ impl Server {
         match response {
             Risposta::Text(text) => {
                 let dati = serialize(&text);
+                let total = dati.len();
+                let mut event: TextServerEvent;
+                match text{
+                    TextServer::ServerTypeReq => {
+                        event = TextServerEvent::SendingServerTypeReq(total as u64);
+                    }
+                    TextServer::ServerTypeText(_) => {
+                        event = TextServerEvent::SendingServerTypeText(total as u64);
+                    }
+                    TextServer::PathResolution => {
+                        event = TextServerEvent::AskingForPathRes(total as u64);
+                    }
+                    TextServer::SendFileList(_) => {
+                        event = TextServerEvent::SendingFileList(total as u64);
+                    }
+                    TextServer::PositionMedia(_) => {
+                        event = TextServerEvent::SendingPosition(total as u64);
+                    }
+                    TextServer::Text(_) => {
+                        event = TextServerEvent::SendingText(total as u64);
+                    }
+                }
+                let type_ = MyNodeType::TextServer;
+                let server_event = ServerEvent::TextPacketInfo(self.server_id, type_, event, session);
+                let _ = self.send_event.send(server_event);
                 self.send_data_fragments(id, dati, session);
             }
             Risposta::Media(media) => {
                 let dati = serialize(&media);
+                let total = dati.len();
+                let mut event: MediaServerEvent;
+                match media{
+                    MediaServer::ServerTypeMedia(_) => {
+                        event = MediaServerEvent::SendingServerTypeMedia(total as u64);
+                    }
+                    MediaServer::SendPath(_) => {
+                        event = MediaServerEvent::SendingPathRes(total as u64);
+                    }
+                    MediaServer::SendMedia(_) => {
+                        event = MediaServerEvent::SendingMedia(total as u64);
+                    }
+                }
+                let type_ = MyNodeType::MediaServer;
+                let server_event = ServerEvent::MediaPacketInfo(self.server_id, type_, event, session);
+                let _ = self.send_event.send(server_event);
                 self.send_data_fragments(id, dati, session);
             }
-            _ => {
-                println!("send_response: tipo di risposta non gestito");
-            }
+            _ => {}
         }
     }
     fn send_data_fragments(&mut self, id: NodeId, dati: Box<[( [u8; 128], u8)]>, session: u64) {
@@ -615,9 +640,7 @@ impl Server {
                 };
                 self.send_packet(p);
             }
-        } else {
-            println!("send_data fragment: Nessun percorso verso {}", id);
-        }
+        } else {}
     }
     pub fn load_text_paths_from_file(&mut self) -> io::Result<()> {
         let path_file = Path::new(&self.path);

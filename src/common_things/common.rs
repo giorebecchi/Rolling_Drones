@@ -69,6 +69,7 @@ pub enum ServerCommands{
 
 pub enum ServerEvent{
     Graph(NodeId, Graph<(NodeId, wg_2024::packet::NodeType), f64, petgraph::Directed>),
+    GraphMax(NodeId, Vec<(NodeId, wg_2024::packet::NodeType, Vec<NodeId>)>), // (id server, Vec<(id of the node, packet type of the node, node connections)>)
     TextPacketInfo(NodeId, MyNodeType, TextServerEvent, u64), //(id server, server_type (ChatServer, TextServer,...), type of message, session_id)
     MediaPacketInfo(NodeId, MyNodeType, MediaServerEvent, u64), //(id server, server_type (ChatServer, TextServer,...), type of message, session_id)
     ChatPacketInfo(NodeId, MyNodeType, ChatServerEvent, u64)  //(id server, server_type (ChatServer, TextServer,...), type of message, session_id)
