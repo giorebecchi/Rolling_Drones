@@ -1,5 +1,6 @@
 use std::collections::HashMap;
 use std::fs;
+use std::io::{BufRead, BufReader};
 use bevy::prelude::*;
 use bevy_egui::{egui, EguiContexts};
 use crate::gui::login_window::SimulationController;
@@ -15,6 +16,7 @@ impl Plugin for WebMediaPlugin {
         app
             .init_resource::<WebState>()
             .init_resource::<ImageState>()
+            .init_resource::<TextFileCache>()
             .add_systems(Update, (handle_clicks, window_format).run_if(in_state(AppState::InGame)));
     }
 }
@@ -38,6 +40,116 @@ struct ImageState {
     egui_textures: HashMap<NodeId, Option<(egui::TextureId, egui::Vec2)>>,
 }
 
+// Cache for text file content with pagination support
+#[derive(Resource)]
+struct TextFileCache {
+    // Stores lines of text for each window
+    file_lines: HashMap<NodeId, Vec<String>>,
+    // Current page for each window
+    current_page: HashMap<NodeId, usize>,
+    // Total line count for each window
+    total_lines: HashMap<NodeId, usize>,
+    // Lines per page
+    lines_per_page: usize,
+    // Page input field content for each window
+    page_input: HashMap<NodeId, String>,
+}
+
+impl Default for TextFileCache {
+    fn default() -> Self {
+        Self {
+            file_lines: HashMap::new(),
+            current_page: HashMap::new(),
+            total_lines: HashMap::new(),
+            lines_per_page: 50, // Adjustable based on performance needs
+            page_input: HashMap::new(),
+        }
+    }
+}
+
+impl TextFileCache {
+    fn new() -> Self {
+        Self {
+            file_lines: HashMap::new(),
+            current_page: HashMap::new(),
+            total_lines: HashMap::new(),
+            lines_per_page: 50, // Adjustable based on performance needs
+            page_input: HashMap::new(),
+        }
+    }
+
+    fn load_file(&mut self, window_id: NodeId, path: &str) -> Result<(), std::io::Error> {
+        let file = fs::File::open(path)?;
+        let reader = BufReader::new(file);
+        let lines: Vec<String> = reader.lines().collect::<Result<Vec<_>, _>>()?;
+
+        let total = lines.len();
+        self.file_lines.insert(window_id, lines);
+        self.total_lines.insert(window_id, total);
+        self.current_page.insert(window_id, 0);
+        self.page_input.insert(window_id, "1".to_string());
+
+        Ok(())
+    }
+
+    fn get_page_content(&self, window_id: &NodeId) -> Option<String> {
+        let lines = self.file_lines.get(window_id)?;
+        let page = self.current_page.get(window_id).copied().unwrap_or(0);
+
+        // Safety check for lines_per_page
+        if self.lines_per_page == 0 {
+            return Some(String::new());
+        }
+
+        let start = page.saturating_mul(self.lines_per_page);
+        let end = ((page + 1).saturating_mul(self.lines_per_page)).min(lines.len());
+
+        if start >= lines.len() {
+            return Some(String::new());
+        }
+
+        Some(lines[start..end].join("\n"))
+    }
+
+    fn get_total_pages(&self, window_id: &NodeId) -> usize {
+        let total = self.total_lines.get(window_id).copied().unwrap_or(0);
+
+        // Safety checks
+        if total == 0 || self.lines_per_page == 0 {
+            return 1; // At least one page even if empty
+        }
+
+        // Safe division with ceiling
+        total.saturating_add(self.lines_per_page - 1) / self.lines_per_page
+    }
+
+    fn next_page(&mut self, window_id: NodeId) {
+        let total_pages = self.get_total_pages(&window_id);
+        if let Some(page) = self.current_page.get_mut(&window_id) {
+            if *page + 1 < total_pages {
+                *page += 1;
+                // Update the page input field
+                self.page_input.insert(window_id, (*page + 1).to_string());
+            }
+        }
+    }
+
+    fn prev_page(&mut self, window_id: NodeId) {
+        if let Some(page) = self.current_page.get_mut(&window_id) {
+            *page = page.saturating_sub(1);
+            // Update the page input field
+            self.page_input.insert(window_id, (*page + 1).to_string());
+        }
+    }
+
+    fn clear(&mut self, window_id: NodeId) {
+        self.file_lines.remove(&window_id);
+        self.current_page.remove(&window_id);
+        self.total_lines.remove(&window_id);
+        self.page_input.remove(&window_id);
+    }
+}
+
 fn window_format(
     mut state: ResMut<ImageState>,
     asset_server: Res<AssetServer>,
@@ -45,7 +157,8 @@ fn window_format(
     mut sim: ResMut<SimulationController>,
     mut open_windows: ResMut<OpenWindows>,
     images: Res<Assets<Image>>,
-    mut web_state: ResMut<WebState>
+    mut web_state: ResMut<WebState>,
+    mut text_cache: ResMut<TextFileCache>,
 ) {
     let mut windows_to_close = Vec::new();
 
@@ -110,7 +223,7 @@ fn window_format(
 
             let mut should_close = false;
 
-            let mut ctx=contexts.ctx_mut().clone();
+            let mut ctx = contexts.ctx_mut().clone();
 
             window.show(&mut ctx, |ui| {
                 ui.heading(format!("Web Browser Client: {}", window_id));
@@ -159,16 +272,13 @@ fn window_format(
                 ui.separator();
                 ui.heading("Available Medias");
 
-
                 let scroll_area_id = ui.make_persistent_id(format!("media_scroll_area_{}", window_id));
-
 
                 if let Some(paths) = web_state.media_paths.get(&window_id).cloned() {
                     let height = (paths.len() as f32 * 24.0).min(200.0);
                     ui.push_id(scroll_area_id, |ui| {
                         egui::ScrollArea::vertical().max_height(height).show(ui, |ui| {
                             for (idx, media_path) in paths.iter().enumerate() {
-
                                 let media_button_id = ui.make_persistent_id(format!("media_button_{}_{}", window_id, idx));
                                 ui.push_id(media_button_id, |ui| {
                                     if ui.button(format!("{}", media_path)).clicked() {
@@ -186,16 +296,15 @@ fn window_format(
                                             state.egui_textures.insert(window_id, None);
                                             web_state.current_display_type.insert(window_id, MediaDisplayType::None);
                                             web_state.last_loaded_path.remove(&window_id);
+                                            text_cache.clear(window_id);
 
                                             web_state.received_medias.insert(window_id, media_path.clone());
 
                                             if media_path.ends_with(".txt") {
                                                 web_state.current_display_type.insert(window_id, MediaDisplayType::TextFile);
-
                                                 sim.get_text_file(window_id, selected_text_server, media_path.clone());
                                             } else {
                                                 web_state.current_display_type.insert(window_id, MediaDisplayType::Image);
-
                                                 sim.get_media_position(window_id, selected_text_server, media_path.clone());
                                             }
                                         } else {
@@ -257,12 +366,11 @@ fn window_format(
                                     let clear_button_id = ui.make_persistent_id(format!("clear_image_button_{}", window_id));
                                     ui.push_id(clear_button_id, |ui| {
                                         if ui.button("Clear Image").clicked() {
-                                            if let Some(Some(text))=state.handles.get(&window_id) {
+                                            if let Some(Some(text)) = state.handles.get(&window_id) {
                                                 contexts.remove_image(text);
                                             }
 
-
-                                            if let None=web_state.actual_media_path.get(&window_id){
+                                            if let None = web_state.actual_media_path.get(&window_id) {
                                                 println!("Error occured while clearing image");
                                             }
 
@@ -287,8 +395,21 @@ fn window_format(
                         },
                         MediaDisplayType::TextFile => {
                             if let Some(path_to_file) = web_state.actual_file_path.get(&window_id) {
-                                let text = fs::read_to_string(path_to_file);
-                                if let Ok(content) = text {
+                                // Load file into cache if not already loaded
+                                if !text_cache.file_lines.contains_key(&window_id) {
+                                    match text_cache.load_file(window_id, path_to_file) {
+                                        Ok(_) => {},
+                                        Err(e) => {
+                                            ui.label(format!("Error loading file: {}", e));
+                                            web_state.actual_file_path.remove(&window_id);
+                                            web_state.current_display_type.insert(window_id, MediaDisplayType::None);
+                                            return;
+                                        }
+                                    }
+                                }
+
+                                // Display current page content
+                                if let Some(content) = text_cache.get_page_content(&window_id) {
                                     let text_scroll_id = ui.make_persistent_id(format!("text_scroll_{}", window_id));
                                     ui.push_id(text_scroll_id, |ui| {
                                         egui::ScrollArea::vertical()
@@ -302,21 +423,74 @@ fn window_format(
                                             });
                                     });
 
+                                    // Pagination controls
+                                    ui.horizontal(|ui| {
+                                        let current_page = text_cache.current_page.get(&window_id).copied().unwrap_or(0);
+                                        let total_pages = text_cache.get_total_pages(&window_id);
+                                        let total_lines = text_cache.total_lines.get(&window_id).copied().unwrap_or(0);
+
+                                        ui.label(format!("Page {} of {} | Total lines: {}",
+                                                         current_page + 1, total_pages, total_lines));
+
+                                        ui.add_space(10.0);
+
+                                        let prev_button_id = ui.make_persistent_id(format!("prev_page_{}", window_id));
+                                        ui.push_id(prev_button_id, |ui| {
+                                            if ui.add_enabled(current_page > 0, egui::Button::new("◀ Previous")).clicked() {
+                                                text_cache.prev_page(window_id);
+                                            }
+                                        });
+
+                                        let next_button_id = ui.make_persistent_id(format!("next_page_{}", window_id));
+                                        ui.push_id(next_button_id, |ui| {
+                                            if ui.add_enabled(current_page + 1 < total_pages, egui::Button::new("Next ▶")).clicked() {
+                                                text_cache.next_page(window_id);
+                                            }
+                                        });
+
+                                        ui.add_space(10.0);
+
+                                        // Jump to page
+                                        ui.label("Go to page:");
+
+                                        // Get or initialize the page input for this window
+                                        let page_input = text_cache.page_input
+                                            .entry(window_id)
+                                            .or_insert_with(|| (current_page + 1).to_string());
+
+                                        let text_input_id = ui.make_persistent_id(format!("page_input_{}", window_id));
+                                        ui.push_id(text_input_id, |ui| {
+                                            ui.add(egui::TextEdit::singleline(page_input)
+                                                .desired_width(50.0));
+                                        });
+
+                                        let go_button_id = ui.make_persistent_id(format!("go_page_{}", window_id));
+                                        ui.push_id(go_button_id, |ui| {
+                                            if ui.button("Go").clicked() {
+                                                if let Some(input) = text_cache.page_input.get(&window_id) {
+                                                    if let Ok(page_num) = input.parse::<usize>() {
+                                                        if page_num > 0 && page_num <= total_pages {
+                                                            text_cache.current_page.insert(window_id, page_num - 1);
+                                                            // Update the input to reflect the new page
+                                                            text_cache.page_input.insert(window_id, page_num.to_string());
+                                                        }
+                                                    }
+                                                }
+                                            }
+                                        });
+                                    });
+
                                     let clear_text_id = ui.make_persistent_id(format!("clear_text_button_{}", window_id));
                                     ui.push_id(clear_text_id, |ui| {
                                         if ui.button("Clear Text").clicked() {
-                                            if let None=web_state.actual_file_path.get(&window_id){
-                                                println!("Error occured while clearing image");
+                                            if let None = web_state.actual_file_path.get(&window_id) {
+                                                println!("Error occured while clearing text file");
                                             }
                                             web_state.actual_file_path.remove(&window_id);
                                             web_state.current_display_type.insert(window_id, MediaDisplayType::None);
-
+                                            text_cache.clear(window_id);
                                         }
                                     });
-                                } else {
-                                    ui.label(format!("The path to text file: {} was incorrect", path_to_file));
-                                    web_state.actual_file_path.remove(&window_id);
-                                    web_state.current_display_type.insert(window_id, MediaDisplayType::None);
                                 }
                             } else {
                                 ui.label("Loading text file...");
@@ -353,6 +527,7 @@ fn window_format(
                 web_state.received_medias.remove(&window_id);
                 web_state.current_display_type.remove(&window_id);
                 web_state.last_loaded_path.remove(&window_id);
+                text_cache.clear(window_id);
             }
         }
     }
