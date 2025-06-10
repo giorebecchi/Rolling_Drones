@@ -387,7 +387,6 @@ impl WebBrowser {
                     if let Ok(message) = TextServer::reassemble_msg(fragments) {
                         match message {
                             TextServer::ServerTypeText(server_type) => {
-                                println!("server found is of type: {:?}", server_type);
 
                                 if server_type == ServerType::TextServer && !self.text_servers.contains(&src_id) {
                                     self.text_servers.push(src_id.clone());
