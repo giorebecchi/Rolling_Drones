@@ -304,7 +304,6 @@ impl Server {
         }
     }
     fn handle_flood_response(&mut self, mut packet: Packet) {
-        // Estrai il FloodResponse
         if let PacketType::FloodResponse(ref flood_response) = packet.pack_type {
             let path = &flood_response.path_trace;
             if path.is_empty() {
