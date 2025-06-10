@@ -366,7 +366,7 @@ fn simulation_commands_window(
                                 (sim_commands.selected_add_neighbor, sim_commands.selected_add_target) {
 
                                 sim.add_sender(to_id, from_id);
-                                sim.change_in_topology();
+                                sim.initiate_flood();
 
                                 if let Some(from_node) = nodes.0.iter_mut().find(|n| n.id == from_id) {
                                     if !from_node.connected_node_ids.contains(&to_id) {
@@ -454,10 +454,6 @@ fn simulation_commands_window(
                                 match would_break_connectivity(&nodes.0, &simulated) {
                                     Ok(_) => {
                                         sim.remove_sender(to_id, from_id);
-                                        sim.change_in_topology();
-
-
-
 
                                         if let Some(from_node) = nodes.0.iter_mut().find(|n| n.id == from_id) {
                                             from_node.connected_node_ids.retain(|&id| id != to_id);
