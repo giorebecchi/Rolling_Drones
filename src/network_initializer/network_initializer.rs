@@ -30,7 +30,7 @@ use crate::servers::Chat_max::Server as ChatMax;
 use crate::servers::Text_max::Server as TextMax;
 
 pub fn parse_config() -> Config {
-    let file_str = fs::read_to_string("assets/configurations/double_chain.toml").unwrap();
+    let file_str = fs::read_to_string("assets/configurations/chat_topology.toml").unwrap();
     toml::from_str(&file_str).unwrap()
 }
 pub fn start_simulation(
