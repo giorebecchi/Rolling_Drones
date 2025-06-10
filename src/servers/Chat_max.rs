@@ -260,45 +260,68 @@ impl Server {
             }
         }
     }
-    fn handle_flood_response(&mut self, packet: Packet) {
-        if let PacketType::FloodResponse(flood_response) = packet.pack_type {
-            let len = flood_response.path_trace.len();
+    fn handle_flood_response(&mut self, mut packet: Packet) {
+        // Estrai il FloodResponse
+        if let PacketType::FloodResponse(ref flood_response) = packet.pack_type {
+            let path = &flood_response.path_trace;
+            if path.is_empty() {
+                return;
+            }
+
+            // Se la flood non parte da noi, devo semplicemente inoltrarla
+            if path[0].0 != self.server_id {
+                // trovo la mia posizione nella traccia
+                if let Some(my_idx) = path.iter().position(|&(node, _)| node == self.server_id) {
+                    // se c'è un passo successivo, lo inoltro
+                    if let Some(&(next_node, _)) = path.get(my_idx + 1) {
+                        if let Some(chan) = self.packet_send.get(&next_node) {
+                            // rilancio lo stesso Packet, mantenendo routing_header originale
+                            let _ = chan.send(packet);
+                        }
+                    }
+                }
+                return;
+            }
+
+            // Altrimenti (path[0] == self.server_id) è una risposta ai nostri flood: la processiamo
+            let len = path.len();
             if len < 2 {
                 return;
             }
-            for i in 0..len {
-                let (current_node, current_type) = flood_response.path_trace[i];
-                let prev_node = if i > 0 { Some(flood_response.path_trace[i - 1].0) } else { None };
-                let next_node = if i < len - 1 { Some(flood_response.path_trace[i + 1].0) } else { None };
-                if let Some(k) = self.nodes_map.iter_mut().find(|(id, _, _)| *id == current_node) {
-                    if k.1 != current_type {
-                        k.1 = current_type;
-                    }
 
-                    if let Some(prev) = prev_node {
-                        if !k.2.contains(&prev) {
-                            k.2.push(prev);
+            // Aggiorno il grafo con tutti i salti nella path_trace
+            for i in 0..len {
+                let (node_id, node_type) = path[i];
+                let prev = if i > 0 { Some(path[i - 1].0) } else { None };
+                let next = if i + 1 < len { Some(path[i + 1].0) } else { None };
+
+                if let Some(entry) = self.nodes_map.iter_mut().find(|(id, _, _)| *id == node_id) {
+                    // aggiorno tipo se necessario
+                    if entry.1 != node_type {
+                        entry.1 = node_type;
+                    }
+                    // aggiorno vicinanze
+                    if let Some(p) = prev {
+                        if !entry.2.contains(&p) {
+                            entry.2.push(p);
                         }
                     }
-                    if let Some(next) = next_node {
-                        if !k.2.contains(&next) {
-                            k.2.push(next);
+                    if let Some(n) = next {
+                        if !entry.2.contains(&n) {
+                            entry.2.push(n);
                         }
                     }
                 } else {
-
-                    let mut connections = Vec::new();
-                    if let Some(prev) = prev_node {
-                        connections.push(prev);
-                    }
-                    if let Some(next) = next_node {
-                        connections.push(next);
-                    }
-                    self.nodes_map.push((current_node, current_type, connections));
+                    // nuovo nodo
+                    let mut conns = Vec::new();
+                    if let Some(p) = prev { conns.push(p); }
+                    if let Some(n) = next { conns.push(n); }
+                    self.nodes_map.push((node_id, node_type, conns));
                 }
             }
         }
     }
+
     fn remove_drone(&mut self, node_id: NodeId) {
         self.nodes_map.retain(|(id,_ , _)| *id != node_id);
         for (_,_, neighbors) in &mut self.nodes_map {
