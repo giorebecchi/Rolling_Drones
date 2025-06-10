@@ -1,4 +1,5 @@
 
+use crate::common_things::common::ServerEvent;
 use crossbeam_channel::{select_biased, unbounded, Sender};
 use std::collections::{HashMap, HashSet};
 use wg_2024::controller::{DroneCommand,DroneEvent};
@@ -10,7 +11,7 @@ use petgraph::graphmap::UnGraphMap;
 use wg_2024::packet::PacketType::{FloodRequest, MsgFragment};
 use crate::gui::login_window::{NodeType, SimulationController, SHARED_LOG};
 use crate::gui::shared_info_plugin::SHARED_STATE;
-use crate::common_things::common::{BackGroundFlood, ChatClientEvent, ChatEvent, ChatServerEvent, ClientType, CommandChat, ContentCommands, ContentRequest, ContentType, MediaServerEvent, RequestEvent, ServerCommands, ServerEvent, TextServerEvent, WebBrowserEvents};
+use crate::common_things::common::{BackGroundFlood, ChatClientEvent, ChatEvent, ChatServerEvent, ClientType, CommandChat, ContentCommands, ContentRequest, ContentType, MediaServerEvent, RequestEvent, ServerCommands, TextServerEvent, WebBrowserEvents};
 
 #[derive(Clone, Debug, PartialEq, Eq, Hash, Copy)]
 pub enum MyNodeType{
@@ -464,7 +465,8 @@ impl SimulationController {
             }
             ServerEvent::ChatPacketInfo(server_id, server_type, packet_info, session_id) => {
                 self.handle_chat_packet_info_server(server_id, server_type, packet_info, session_id);
-            }
+            },
+            ServerEvent::GraphMax(_, _) => todo!()
         }
     }
 

@@ -7,7 +7,7 @@ use bevy::render::render_resource::encase::private::RuntimeSizedArray;
 use wg_2024::network::{NodeId, SourceRoutingHeader};
 use wg_2024::packet::{Ack, FloodRequest, Fragment, Nack, NackType, NodeType, Packet, PacketType};
 use bevy::utils::HashSet;
-
+use crate::simulation_control::simulation_control::MyNodeType;
 
 pub struct Server{
     server_id: NodeId,
@@ -70,16 +70,17 @@ impl Server {
                         if let Ok(command) = sc_command {
                             match command {
                                 ServerCommands::SendTopologyGraph=>{
-                                   // self.send_topology_graph();
+                                   let _ = self.send_event.send(ServerEvent::GraphMax(self.server_id, self.nodes_map.clone()));
                                 },
                                 ServerCommands::AddSender(id, sender)=>{
-                                //todo
+                                    self.packet_send.insert(id, sender);
+                                    self.floading()
                                 },
                                 ServerCommands::RemoveSender(id)=>{
-                                //todo
+                                    self.remove_drone(id);
                                 },
                                 ServerCommands::TopologyChanged=>{
-                                //todo
+                                    self.floading();
                                 }
                             }
                         }
@@ -118,7 +119,6 @@ impl Server {
         let frag_idx = fragment.fragment_index as usize;
 
         if frag_idx >= total_frags {
-            eprintln!("[WARN] Frammento idx={} fuori range per session {}", frag_idx, session);
             return;
         }
 
@@ -127,7 +127,6 @@ impl Server {
         if let Some(data_struct) = self.fragment_recv.get_mut(session) {
             let session_key = (data_struct.who_ask, *session);
             if self.processed_sessions.contains(&session_key) {
-                println!("Duplicato per {:?}, già processato", session_key);
                 return;
             }
 
@@ -161,7 +160,6 @@ impl Server {
         let who_ask = if let Some(first_hop) = packet.routing_header.hops.get(0).cloned() {
             first_hop
         } else {
-            eprintln!("[WARN] routing_header.hops vuoto: impossibile ricavare chi ha chiesto");
             return;
         };
         let session_key = (who_ask, *session);
@@ -191,25 +189,11 @@ impl Server {
                     drop(data_struct);
                     self.fragment_send.remove(&session);
                 }
-            } else {
-                eprintln!(
-                    "[WARN] handle_ack: counter già a 0 per session {}",
-                    session
-                );
-            }
-        } else {
-            eprintln!(
-                "[WARN] handle_ack: session {} non trovata in fragment_send. Ignoro.",
-                session
-            );
-        }
+            } else {}
+        } else {}
     }
     fn handle_nack(&mut self, fragment: Nack, position: &u64, session: &u64) {
         if !self.fragment_send.contains_key(session) {
-            eprintln!(
-                "[WARN] handle_nack: session {} NON trovata in fragment_send. Esco.",
-                session
-            );
             return;
         }
         let data_struct = self.fragment_send.get(session).unwrap();
@@ -217,19 +201,11 @@ impl Server {
         let buf_len = data_struct.dati.len();
 
         if buf_len == 0 {
-            eprintln!(
-                "[WARN] handle_nack: buffer vuoto per session {}. Esco.",
-                session
-            );
             return;
         }
 
         let nacked_idx = fragment.fragment_index as usize;
         if nacked_idx >= buf_len {
-            eprintln!(
-                "[WARN] handle_nack: fragment_index {} >= buf_len {} per session {}. Esco.",
-                nacked_idx, buf_len, session
-            );
             return;
         }
 
@@ -338,7 +314,6 @@ impl Server {
         // Invia il pacchetto al prossimo nodo
         if let Some(sender) = self.packet_send.get_mut(&next) {
             if let Err(e) = sender.send(packet) {
-                eprintln!("Errore nell'invio del pacchetto a {}: {:?}", next, e);
             }
         }
     }
@@ -461,9 +436,7 @@ impl Server {
                     let session_id = self.get_session();
                     self.send_response(id_client, response, &session_id);
                 }
-                _ => {
-                    println!("non dovrei ricevere questo messaggio")
-                }
+                _ => {}
             },
             ComandoChat::WebBrowser(req) => {}
         }
@@ -482,6 +455,35 @@ impl Server {
                 let dati = serialize(&chat);
                 let total = dati.len();
                 let total_usize = dati.len();
+                let event :Option<ChatServerEvent>;
+                match chat{
+                    ChatResponse::ServerTypeChat(_) => {
+                        event = Some(ChatServerEvent::SendingServerTypeChat(total as u64));
+                    }
+                    ChatResponse::RegisterClient(_) => {
+                        event = Some(ChatServerEvent::ClientRegistration(total as u64));
+                    }
+                    ChatResponse::RegisteredClients(_) => {
+                        event = Some(ChatServerEvent::SendingClientList(total as u64));
+                    }
+                    ChatResponse::SendMessage(_) =>{
+                        event = None;
+                    }
+                    ChatResponse::EndChat(_) => {
+                        event = Some(ChatServerEvent::ClientElimination(total as u64));
+                    }
+                    ChatResponse::ForwardMessage(_) => {
+                        event = Some(ChatServerEvent::ForwardingMessage(total as u64));
+                    }
+                }
+                match event {
+                    None => {}
+                    Some(e) => {
+                        let type_ = MyNodeType::ChatServer;
+                        let server_event = ServerEvent::ChatPacketInfo(self.server_id, type_, e, *session);
+                        let _ = self.send_event.send(server_event);
+                    }
+                }
                 let d_to_send = Data {
                     counter: total as u64,
                     total_expected: total_usize,
@@ -490,9 +492,7 @@ impl Server {
                 };
                 self.fragment_send.insert(*session, d_to_send);
                 match self.routing(id) {
-                    None => {
-                        println!("send_response: nessun percorso verso {}", id);
-                    }
+                    None => {}
                     Some(root) => {
                         let mut i = 0;
                         for fragment in self.fragment_send[session].dati.clone() {
@@ -517,9 +517,7 @@ impl Server {
                     }
                 }
             }
-            _ => {
-                println!("send_response: tipo di risposta non gestito");
-            }
+            _ => {}
         }
     }
     fn get_session(&mut self) -> u64 {
