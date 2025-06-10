@@ -7,6 +7,7 @@ use wg_2024::drone::{Drone};
 use wg_2024::network::{NodeId};
 use wg_2024::packet::{Ack, Fragment, Packet, PacketType};
 use petgraph::Graph;
+use petgraph::graph::NodeIndex;
 use petgraph::graphmap::UnGraphMap;
 use wg_2024::packet::PacketType::{FloodRequest, MsgFragment};
 use crate::gui::login_window::{NodeType, SimulationController, SHARED_LOG};
@@ -466,7 +467,9 @@ impl SimulationController {
             ServerEvent::ChatPacketInfo(server_id, server_type, packet_info, session_id) => {
                 self.handle_chat_packet_info_server(server_id, server_type, packet_info, session_id);
             },
-            ServerEvent::GraphMax(_, _) => todo!()
+            ServerEvent::GraphMax(server_id, graph) => {
+                self.handle_server_graph_max(server_id, graph);
+            }
         }
     }
 
@@ -475,6 +478,33 @@ impl SimulationController {
             state.server_graph.insert(id, graph);
             state.is_updated = true;
         }
+    }
+    fn handle_server_graph_max(&self, id: NodeId, nodes_data:Vec<(NodeId, wg_2024::packet::NodeType, Vec<NodeId>)>){
+        let mut graph = Graph::<(NodeId, wg_2024::packet::NodeType), f64, petgraph::Directed>::new();
+
+        let mut node_map: HashMap<NodeId, NodeIndex> = HashMap::new();
+
+
+        for (node_id, node_type, _) in &nodes_data {
+            let node_index = graph.add_node((*node_id, node_type.clone()));
+            node_map.insert(*node_id, node_index);
+        }
+
+
+        for (node_id, _, neighbors) in &nodes_data {
+            let from_index = node_map[node_id];
+
+            for neighbor_id in neighbors {
+                if let Some(&to_index) = node_map.get(neighbor_id) {
+                    graph.add_edge(from_index, to_index, 1.0);
+                }
+            }
+        }
+        if let Ok(mut state) = SHARED_LOG.write() {
+            state.server_graph.insert(id, graph);
+            state.is_updated = true;
+        }
+
     }
 
     fn handle_text_packet_info(&self, server_id: NodeId, server_type: MyNodeType, packet_info: TextServerEvent, session_id: u64) {
