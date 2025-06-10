@@ -1,5 +1,5 @@
 use std::collections::{HashMap, HashSet};
-use std::sync::{Mutex, RwLock};
+use std::sync::RwLock;
 use bevy::log::LogPlugin;
 use bevy::prelude::*;
 use bevy::winit::WinitSettings;
@@ -13,7 +13,6 @@ use crate::gui::butterfly::spawn_butterfly;
 use crate::simulation_control::simulation_control::*;
 use wg_2024::controller::{DroneCommand, DroneEvent};
 use wg_2024::packet::{Ack, FloodRequest, FloodResponse, Fragment, Nack, Packet};
-use std::fmt::Display;
 use crate::common_things::common::{BackGroundFlood, ChatClientEvent, ClientType, CommandChat, ContentCommands, WebBrowserEvents, ServerCommands, ServerEvent};
 use bevy_framepace::{FramepacePlugin, FramepaceSettings, Limiter};
 use std::sync::{Arc};
@@ -28,48 +27,6 @@ use crate::gui::advanced_logs_window::AdvancedLogsPlugin;
 use crate::gui::simulation_commands::SimulationCommandsPlugin;
 use crate::network_initializer::network_initializer::start_simulation;
 
-#[derive(Component)]
-struct InputText;
-#[derive(Resource, Default)]
-struct UiCommands{
-    show_crash_window: bool,
-    show_add_sender_window: bool,
-    show_remove_sender_window: bool,
-    show_set_pdr_window: bool,
-    show_spawn_new_drone: bool,
-    crash_drone: String,
-    target_sender: String,
-    sender_neighbours: String,
-    target_remove: String,
-    remove_neighbours: String,
-    pdr: String,
-    pdr_drone: String,
-    new_drone_id: String,
-    new_drone_links: String,
-    show_client_windows: HashMap<NodeId, bool>
-}
-#[derive(Default)]
-enum DroneBrand{
-    #[default]
-    LockHeedRustin,
-    BagelBomber,
-    FungiDrone,
-    KrustyC,
-    SkyLinkDrone,
-    LeDroneJames,
-    RustezeDrone,
-    Rustafarian,
-    RustDrone,
-    RustBusterDrone
-}
-#[derive(Default)]
-pub struct SharedSimState{
-    pub log: String
-}
-#[derive(Resource,Default)]
-pub struct SimState{
-    pub state: Arc<Mutex<SharedSimState>>
-}
 #[derive(Resource, Default, Debug)]
 pub struct NodeEntities(pub Vec<Entity>);
 
@@ -96,14 +53,9 @@ pub struct SimulationController {
     pub text_server: HashMap<NodeId, Sender<ServerCommands>>,
     pub chat_server: HashMap<NodeId, Sender<ServerCommands>>,
     pub media_server: HashMap<NodeId, Sender<ServerCommands>>,
-    pub seen_floods: HashSet<(NodeId,u64,NodeId)>,
-    pub client_list: HashMap<(NodeId, NodeId), Vec<NodeId>>,
     pub chat_event: Receiver<ChatClientEvent>,
     pub web_event : Receiver<WebBrowserEvents>,
     pub server_event: Receiver<ServerEvent>,
-    pub messages: HashMap<(NodeId,NodeId),Vec<String>>,
-    pub incoming_message: HashMap<(NodeId,NodeId,NodeId), Vec<String>>,
-    pub register_success: HashMap<(NodeId,NodeId),bool>,
     pub background_flooding: HashMap<NodeId, Sender<BackGroundFlood>>,
     pub chat_active: bool,
     pub web_active: bool,
@@ -135,7 +87,6 @@ pub struct NodesConfig(pub Vec<NodeConfig>);
 
 
 pub fn main() {
-    let shared_state=Arc::new(Mutex::new(SharedSimState::default()));
     App::new()
         .insert_resource(WinitSettings::desktop_app())
         .add_plugins(DefaultPlugins.set(LogPlugin {
@@ -156,15 +107,11 @@ pub fn main() {
         .init_resource::<OccupiedScreenSpace>()
         .init_resource::<UserConfig>()
         .init_resource::<NodesConfig>()
-        .init_resource::<UiCommands>()
         .init_resource::<SimWindows>()
         .init_resource::<SimulationController>()
         .init_resource::<SimLog>()
         .init_resource::<DisplayableLog>()
         .init_resource::<NodeEntities>()
-        .insert_resource(SimState{
-            state: shared_state.clone(),
-        })
         .init_state::<AppState>()
         .add_systems(Update, (ui_settings,sync_log))
         .add_systems(Startup, setup_camera)
@@ -186,9 +133,7 @@ pub enum AppState {
 #[derive(Default, Resource)]
 struct OccupiedScreenSpace {
     left: f32,
-    top: f32,
-    right: f32,
-    bottom: f32,
+    right: f32
 }
 
 #[derive(Resource,Default,Debug,Clone)]
@@ -404,7 +349,7 @@ pub fn draw_connections(
 fn ui_settings(
     mut contexts: EguiContexts,
     mut occupied_screen_space: ResMut<OccupiedScreenSpace>,
-    mut nodes : ResMut<NodesConfig>,
+    nodes : ResMut<NodesConfig>,
     mut topology : ResMut<UserConfig>,
     sim_log: Res<DisplayableLog>,
     mut sim_windows: ResMut<SimWindows>,
@@ -516,15 +461,6 @@ fn ui_settings(
 
             panel.response.rect.width()
         };
-    }
-}
-fn parse_id(id: String)->NodeId{
-    match id.parse::<u8>(){
-        Ok(node_id)=>node_id,
-        Err(_)=>{
-            eprintln!("Error occured while parsing");
-            27
-        }
     }
 }
 #[derive(Resource,Default)]

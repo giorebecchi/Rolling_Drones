@@ -1,12 +1,9 @@
-use std::fmt::{Display, Formatter};
 use crossbeam_channel::Sender;
 use petgraph::Graph;
 use petgraph::prelude::UnGraphMap;
 use serde::{Deserialize, Serialize};
 use wg_2024::network::NodeId;
 use wg_2024::packet::Packet;
-use crate::gui::login_window::NodeType;
-use crate::servers::Text_max::Server;
 use crate::simulation_control::simulation_control::MyNodeType;
 
 //comandi sim_control
@@ -57,8 +54,7 @@ pub enum RequestEvent{
 pub enum ServerCommands{
     SendTopologyGraph,
     AddSender(NodeId, Sender<Packet>),
-    RemoveSender(NodeId),
-    TopologyChanged
+    RemoveSender(NodeId)
 }
 
 //pub enum ServerEvent{

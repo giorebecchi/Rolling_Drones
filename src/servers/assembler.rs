@@ -1,6 +1,5 @@
-use std::fs;
-use serde::{Serialize, Deserialize};
-use wg_2024::packet::{Fragment, Packet, PacketType, FRAGMENT_DSIZE};
+use serde::Serialize;
+use wg_2024::packet::{Fragment, Packet, FRAGMENT_DSIZE};
 use std::error::Error;
 use serde::de::DeserializeOwned;
 use wg_2024::network::SourceRoutingHeader;

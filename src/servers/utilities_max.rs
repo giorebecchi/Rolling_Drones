@@ -1,8 +1,6 @@
 use std::cmp::Ordering;
 use std::fs;
 use std::path::Path;
-use bevy::log::error;
-use bincode;
 use wg_2024::network::{NodeId, SourceRoutingHeader};
 use wg_2024::packet::{Ack, Packet, PacketType};
 
@@ -10,7 +8,6 @@ use wg_2024::packet::{Ack, Packet, PacketType};
 
 
 use serde::{Deserialize, Serialize};
-use serde::de::Error;
 use crate::common_things::common::{ChatRequest, ChatResponse, MediaServer, TextServer, WebBrowserCommands};
 
 

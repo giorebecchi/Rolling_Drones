@@ -233,7 +233,7 @@ fn spawn_drones(
             .collect::<HashMap<_, _>>();
 
         thread::spawn(move || {
-            let mut drone = create_drone(
+            let drone = create_drone(
                 cfg_drone.id,
                 node_event_send_clone,
                 controller_drone_recv,
@@ -625,14 +625,9 @@ fn create_simulation_controller(
         text_server: simulation_controller.text_server.clone(),
         media_server: simulation_controller.media_server.clone(),
         chat_server: simulation_controller.chat_server.clone(),
-        seen_floods: HashSet::new(),
-        client_list: HashMap::new(),
         chat_event: chat_event_recv,
         web_event: web_event_recv,
         server_event: server_event_recv,
-        incoming_message: HashMap::new(),
-        messages: HashMap::new(),
-        register_success: HashMap::new(),
         background_flooding: simulation_controller.background_flooding.clone(),
         chat_active,
         web_active

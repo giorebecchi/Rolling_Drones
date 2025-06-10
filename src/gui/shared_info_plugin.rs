@@ -145,7 +145,7 @@ fn sync_backend_to_frontend(
     }
 }
 fn evaluate_state(
-    mut seen_clients: ResMut<SeenClients>,
+    seen_clients: ResMut<SeenClients>,
     mut next_state: ResMut<NextState<AppState>>
 ){
 

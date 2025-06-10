@@ -13,7 +13,6 @@ use wg_2024::network::{NodeId, SourceRoutingHeader};
 use wg_2024::packet::{Ack, FloodRequest, Fragment, Nack, NackType, NodeType, Packet, PacketType};
 use bevy::utils::HashSet;
 use std::io::{Read};
-use infer;
 use crate::simulation_control::simulation_control::MyNodeType;
 
 pub struct Server{
@@ -99,9 +98,6 @@ impl Server {
                                 },
                                 ServerCommands::RemoveSender(id)=>{
                                     self.remove_drone(id);
-                                },
-                                ServerCommands::TopologyChanged=>{
-                                    self.floading();
                                 }
                             }
                         }
@@ -303,7 +299,7 @@ impl Server {
             }
         }
     }
-    fn handle_flood_response(&mut self, mut packet: Packet) {
+    fn handle_flood_response(&mut self, packet: Packet) {
         if let PacketType::FloodResponse(ref flood_response) = packet.pack_type {
             let path = &flood_response.path_trace;
             if path.is_empty() {
@@ -574,7 +570,7 @@ impl Server {
             Risposta::Text(text) => {
                 let dati = serialize(&text);
                 let total = dati.len();
-                let mut event: TextServerEvent;
+                let event: TextServerEvent;
                 match text{
                     TextServer::ServerTypeReq => {
                         event = TextServerEvent::SendingServerTypeReq(total as u64);
@@ -603,7 +599,7 @@ impl Server {
             Risposta::Media(media) => {
                 let dati = serialize(&media);
                 let total = dati.len();
-                let mut event: MediaServerEvent;
+                let event: MediaServerEvent;
                 match media{
                     MediaServer::ServerTypeMedia(_) => {
                         event = MediaServerEvent::SendingServerTypeMedia(total as u64);
@@ -636,7 +632,7 @@ impl Server {
         self.fragment_send.insert(session, d_to_send);
 
         if let Some(root) = self.routing(id) {
-            for (i, fragment) in self.fragment_send[&session].dati.clone().into_iter().enumerate() {
+            for (i, fragment) in self.fragment_send[&session].dati.clone().iter().enumerate() {
                 let routing = SourceRoutingHeader { hop_index: 1, hops: root.clone() };
                 let f = Fragment {
                     fragment_index: i as u64,

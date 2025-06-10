@@ -3,7 +3,6 @@ use crate::common_things::common::ServerEvent;
 use crossbeam_channel::{select_biased, unbounded, Sender};
 use std::collections::{HashMap, HashSet};
 use wg_2024::controller::{DroneCommand,DroneEvent};
-use wg_2024::drone::{Drone};
 use wg_2024::network::{NodeId};
 use wg_2024::packet::{Ack, Fragment, Packet, PacketType};
 use petgraph::Graph;
@@ -41,14 +40,9 @@ impl Default for SimulationController{
             text_server: HashMap::new(),
             media_server: HashMap::new(),
             chat_server: HashMap::new(),
-            seen_floods: HashSet::new(),
-            client_list: HashMap::new(),
             chat_event: chat_recv,
             web_event: web_recv,
             server_event: server_recv,
-            messages: HashMap::new(),
-            incoming_message: HashMap::new(),
-            register_success : HashMap::new(),
             background_flooding: HashMap::new(),
             chat_active: true,
             web_active: true
@@ -815,11 +809,7 @@ impl SimulationController {
 
 
 
-    pub fn crash_all(&mut self) {
-        for (_, sender) in self.drones.iter() {
-            sender.send(DroneCommand::Crash).unwrap();
-        }
-    }
+
     pub fn crash(&mut self, id: NodeId) {
         let nghb = self.neighbours.get(&id).unwrap();
         for neighbour in nghb.iter(){
@@ -895,22 +885,7 @@ impl SimulationController {
         //(full duplex)
         self.remove_sender_to_node(nghb_id, dst_id);
     }
-    fn ack(&mut self, mut packet: Packet) {
-        let next_hop=packet.routing_header.hops[packet.routing_header.hop_index +1];
-        if let Some(sender) = self.packet_channel.get(&next_hop) {
-            packet.routing_header.hop_index+=1;
-            sender.send(packet).unwrap();
-        }else{
-            println!("No sender found for hop {}", next_hop);
-        }
-    }
-    fn msg_fragment(&mut self, mut packet: Packet){
-        let next_hop=packet.routing_header.hops[packet.routing_header.hop_index+1];
-        if let Some(sender) = self.packet_channel.get(&next_hop) {
-            packet.routing_header.hop_index+=1;
-            sender.send(packet).unwrap();
-        }
-    }
+
     pub fn initiate_flood(&self){
         for (_, sender) in self.background_flooding.iter(){
             sender.send(BackGroundFlood::Start).unwrap();
@@ -922,9 +897,7 @@ impl SimulationController {
     pub fn register_client(&mut self, client_id: NodeId, server_id: NodeId){
         self.client.get(&client_id).unwrap().send(CommandChat::RegisterClient(server_id)).unwrap();
     }
-    pub fn get_client_list(&mut self, client_id: NodeId, server_id: NodeId){
-        self.client.get(&client_id).unwrap().send(CommandChat::GetListClients(server_id)).unwrap();
-    }
+
     pub fn get_chat_servers(&self){
         for (_,sender) in self.client.iter(){
             sender.send(CommandChat::SearchChatServers).unwrap();
@@ -955,18 +928,7 @@ impl SimulationController {
             sender.send(ContentCommands::GetMedia(media_server, media_path)).unwrap();
         }
     }
-    pub fn change_in_topology(&self){
-        for (_, sender) in self.client.iter(){
-            sender.send(CommandChat::TopologyChanged).unwrap();
-        }
-        for (_, sender) in self.web_client.iter(){
-            sender.send(ContentCommands::TopologyChanged).unwrap();
-        }
-        for (_, sender) in self.text_server.iter().chain(self.media_server.iter()).chain(self.chat_server.iter()){
-            sender.send(ServerCommands::TopologyChanged).unwrap();
-        }
 
-    }
 
 }
 enum AnySender {

@@ -67,58 +67,6 @@ fn has_path(graph: &HashMap<NodeId, Vec<NodeId>>, source: NodeId, target: NodeId
     false
 }
 
-fn all_can_reach_at_least_one(
-    graph: &HashMap<NodeId, Vec<NodeId>>,
-    nodes: &[NodeConfig],
-    from_type: NodeType,
-    to_type: NodeType
-) -> bool {
-    let from_nodes: Vec<NodeId> = nodes.iter()
-        .filter(|n| n.node_type == from_type)
-        .map(|n| n.id)
-        .collect();
-
-    let to_nodes: Vec<NodeId> = nodes.iter()
-        .filter(|n| n.node_type == to_type)
-        .map(|n| n.id)
-        .collect();
-
-    for from_id in from_nodes {
-        let mut can_reach_any = false;
-        for &to_id in &to_nodes {
-            if has_path(graph, from_id, to_id) {
-                can_reach_any = true;
-                break;
-            }
-        }
-        if !can_reach_any {
-            return false;
-        }
-    }
-
-    true
-}
-
-fn can_reach_all(
-    graph: &HashMap<NodeId, Vec<NodeId>>,
-    nodes: &[NodeConfig],
-    from_id: NodeId,
-    to_type: NodeType
-) -> bool {
-    let to_nodes: Vec<NodeId> = nodes.iter()
-        .filter(|n| n.node_type == to_type)
-        .map(|n| n.id)
-        .collect();
-
-    for to_id in to_nodes {
-        if !has_path(graph, from_id, to_id) {
-            return false;
-        }
-    }
-
-    true
-}
-
 fn validate_chat_connectivity(nodes: &[NodeConfig]) -> Result<(), String> {
     let graph = build_adjacency_list(nodes);
 
@@ -211,7 +159,7 @@ where
     simulated_nodes
 }
 
-fn would_break_connectivity(nodes: &[NodeConfig], simulated_nodes: &[NodeConfig]) -> Result<(), String> {
+fn would_break_connectivity(simulated_nodes: &[NodeConfig]) -> Result<(), String> {
     validate_chat_connectivity(&simulated_nodes)?;
     validate_web_media_connectivity(&simulated_nodes)?;
     Ok(())
@@ -277,7 +225,7 @@ fn simulation_commands_window(
                                     }
                                 });
 
-                                match would_break_connectivity(&nodes.0, &simulated) {
+                                match would_break_connectivity(&simulated) {
                                     Ok(_) => {
                                         sim.crash(id);
                                         if let Some(index) = nodes.0.iter().position(|node| node.id == id) {
@@ -366,7 +314,7 @@ fn simulation_commands_window(
                                 (sim_commands.selected_add_neighbor, sim_commands.selected_add_target) {
 
                                 sim.add_sender(to_id, from_id);
-                                sim.change_in_topology();
+                                sim.initiate_flood();
 
                                 if let Some(from_node) = nodes.0.iter_mut().find(|n| n.id == from_id) {
                                     if !from_node.connected_node_ids.contains(&to_id) {
@@ -451,13 +399,9 @@ fn simulation_commands_window(
                                     }
                                 });
 
-                                match would_break_connectivity(&nodes.0, &simulated) {
+                                match would_break_connectivity(&simulated) {
                                     Ok(_) => {
                                         sim.remove_sender(to_id, from_id);
-                                        sim.change_in_topology();
-
-
-
 
                                         if let Some(from_node) = nodes.0.iter_mut().find(|n| n.id == from_id) {
                                             from_node.connected_node_ids.retain(|&id| id != to_id);

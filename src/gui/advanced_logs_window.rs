@@ -306,7 +306,7 @@ fn log_window(
 
                                     ui.indent(format!("route_details_{}", idx), |ui| {
                                         ui.collapsing("Show node details", |ui| {
-                                            for (i, &node_id) in route.iter().enumerate() {
+                                            for &node_id in route.iter() {
                                                 if let Some(node_config) = nodes.0.iter().find(|n| n.id == node_id) {
                                                     let pdr = get_node_pdr(node_config);
                                                     let success_rate = 1.0 - pdr;
@@ -430,7 +430,6 @@ fn log_window(
 #[derive(Resource, Default)]
 struct LogInfo {
     selected_node: Option<(NodeId, NodeType)>,
-    drop_rate: HashMap<NodeId, (u64, usize)>,
     show_graph: bool,
     show_missed_connections: bool,
     show_incorrect_connections: bool,
@@ -543,24 +542,6 @@ fn render_graph_visualization_with_errors(
     }
 }
 
-fn render_graph_visualization_with_missed(
-    painter: &egui::Painter,
-    rect: &egui::Rect,
-    all_nodes: Vec<NodeId>,
-    connections: Vec<(NodeId, NodeId)>,
-    missed_connections: Vec<(NodeId, NodeId)>
-) {
-    render_graph_visualization_with_errors(painter, rect, all_nodes, connections, missed_connections, vec![])
-}
-
-fn render_graph_visualization(
-    painter: &egui::Painter,
-    rect: &egui::Rect,
-    all_nodes: Vec<NodeId>,
-    connections: Vec<(NodeId, NodeId)>
-) {
-    render_graph_visualization_with_errors(painter, rect, all_nodes, connections, vec![], vec![])
-}
 
 fn get_node_pdr(node: &NodeConfig) -> f32 {
     node.pdr
