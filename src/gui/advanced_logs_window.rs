@@ -156,13 +156,6 @@ fn log_window(
                         });
 
 
-                        if !incorrect_connections.is_empty() && log_info.show_incorrect_connections {
-                            ui.collapsing("Incorrect connections details", |ui| {
-                                for (source, target) in &incorrect_connections {
-                                    ui.label(format!("  • Connection between {} and {} doesn't exist", source, target));
-                                }
-                            });
-                        }
 
                         let graph_response = ui.allocate_rect(
                             ui.available_rect_before_wrap().shrink(20.0),
