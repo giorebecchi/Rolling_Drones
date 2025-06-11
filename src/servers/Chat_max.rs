@@ -5,17 +5,17 @@ use crossbeam_channel::{select_biased, Receiver, Sender};
 use std::collections::{BinaryHeap, HashMap};
 use bevy::render::render_resource::encase::private::RuntimeSizedArray;
 use wg_2024::network::{NodeId, SourceRoutingHeader};
-use wg_2024::packet::{Ack, FloodRequest, Fragment, Nack, NackType, NodeType, Packet, PacketType};
+use wg_2024::packet::{Ack, FloodRequest, FloodResponse, Fragment, Nack, NackType, NodeType, Packet, PacketType};
 use bevy::utils::HashSet;
 use crate::simulation_control::simulation_control::MyNodeType;
 
-pub struct Server{
+pub struct Server {
     server_id: NodeId,
     server_type: ServerType,
     next_session_id: u64,
     nodes_map: Vec<(NodeId, NodeType, Vec<NodeId>)>,
     processed_sessions: HashSet<(NodeId, u64)>,
-    fragment_recv: HashMap<u64, Data>,
+    fragment_recv: HashMap<(NodeId, u64), Data>,
     fragment_send: HashMap<u64, Data>,
     packet_recv: Receiver<Packet>,
     pub packet_send: HashMap<NodeId, Sender<Packet>>,
@@ -23,7 +23,7 @@ pub struct Server{
     registered_clients: Vec<NodeId>,
     rcv_flood: Receiver<BackGroundFlood>,
     rcv_command: Receiver<ServerCommands>,
-    send_event: Sender<ServerEvent>
+    send_event: Sender<ServerEvent>,
 }
 impl Server {
     pub fn new(id: NodeId, packet_recv: Receiver<Packet>, packet_send: HashMap<NodeId, Sender<Packet>>, rcv_flood: Receiver<BackGroundFlood>, rcv_command: Receiver<ServerCommands>, send_event: Sender<ServerEvent>) -> Self {
@@ -46,7 +46,7 @@ impl Server {
             registered_clients: Vec::new(),
             rcv_flood,
             rcv_command,
-            send_event
+            send_event,
         }
     }
     pub fn run(&mut self) {
@@ -121,12 +121,23 @@ impl Server {
 
         let data_chunk = fragment.data;
         let length_byte = fragment.length;
-        if let Some(data_struct) = self.fragment_recv.get_mut(session) {
-            let session_key = (data_struct.who_ask, *session);
-            if self.processed_sessions.contains(&session_key) {
-                return;
-            }
 
+        let who_ask = if let Some(first_hop) = packet.routing_header.hops.get(0).cloned() {
+            first_hop
+        } else {
+            return;
+        };
+
+        let session_key = (who_ask, *session);
+
+        // Se ricevo di nuovo la stessa sessione già processata, forzo il reset per garantire sempre risposta
+        if self.processed_sessions.contains(&session_key) {
+            self.processed_sessions.remove(&session_key);
+            self.fragment_recv.remove(&session_key);
+        }
+
+        // Gestione dei frammenti
+        if let Some(data_struct) = self.fragment_recv.get_mut(&session_key) {
             if data_struct.dati.len() != total_frags {
                 let mut new_buf = vec![([0u8; 128], 0u8); total_frags];
                 for (i, val) in data_struct.dati.iter().enumerate().take(total_frags) {
@@ -140,42 +151,34 @@ impl Server {
                     .count() as u64;
             }
 
-            // Se slot vuoto, inserisci
-            if data_struct.dati[frag_idx].1 == 0 {
+            let already_present = data_struct.dati[frag_idx].1 != 0;
+            if !already_present {
                 data_struct.dati[frag_idx] = (data_chunk, length_byte);
                 data_struct.counter += 1;
-            } else {
-                return;
             }
-            if data_struct.counter == data_struct.total_expected as u64 {
+
+            if data_struct.counter >= data_struct.total_expected as u64 {
                 self.processed_sessions.insert(session_key);
-                self.handle_command(session);
-                self.fragment_recv.remove(session);
+                self.handle_command(session_key);
+                self.fragment_recv.remove(&session_key);
             }
-            return;
-        }
-        let who_ask = if let Some(first_hop) = packet.routing_header.hops.get(0).cloned() {
-            first_hop
         } else {
-            return;
-        };
-        let session_key = (who_ask, *session);
-        if self.processed_sessions.contains(&session_key) {
-            return;
-        }
-        let mut buf = vec![([0u8; 128], 0u8); total_frags];
-        buf[frag_idx] = (data_chunk, length_byte);
-        let data = Data {
-            dati: buf.into_boxed_slice(),
-            counter: 1,
-            total_expected: total_frags,
-            who_ask,
-        };
-        self.fragment_recv.insert(*session, data);
-        if total_frags == 1 {
-            self.processed_sessions.insert(session_key);
-            self.handle_command(session);
-            self.fragment_recv.remove(session);
+            // Primo frammento ricevuto
+            let mut buf = vec![([0u8; 128], 0u8); total_frags];
+            buf[frag_idx] = (data_chunk, length_byte);
+            let data = Data {
+                dati: buf.into_boxed_slice(),
+                counter: 1,
+                total_expected: total_frags,
+                who_ask,
+            };
+            self.fragment_recv.insert(session_key, data);
+
+            if total_frags == 1 {
+                self.processed_sessions.insert(session_key);
+                self.handle_command(session_key);
+                self.fragment_recv.remove(&session_key);
+            }
         }
     }
     fn handle_ack(&mut self, _ack: Ack, session: u64) {
@@ -258,46 +261,25 @@ impl Server {
         }
     }
     fn handle_flood_response(&mut self, packet: Packet) {
-        // Estrai il FloodResponse
         if let PacketType::FloodResponse(ref flood_response) = packet.pack_type {
             let path = &flood_response.path_trace;
             if path.is_empty() {
                 return;
             }
 
-            // Se la flood non parte da noi, devo semplicemente inoltrarla
-            if path[0].0 != self.server_id {
-                // trovo la mia posizione nella traccia
-                if let Some(my_idx) = path.iter().position(|&(node, _)| node == self.server_id) {
-                    // se c'è un passo successivo, lo inoltro
-                    if let Some(&(next_node, _)) = path.get(my_idx + 1) {
-                        if let Some(chan) = self.packet_send.get(&next_node) {
-                            // rilancio lo stesso Packet, mantenendo routing_header originale
-                            let _ = chan.send(packet);
-                        }
-                    }
-                }
-                return;
-            }
+            let initiator_id = path[0].0;
+            let flood_key = (initiator_id, flood_response.flood_id);
 
-            // Altrimenti (path[0] == self.server_id) è una risposta ai nostri flood: la processiamo
-            let len = path.len();
-            if len < 2 {
-                return;
-            }
-
-            // Aggiorno il grafo con tutti i salti nella path_trace
-            for i in 0..len {
+            // Processiamo sempre (aggiorna la topologia)
+            for i in 0..path.len() {
                 let (node_id, node_type) = path[i];
                 let prev = if i > 0 { Some(path[i - 1].0) } else { None };
-                let next = if i + 1 < len { Some(path[i + 1].0) } else { None };
+                let next = if i + 1 < path.len() { Some(path[i + 1].0) } else { None };
 
                 if let Some(entry) = self.nodes_map.iter_mut().find(|(id, _, _)| *id == node_id) {
-                    // aggiorno tipo se necessario
                     if entry.1 != node_type {
                         entry.1 = node_type;
                     }
-                    // aggiorno vicinanze
                     if let Some(p) = prev {
                         if !entry.2.contains(&p) {
                             entry.2.push(p);
@@ -309,16 +291,25 @@ impl Server {
                         }
                     }
                 } else {
-                    // nuovo nodo
                     let mut conns = Vec::new();
                     if let Some(p) = prev { conns.push(p); }
                     if let Some(n) = next { conns.push(n); }
                     self.nodes_map.push((node_id, node_type, conns));
                 }
             }
+
+            // Forwardiamo sempre, tranne se la flood è nostra
+            if initiator_id != self.server_id {
+                let previous_node = packet.routing_header.hops.get(packet.routing_header.hop_index as usize - 1).cloned();
+
+                for (neighbor_id, sender) in self.packet_send.iter() {
+                    if Some(*neighbor_id) != previous_node {
+                        let _ = sender.send(packet.clone());
+                    }
+                }
+            }
         }
     }
-
     fn remove_drone(&mut self, node_id: NodeId) {
         self.nodes_map.retain(|(id,_ , _)| *id != node_id);
         for (_,_, neighbors) in &mut self.nodes_map {
@@ -398,11 +389,12 @@ impl Server {
             }
         }
     }
-    fn handle_command(&mut self, session: &u64) {
-        let data = self.fragment_recv.get(session).unwrap();
+    fn handle_command(&mut self, session_key: (NodeId, u64)) {
+        let (id_client, session) = session_key;
+
+        let data = self.fragment_recv.get(&session_key).unwrap();
         let d = data.dati.clone();
         let command: ComandoChat = deserialize_comando_chat(d);
-        let id_client = data.who_ask;
 
         match command {
             ComandoChat::Client(request) => match request {
@@ -458,9 +450,9 @@ impl Server {
                 }
                 _ => {}
             },
-            ComandoChat::WebBrowser(req) => {}
+            ComandoChat::WebBrowser(_) => {}
         }
-        self.processed_sessions.remove(&(id_client, *session));
+        self.processed_sessions.remove(&session_key);
     }
     fn is_present(&self, receiver: NodeId, sender: NodeId) -> Result<String, String> {
         if self.registered_clients.contains(&sender) && self.registered_clients.contains(&receiver) {
@@ -512,7 +504,9 @@ impl Server {
                 };
                 self.fragment_send.insert(*session, d_to_send);
                 match self.routing(id) {
-                    None => {}
+                    None => {
+                        println!("No route found for client {:?}, response not sent", id);
+                    }
                     Some(root) => {
                         let mut i = 0;
                         for fragment in self.fragment_send[session].dati.clone() {
