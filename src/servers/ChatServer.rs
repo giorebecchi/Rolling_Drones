@@ -98,11 +98,31 @@ impl Server{
     fn add_sender(&mut self, node_id: NodeId, sender: Sender<Packet>){
         if !self.packet_send.contains_key(&node_id) {
             self.packet_send.insert(node_id, sender);
+            let nodeserver = self.find_node(self.server_id, NodeType::Server);
+            let node = self.find_node(node_id, NodeType::Drone);
+            if node.is_some() && nodeserver.is_some(){
+                self.neigh_map.add_edge(nodeserver.unwrap(), node.unwrap(), 0.0);
+                self.neigh_map.add_edge(node.unwrap(), nodeserver.unwrap(), 0.0);
+            }else { 
+                println!("Node {} not found, this shouldn't happen", node_id);
+            }
         }
     }
     
     fn remove_sender(&mut self, node_id: NodeId){
-        self.packet_send.remove_entry(&node_id);
+        if self.packet_send.contains_key(&node_id){
+            self.packet_send.remove_entry(&node_id);
+            let nodeserver = self.find_node(self.server_id, NodeType::Server);
+            let node = self.find_node(node_id, NodeType::Drone);
+            if node.is_some() && nodeserver.is_some() {
+                let edge1 = self.neigh_map.find_edge(nodeserver.unwrap(), node.unwrap());
+                self.neigh_map.remove_edge(edge1.unwrap());
+                let edge2 = self.neigh_map.find_edge(node.unwrap(), nodeserver.unwrap());
+                self.neigh_map.remove_edge(edge2.unwrap());
+            } else {
+                println!("Node {} not found, this shouldn't happen", node_id);
+            }
+        }
     }
     
     pub fn handle_packet(&mut self, p:Packet){
@@ -292,10 +312,18 @@ impl Server{
                     }else if   self.node_exists(id, NodeType::Client){
                         node2 = self.find_node(id, NodeType::Client).unwrap_or_default();
                     } else { node2 = self.find_node(id, NodeType::Server).unwrap_or_default() }
+                    // println!("i nodi problematici sono {:?} e {:?}", node1,node2);
                     
-                    let edge = self.neigh_map.find_edge(node2, node1).unwrap_or_default();
-                    // println!("edge that failed {:?}", edge);
-                    self.neigh_map.remove_edge(edge);
+                    let edge1 = self.neigh_map.find_edge(node2, node1);
+                    // println!("edge that failed {:?}", edge1);
+                    if edge1.is_some(){
+                        self.neigh_map.remove_edge(edge1.unwrap());
+                    }
+                    let edge2 = self.neigh_map.find_edge(node1, node2);
+                    // println!("edge that failed {:?}", edge2);
+                    if edge2.is_some(){
+                        self.neigh_map.remove_edge(edge2.unwrap());
+                    }
                     // println!("graph del chat dopo aver tolto gli edges del drone crashato {:?}", self.neigh_map);
                     self.packet_recover(s_id, nack.fragment_index);
                 }
