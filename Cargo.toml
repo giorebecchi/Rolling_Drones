@@ -37,6 +37,7 @@ rolling_drone = { git = "https://github.com/giorebecchi/RollingDrone.git"}
 base64 = "0.21.7"
 egui = "0.31.1"
 infer = "0.15"
+log = "0.4.27"
 
 [dev-dependencies]
 rusty_tester = { git = "https://github.com/rusty-drone-2024/rusty-tester" }
