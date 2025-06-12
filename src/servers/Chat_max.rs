@@ -1,7 +1,8 @@
+use crossbeam_channel::select_biased;
 use crate::servers::utilities_max::*;
 use crate::common_things::common::*;
 use crate::common_things::common::ServerType;
-use crossbeam_channel::{select_biased, Receiver, Sender};
+use crossbeam_channel::{select, Receiver, Sender};
 use std::collections::{BinaryHeap, HashMap};
 use bevy::render::render_resource::encase::private::RuntimeSizedArray;
 use wg_2024::network::{NodeId, SourceRoutingHeader};
@@ -110,77 +111,45 @@ impl Server {
         }
     }
     fn handle_message(&mut self, fragment: Fragment, session: &u64, packet: Packet) {
+        // 1) ACK immediato
         let ack = create_ack(packet.clone());
         self.send_packet(ack);
+
+        // 2) Estrai index, total e chi chiede
         let total_frags = fragment.total_n_fragments as usize;
-        let frag_idx = fragment.fragment_index as usize;
+        let frag_idx    = fragment.fragment_index       as usize;
+        if frag_idx >= total_frags { return; }
 
-        if frag_idx >= total_frags {
-            return;
-        }
-
-        let data_chunk = fragment.data;
-        let length_byte = fragment.length;
-
-        let who_ask = if let Some(first_hop) = packet.routing_header.hops.get(0).cloned() {
-            first_hop
-        } else {
-            return;
+        let who_ask = match packet.routing_header.hops.get(0).cloned() {
+            Some(h) => h,
+            None    => return,
         };
-
         let session_key = (who_ask, *session);
 
-        // Se ricevo di nuovo la stessa sessione già processata, forzo il reset per garantire sempre risposta
-        if self.processed_sessions.contains(&session_key) {
-            self.processed_sessions.remove(&session_key);
+        // 3) Inserisco/aggiorno il dato nel buffer
+        let entry = self.fragment_recv.entry(session_key)
+            .or_insert_with(|| Data::new(
+                ([0u8; 128], 0u8),      // placeholder per ogni slot
+                0,                      // posizione iniziale dummy
+                total_frags as u64,     // numero totale di frammenti
+                0,                      // contatore iniziale = 0
+                who_ask,                // chi chiede
+            ));
+
+        // 4) Se non ricevuto prima, memorizzo
+        if entry.dati[frag_idx].1 == 0 {
+            entry.dati[frag_idx] = (fragment.data, fragment.length);
+            entry.counter += 1;
+        }
+
+        // 5) Se completo, processo e pulisco
+        if entry.counter == entry.total_expected as u64 {
+            self.processed_sessions.insert(session_key);
+            self.handle_command(session_key);
             self.fragment_recv.remove(&session_key);
         }
-
-        // Gestione dei frammenti
-        if let Some(data_struct) = self.fragment_recv.get_mut(&session_key) {
-            if data_struct.dati.len() != total_frags {
-                let mut new_buf = vec![([0u8; 128], 0u8); total_frags];
-                for (i, val) in data_struct.dati.iter().enumerate().take(total_frags) {
-                    new_buf[i] = *val;
-                }
-                data_struct.dati = new_buf.into_boxed_slice();
-                data_struct.counter = data_struct
-                    .dati
-                    .iter()
-                    .filter(|(_, len)| *len != 0u8)
-                    .count() as u64;
-            }
-
-            let already_present = data_struct.dati[frag_idx].1 != 0;
-            if !already_present {
-                data_struct.dati[frag_idx] = (data_chunk, length_byte);
-                data_struct.counter += 1;
-            }
-
-            if data_struct.counter >= data_struct.total_expected as u64 {
-                self.processed_sessions.insert(session_key);
-                self.handle_command(session_key);
-                self.fragment_recv.remove(&session_key);
-            }
-        } else {
-            // Primo frammento ricevuto
-            let mut buf = vec![([0u8; 128], 0u8); total_frags];
-            buf[frag_idx] = (data_chunk, length_byte);
-            let data = Data {
-                dati: buf.into_boxed_slice(),
-                counter: 1,
-                total_expected: total_frags,
-                who_ask,
-            };
-            self.fragment_recv.insert(session_key, data);
-
-            if total_frags == 1 {
-                self.processed_sessions.insert(session_key);
-                self.handle_command(session_key);
-                self.fragment_recv.remove(&session_key);
-            }
-        }
     }
+
     fn handle_ack(&mut self, _ack: Ack, session: u64) {
         if let Some(data_struct) = self.fragment_send.get_mut(&session) {
             if data_struct.counter > 0 {
@@ -232,29 +201,43 @@ impl Server {
     }
     fn handle_flood_request(&mut self, packet: Packet) {
         if let PacketType::FloodRequest(mut flood) = packet.pack_type {
-            if self.already_visited.contains(&(flood.initiator_id, flood.flood_id)) {
+            // Se già visitato: rispondo subito
+            let key = (flood.initiator_id, flood.flood_id);
+            if self.already_visited.contains(&key) {
                 flood.path_trace.push((self.server_id, NodeType::Server));
                 let response = FloodRequest::generate_response(&flood, packet.session_id);
                 self.send_packet(response);
                 return;
+            }
+
+            // Altrimenti segno come visitato e proseguo
+            self.already_visited.insert(key.clone());
+            flood.path_trace.push((self.server_id, NodeType::Server));
+
+            if self.packet_send.len() == 1 {
+                // ultimo nodo: mando risposta
+                let response = FloodRequest::generate_response(&flood, packet.session_id);
+                self.send_packet(response);
             } else {
-                self.already_visited.insert((flood.initiator_id, flood.flood_id));
-                if self.packet_send.len() == 1 {
-                    flood.path_trace.push((self.server_id, NodeType::Server));
-                    let response = FloodRequest::generate_response(&flood, packet.session_id);
-                    self.send_packet(response);
-                } else {
-                    flood.path_trace.push((self.server_id, NodeType::Server));
-                    let new_packet = Packet {
-                        pack_type: PacketType::FloodRequest(flood.clone()),
-                        routing_header: packet.routing_header,
-                        session_id: packet.session_id,
-                    };
-                    let (previous, _) = flood.path_trace[flood.path_trace.len() - 2];
-                    for (idd, neighbour) in self.packet_send.clone() {
-                        if idd == previous {} else {
-                            neighbour.send(new_packet.clone()).unwrap();
-                        }
+                // inoltro a tutti tranne il precedente
+                let prev = packet.routing_header
+                    .hops
+                    .get(packet.routing_header.hop_index as usize - 1)
+                    .cloned();
+
+                let new_packet = Packet {
+                    pack_type: PacketType::FloodRequest(flood.clone()),
+                    routing_header: packet.routing_header.clone(),
+                    session_id: packet.session_id,
+                };
+
+                for (idd, mut neighbour) in self.packet_send.clone() {
+                    if Some(idd) == prev {
+                        continue;
+                    }
+                    if let Err(e) = neighbour.send(new_packet.clone()) {
+                        log::warn!("handle_flood_request: forward a {} fallito: {:?}", idd, e);
+                        self.packet_send.remove(&idd);
                     }
                 }
             }
@@ -311,11 +294,20 @@ impl Server {
         }
     }
     fn remove_drone(&mut self, node_id: NodeId) {
-        self.nodes_map.retain(|(id,_ , _)| *id != node_id);
-        for (_,_, neighbors) in &mut self.nodes_map {
+        // 1) rimuovo dalla topologia
+        self.nodes_map.retain(|(id, _, _)| *id != node_id);
+        for (_, _, neighbors) in &mut self.nodes_map {
             neighbors.retain(|&neighbor_id| neighbor_id != node_id);
         }
+
+        // 2) rimuovo anche il sender corrispondente (evita futuri panic)
+        self.packet_send.remove(&node_id);
+
+        // (facoltativo) pulizia di frammenti relativi a questo client
+        self.fragment_recv.retain(|&(who, _), _| who != node_id);
+        self.fragment_send.retain(|_, data| data.who_ask != node_id);
     }
+
     fn send_packet(&mut self, mut packet: Packet) {
         if packet.routing_header.hops.len() < 2 {
             return;
@@ -325,6 +317,7 @@ impl Server {
         // Invia il pacchetto al prossimo nodo
         if let Some(sender) = self.packet_send.get_mut(&next) {
             if let Err(e) = sender.send(packet) {
+                log::warn!("send_packet: canale pieno o disconnesso su {:?}: {:?}", next, e);
             }
         }
     }
@@ -372,8 +365,8 @@ impl Server {
         }
         None
     }
-    fn floading(&self) {
-        let flood_id = 0;
+    fn floading(&mut self) {
+        let flood_id = self.get_session();
         let flood = Packet {
             routing_header: SourceRoutingHeader { hop_index: 1, hops: Vec::new() },
             session_id: flood_id,
@@ -383,9 +376,15 @@ impl Server {
                 path_trace: vec![(self.server_id, NodeType::Server)],
             }),
         };
-        for (id, neighbour) in self.packet_send.clone() {
-            if id == self.server_id {} else {
-                neighbour.send(flood.clone()).unwrap();
+
+        for (id, mut neighbour) in self.packet_send.clone() {
+            if id == self.server_id {
+                continue;
+            }
+            if let Err(e) = neighbour.send(flood.clone()) {
+                log::warn!("floading: invio flood a {} fallito: {:?}", id, e);
+                // rimuovo il sender ormai chiuso
+                self.packet_send.remove(&id);
             }
         }
     }
