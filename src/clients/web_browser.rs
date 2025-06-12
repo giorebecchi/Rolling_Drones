@@ -150,11 +150,11 @@ impl WebBrowser {
     }
     
     pub fn remove_sender(&mut self, node_id: NodeId) {
-        println!("before remove: {:?}", self.send_packets.keys());
+        //println!("before remove: {:?}", self.send_packets.keys());
         
         if self.send_packets.contains_key(&node_id) {
             self.send_packets.remove(&node_id);
-            println!("after remove: {:?}", self.send_packets.keys());
+            //println!("after remove: {:?}", self.send_packets.keys());
         }else { 
             println!("not a neighbor of web browser")
         }
@@ -216,7 +216,9 @@ impl WebBrowser {
                         }
                     }
                     if let Some(next_hop) = route.get(1) {
-                        self.send_messages(next_hop, packet);
+                        if let Err(_) = self.send_messages(next_hop, packet){
+                            self.ask_type(id_server);
+                        }
                     } else { println!("No next hop found") }
                 }
                 println!("Sent request to get the server type to server {} by web browser {}", id_server, self.config.id);
@@ -241,6 +243,7 @@ impl WebBrowser {
 
         match self.find_route(&id_server) {
             Ok(route) => {
+                //println!("route with sender {:?}, for client: {}, route: {:?}", self.send_packets.keys(), self.config.id, route);
                 let packets_to_send = ChatRequest::create_packet(&fragments, route.clone(), session_id);
                 self.packet_sent.insert(session_id, (id_server, packets_to_send.clone()));
                 
@@ -251,7 +254,9 @@ impl WebBrowser {
                         }
                     }
                     if let Some(next_hop) = route.get(1) {
-                        self.send_messages(next_hop, packet);
+                        if let Err(_) = self.send_messages(next_hop, packet){
+                            self.get_list(id_server);
+                        }
                     } else { println!("No next hop found") }
                 }
                 println!("Sent request to get the client list to server: {}", id_server);
@@ -266,7 +271,7 @@ impl WebBrowser {
             return;
         }
 
-        let request = WebBrowserCommands::GetPosition(media_id);
+        let request = WebBrowserCommands::GetPosition(media_id.clone());
         let session_id = self.session_id_packet;
         self.session_id_packet += 1;
 
@@ -285,7 +290,9 @@ impl WebBrowser {
                         }
                     }
                     if let Some(next_hop) = route.get(1) {
-                        self.send_messages(next_hop, packet);
+                        if let Err(_) = self.send_messages(next_hop, packet){
+                            self.get_position(id_server, media_id.clone());
+                        }
                     } else { println!("No next hop found") }
                 }
                 println!("Sent request to get the position of the media to server: {}", id_server);
@@ -299,7 +306,7 @@ impl WebBrowser {
             println!("server was not found");
             return;
         }
-        let request = WebBrowserCommands::GetMedia(media_id);
+        let request = WebBrowserCommands::GetMedia(media_id.clone());
         
         let session_id = self.session_id_packet;
         self.session_id_packet += 1;
@@ -320,7 +327,9 @@ impl WebBrowser {
                         }
                     }
                     if let Some(next_hop) = route.get(1) {
-                        self.send_messages(next_hop, packet);
+                        if let Err(_) = self.send_messages(next_hop, packet){
+                            self.get_media(id_media_server, media_id.clone());
+                        }
                     } else { println!("No next hop found") }
                 }
                 println!("Sent request to get retrieve the media from server: {}", id_media_server);
@@ -334,7 +343,7 @@ impl WebBrowser {
             println!("server was not found");
             return;
         }
-        let request = WebBrowserCommands::GetText(text_id);
+        let request = WebBrowserCommands::GetText(text_id.clone());
         let session_id = self.session_id_packet;
         self.session_id_packet += 1;
 
@@ -353,7 +362,9 @@ impl WebBrowser {
                         }
                     }
                     if let Some(next_hop) = route.get(1) {
-                        self.send_messages(next_hop, packet);
+                        if let Err(_) = self.send_messages(next_hop, packet){
+                            self.get_text(id_server, text_id.clone());
+                        }
                     } else { println!("No next hop found") }
                 }
                 println!("Sent request to retrieve the the text from server: {}", id_server);
@@ -370,7 +381,9 @@ impl WebBrowser {
 
         let ack = self.create_ack(&packet);
         let prev = packet.routing_header.hops[packet.routing_header.hop_index-1];
-        self.send_messages(&prev, ack);
+        if let Err(_) = self.send_messages(&prev, ack){
+            self.handle_fragments(packet.clone());
+        }
 
         if let PacketType::MsgFragment(fragment) = packet.pack_type{
             if !self.incoming_fragments.contains_key(&check){
@@ -501,6 +514,9 @@ impl WebBrowser {
                     if !self.problematic_nodes.contains(&id){
                         self.problematic_nodes.push(id);
                     }
+                    
+                    println!("error in routing in client id: {}, {:?}", self.config.id, self.problematic_nodes);
+                    
 
                    self.resend_fragment(packet)
                 }
@@ -511,7 +527,7 @@ impl WebBrowser {
     }
 
     pub fn resend_fragment(& mut self, packet: Packet){
-        if let PacketType::Nack(nack) = packet.pack_type{
+        if let PacketType::Nack(nack) = packet.clone().pack_type{
             
             let session_fragments = if let Some(session_fragments) = self.fragments_sent.get(&packet.session_id){
                 session_fragments
@@ -546,7 +562,9 @@ impl WebBrowser {
                     );
 
                     if let Some(next_hop) = route.get(1){
-                        self.send_messages(next_hop, packet_to_send);
+                        if let Err(_) = self.send_messages(next_hop, packet_to_send){
+                            self.resend_fragment(packet.clone());
+                        }
                     }else { println!("No next hop found") }
                 }
                 Err(_) => println!("failed to find the route after receiving nack")
@@ -665,24 +683,6 @@ impl WebBrowser {
         }
     }
 
-    // pub fn build_topology(& mut self){
-    //     self.topology_graph.clear();
-    // 
-    //     for resp in &self.flood{
-    //         let path = &resp.path_trace;
-    //         for pair in path.windows(2) {
-    //             let (src, _) = pair[0];
-    //             let (dst, _) = pair[1];
-    // 
-    //             self.node_data.insert(src, NodeData::new());
-    //             self.node_data.insert(dst, NodeData::new());
-    // 
-    //             self.topology_graph.add_edge(src.clone(), dst.clone(), 1); // use 1 as weight (hop), could me modified for the nack
-    //         }
-    //     }
-    // }
-
-
     pub fn find_route(& mut self, destination_id: &NodeId)-> Result<Vec<NodeId>, String>{
         let source = self.config.id.clone();
 
@@ -744,13 +744,19 @@ impl WebBrowser {
         }
     }
 
-    pub fn send_messages(& mut self, destination_id: &NodeId, mut packet: Packet){
+    pub fn send_messages(& mut self, destination_id: &NodeId, mut packet: Packet)-> Result<(), ()>{
         packet.routing_header.hop_index+=1;
         if let Some(sender) = self.send_packets.get(&destination_id){
             if let Err(err) = sender.send(packet.clone()){
                 println!("Error sending command: {}", err); //have to send back nack
             }
-        }else { println!("no sender") } //have to send back nack
+            Ok(())
+        }else {
+            //self.problematic_nodes.push(destination_id.clone());
+            self.topology_graph.remove_edge(self.config.id, *destination_id);
+            //println!("topology after: {:?}", self.topology_graph);
+            Err(())
+        } //have to send back nack
     }
 
     pub fn create_ack(& mut self, packet: &Packet)-> Packet{

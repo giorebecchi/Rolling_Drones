@@ -1,5 +1,6 @@
 use std::collections::{HashMap, HashSet};
 use crossbeam_channel::{select_biased, Receiver, Sender};
+use egui::debug_text::print;
 use petgraph::algo::dijkstra;
 use petgraph::{Direction};
 use petgraph::graphmap::{UnGraphMap};
@@ -186,7 +187,7 @@ impl ChatClient {
             println!("server not found ");
             return;
         }
-        println!("servers: {:?}",self.servers);
+        //println!("servers: {:?}",self.servers);
         let request_to_send = ChatRequest::ServerType;
         
         let session_id = self.session_id_packet;
@@ -208,7 +209,9 @@ impl ChatClient {
                     }
                     if let Some(next_hop) = route.get(1){
                         //println!("next hop: {:?}", next_hop);
-                        self.send_packet(next_hop, packet);
+                        if let Err(()) = self.send_packet(next_hop, packet){
+                            self.ask_server_type(id_server);
+                        }
                     }else { println!("No next hop found") }
                 }
 
@@ -233,6 +236,7 @@ impl ChatClient {
 
         match self.find_best_route(&id_server) {
             Ok(route) => {
+                println!("id client: {}, route {:?}", self.config.id, route);
                 let packets_to_send = ChatRequest::create_packet(&fragments, route.clone(), session_id);
                 self.packet_sent.insert(session_id, (id_server, packets_to_send.clone()));
                 
@@ -243,7 +247,9 @@ impl ChatClient {
                         }
                     }
                     if let Some(next_hop) = route.get(1){
-                        self.send_packet(next_hop, packet);
+                        if let Err(()) = self.send_packet(next_hop, packet){
+                            self.register_client(id_server);
+                        }
                     }else { println!("No next hop found") }
                 }
                 println!("Sent request to register this client to the server {}", id_server);
@@ -277,7 +283,9 @@ impl ChatClient {
                         }
                     }
                     if let Some(next_hop) = route.get(1){
-                        self.send_packet(next_hop, packet);
+                        if let Err(()) = self.send_packet(next_hop, packet){
+                            self.register_client(id_server);
+                        }
                     }else { println!("No next hop found") }
                 }
                 println!("sent request to get list clients of registered servers to server: {}", id_server);
@@ -292,7 +300,7 @@ impl ChatClient {
             return;
         }
 
-        let request = ChatRequest::SendMessage(message, id_server);
+        let request = ChatRequest::SendMessage(message.clone(), id_server);
 
         let session_id = self.session_id_packet;
         self.session_id_packet += 1;
@@ -311,7 +319,9 @@ impl ChatClient {
                         }
                     }
                     if let Some(next_hop) = route.get(1) {
-                        self.send_packet(next_hop, packet);
+                        if let Err(()) = self.send_packet(next_hop, packet){
+                            self.send_message(message.clone(), id_server);
+                        }
                     } else { println!("No next hop found") }
                 }
             }
@@ -326,7 +336,9 @@ impl ChatClient {
 
         let ack = self.ack(&packet);
         let prev = packet.routing_header.hops[packet.routing_header.hop_index-1];
-        self.send_packet(&prev, ack);
+        if let Err(()) = self.send_packet(&prev, ack){
+            self.handle_fragments(packet.clone());
+        }
 
         if let PacketType::MsgFragment(fragment) = packet.pack_type{
             if !self.incoming_fragments.contains_key(&check){
@@ -411,7 +423,12 @@ impl ChatClient {
                     if !self.problematic_nodes.contains(&id){
                         self.problematic_nodes.push(id);
                     }
-                    self.topology.remove_edge(self.config.id.clone(), id);
+
+                    // let dest= id;
+                    // let src = packet.routing_header.hops[packet.routing_header.hop_index-1];
+                    // 
+                    // println!("in case of nack: {}, src: {}, dest: {}", packet.routing_header, src, dest );
+                    // self.topology.remove_edge(self.config.id.clone(), id);
                     self.resend_fragment_lost(packet);
                 }
                 NackType::Dropped => {
@@ -428,7 +445,7 @@ impl ChatClient {
     }
     
     pub fn resend_fragment_lost(& mut self, packet: Packet){
-        if let PacketType::Nack(nack) = packet.pack_type{
+        if let PacketType::Nack(nack) = packet.clone().pack_type{
             let fragments_session = if let Some(fragments_session) = self.fragments_sent.get(&packet.session_id){
                 fragments_session
             }else { 
@@ -460,7 +477,9 @@ impl ChatClient {
                     );
 
                     if let Some(next_hop) = route.get(1){
-                        self.send_packet(next_hop, packet_to_send);
+                        if let Err(()) = self.send_packet(next_hop, packet_to_send){
+                            self.resend_fragment_lost(packet);
+                        }
                     }else { println!("No next hop found") }
 
                 }
@@ -531,24 +550,6 @@ impl ChatClient {
             }
         }
     }
-
-
-    // pub fn build_topology(& mut self) {
-    // self.topology.clear();
-    // 
-    // for resp in &self.flood {
-    //     let path = &resp.path_trace;
-    //         for pair in path.windows(2) {
-    //             let (src, _) = pair[0];
-    //             let (dst, _) = pair[1];
-    // 
-    //             self.node_data.insert(src, NodeData::new());
-    //             self.node_data.insert(dst, NodeData::new());
-    // 
-    //             self.topology.add_edge(src.clone(), dst.clone(), 1); // use 1 as weight (hop)
-    //         }
-    //     }
-    // }
 
     pub fn handle_flood_response(& mut self, packet: Packet){
         if let PacketType::FloodResponse(flood_response) = packet.clone().pack_type {
@@ -661,13 +662,19 @@ impl ChatClient {
         }
     }
 
-    pub fn send_packet(& mut self, destination_id: &NodeId, mut packet: Packet){
+    pub fn send_packet(& mut self, destination_id: &NodeId, mut packet: Packet) -> Result<(), ()>{
         packet.routing_header.hop_index+=1;
         if let Some(sender) = self.send_packets.get(&destination_id){
             if let Err(err) = sender.send(packet.clone()){
                 println!("Error sending command: {}", err); //have to send back nack
             }
-        }else { println!("no sender") } //have to send back nack
+            Ok(())
+        }else {
+            println!("no sender, id client: {}, next hop: {}, senders: {:?}, topology for the client: {:?}", self.config.id, destination_id, self.send_packets, self.topology);
+            //self.problematic_nodes.push(destination_id.clone());
+            self.topology.remove_edge(self.config.id, *destination_id);
+            Err(())
+        } //have to send back nack
     }
 
     pub fn send_flooding_packet(& mut self, mut packet: Packet){
