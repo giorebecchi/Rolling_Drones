@@ -424,9 +424,10 @@ impl ChatClient {
                         self.problematic_nodes.push(id);
                     }
 
-                    // let dest= id;
-                    // let src = packet.routing_header.hops[packet.routing_header.hop_index-1];
-                    // 
+                     let dest= id;
+                    let src = packet.routing_header.hops[0];
+                    self.topology.remove_edge(src, dest);
+                    
                     // println!("in case of nack: {}, src: {}, dest: {}", packet.routing_header, src, dest );
                     // self.topology.remove_edge(self.config.id.clone(), id);
                     self.resend_fragment_lost(packet);

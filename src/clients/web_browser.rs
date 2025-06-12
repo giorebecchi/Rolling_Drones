@@ -506,6 +506,8 @@ impl WebBrowser {
                     let failing_node = packet.routing_header.hops[0];
                     let data = self.node_data.get_mut(&failing_node).unwrap();
                     data.dropped += 1;
+                    
+                    
 
                     self.resend_fragment(packet)
                 }
@@ -514,8 +516,10 @@ impl WebBrowser {
                     if !self.problematic_nodes.contains(&id){
                         self.problematic_nodes.push(id);
                     }
-                    
-                    println!("error in routing in client id: {}, {:?}", self.config.id, self.problematic_nodes);
+
+                    let dest= id;
+                    let src = packet.routing_header.hops[0];
+                    self.topology_graph.remove_edge(src, dest);
                     
 
                    self.resend_fragment(packet)
