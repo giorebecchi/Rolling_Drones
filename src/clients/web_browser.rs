@@ -31,6 +31,7 @@ pub struct WebBrowser {
     pub send_event: Sender<WebBrowserEvents>,
     pub media_servers: Vec<NodeId>,
     pub text_servers: Vec<NodeId>,
+    pub clients: Vec<NodeId>,
     pub packet_sent: HashMap<u64, (NodeId, Vec<Packet>)>,
     pub topology_graph: UnGraphMap<NodeId, u32>,
     pub node_data: HashMap<NodeId, NodeData>,
@@ -63,6 +64,7 @@ impl WebBrowser {
             send_event,
             media_servers: Vec::new(),
             text_servers: Vec::new(),
+            clients: vec![id],
             packet_sent: HashMap::new(),
             topology_graph: UnGraphMap::new(),
             node_data: HashMap::new(),
@@ -641,6 +643,9 @@ impl WebBrowser {
                     if *node_type == NodeType::Server && !self.servers.contains(&node_id){
                         self.servers.push(*node_id); //no duplicates
                     }
+                    if *node_type == NodeType::Client && !self.clients.contains(&node_id){
+                        self.clients.push(*node_id);
+                    }
                 }
                 self.flood.push(flood_response); //storing all the flood responses to then access the path traces and find the quickest one
             }
@@ -692,7 +697,7 @@ impl WebBrowser {
 
         let result = dijkstra(&self.topology_graph, source.clone(), Some(destination_id.clone()), |edge|{
             let dest = edge.1;
-            if self.problematic_nodes.contains(&dest){
+            if self.problematic_nodes.contains(&dest) || self.clients.contains(&dest){
                 1_000
             }else { 
                 let reliability = self.node_data.get(&dest).map(|data| data.reliability()).unwrap_or(1.0);
