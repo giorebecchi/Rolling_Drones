@@ -26,6 +26,7 @@ pub struct ChatClient {
     pub fragments_sent: HashMap<u64, HashMap<u64, Fragment> >, //used for sending the correct fragment if was lost in the process
     pub problematic_nodes: Vec<NodeId>,
     pub chat_servers: Vec<NodeId>,
+    pub clients: Vec<NodeId>,
     pub event_send : Sender<ChatClientEvent>,
     pub topology: UnGraphMap<NodeId, u32>,
     pub node_data: HashMap<NodeId, NodeData>,
@@ -55,6 +56,7 @@ impl ChatClient {
             fragments_sent: HashMap::new(),
             problematic_nodes: Vec::new(),
             chat_servers: Vec::new(),
+            clients: vec![id],
             event_send,
             topology: UnGraphMap::new(),
             node_data: HashMap::new(),
@@ -236,7 +238,7 @@ impl ChatClient {
 
         match self.find_best_route(&id_server) {
             Ok(route) => {
-                println!("id client: {}, route {:?}", self.config.id, route);
+                //println!("id client: {}, route {:?}", self.config.id, route);
                 let packets_to_send = ChatRequest::create_packet(&fragments, route.clone(), session_id);
                 self.packet_sent.insert(session_id, (id_server, packets_to_send.clone()));
                 
@@ -590,6 +592,9 @@ impl ChatClient {
                     if *node_type == NodeType::Server && !self.servers.contains(&node_id){
                         self.servers.push(*node_id); //no duplicates
                     }
+                    if *node_type == NodeType::Client && !self.clients.contains(&node_id){
+                        self.clients.push(*node_id);
+                    }
                 }
                  
                 // println!("flood_response: {:?}", self.flood);
@@ -607,7 +612,7 @@ impl ChatClient {
         let result = dijkstra(&self.topology, source.clone(), Some(destination_id.clone()), |edge|{
             let dest = edge.1;
             
-            if self.problematic_nodes.contains(&dest){
+            if self.problematic_nodes.contains(&dest) || self.clients.contains(&dest){
                 1_000
             }else {
                 let reliability = self.node_data.get(&dest).map(|data| data.reliability()).unwrap_or(1.0);
@@ -671,7 +676,7 @@ impl ChatClient {
             }
             Ok(())
         }else {
-            println!("no sender, id client: {}, next hop: {}, senders: {:?}, topology for the client: {:?}", self.config.id, destination_id, self.send_packets, self.topology);
+            //println!("no sender, id client: {}, next hop: {}, senders: {:?}, topology for the client: {:?}", self.config.id, destination_id, self.send_packets, self.topology);
             //self.problematic_nodes.push(destination_id.clone());
             self.topology.remove_edge(self.config.id, *destination_id);
             Err(())
