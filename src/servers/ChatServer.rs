@@ -167,9 +167,9 @@ impl Server{
                     ChatResponse::ServerTypeChat(_) => {self.send_event.send(ServerEvent::ChatPacketInfo(self.server_id, MyNodeType::ChatServer, ChatServerEvent::SendingServerTypeChat(vec.len() as u64),self.session_id)).unwrap();}
                     ChatResponse::RegisterClient(_) => {self.send_event.send(ServerEvent::ChatPacketInfo(self.server_id, MyNodeType::ChatServer, ChatServerEvent::ClientRegistration(vec.len() as u64),self.session_id)).unwrap();}
                     ChatResponse::RegisteredClients(_) => {self.send_event.send(ServerEvent::ChatPacketInfo(self.server_id, MyNodeType::ChatServer, ChatServerEvent::SendingClientList(vec.len() as u64),self.session_id)).unwrap();}
-                    ChatResponse::SendMessage(_) => {self.send_event.send(ServerEvent::ChatPacketInfo(self.server_id, MyNodeType::ChatServer, ChatServerEvent::ForwardingMessage(vec.len() as u64),self.session_id)).unwrap();}
+                    ChatResponse::SendMessage(_) => {}
                     ChatResponse::EndChat(_) => {self.send_event.send(ServerEvent::ChatPacketInfo(self.server_id, MyNodeType::ChatServer, ChatServerEvent::ClientElimination(vec.len() as u64),self.session_id)).unwrap();}
-                    ChatResponse::ForwardMessage(_) => {}
+                    ChatResponse::ForwardMessage(_) => {self.send_event.send(ServerEvent::ChatPacketInfo(self.server_id, MyNodeType::ChatServer, ChatServerEvent::ForwardingMessage(vec.len() as u64),self.session_id)).unwrap();}
                 }
                 self.session_id+=1;
                 //aggiungere un field nella struct server per salvare tutti i vari pacchetti nel caso in cui fossero droppati ecc.
