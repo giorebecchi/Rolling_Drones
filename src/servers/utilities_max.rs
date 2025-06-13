@@ -3,6 +3,7 @@ use std::fs;
 use std::path::Path;
 use wg_2024::network::{NodeId, SourceRoutingHeader};
 use wg_2024::packet::{Ack, Packet, PacketType};
+use std::time::{Duration, Instant};
 
 
 
@@ -159,13 +160,31 @@ impl PartialOrd for State {
         Some(self.cmp(other))
     }
 }
-#[derive(Clone, Debug)]
-pub (crate)struct Data {
+
+// —— 1️⃣ Costanti di protocollo ——
+pub const TIMEOUT:      Duration = Duration::from_millis(100);
+pub const MAX_BACKOFF:  Duration = Duration::from_secs(4);
+pub const MAX_RETRIES:  usize    = 100000;
+pub const WINDOW_SIZE:  usize    = 100;
+
+// —— 2️⃣ Data struct estesa ——
+pub struct Data {
+    pub dati: Box<[([u8;128], u8)]>,
     pub counter: u64,
     pub total_expected: usize,
-    pub dati: Box<[([u8; 128], u8)]>,
     pub who_ask: NodeId,
+
+    // per retry/timeout
+    pub last_send:   Vec<Instant>,
+    pub backoff:     Vec<Duration>,
+    pub retry_count: Vec<usize>,
+
+    // sliding window
+    pub next_to_send: usize,
+    pub acked:        Vec<bool>,
 }
+
+
 impl Data {
     pub fn new(
         data: ([u8; 128], u8),
@@ -185,6 +204,11 @@ impl Data {
             total_expected: total_usize,
             dati: v,
             who_ask: asker,
+            last_send: vec![Instant::now(); total as usize],
+            backoff: vec![],
+            retry_count: vec![],
+            next_to_send: 0,
+            acked: vec![],
         }
     }
 }
