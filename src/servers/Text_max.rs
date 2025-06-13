@@ -1,4 +1,3 @@
-use crossbeam_channel::tick;
 use base64::engine::general_purpose::STANDARD as BASE64;
 use base64::Engine;
 use crate::servers::utilities_max::*;
@@ -15,7 +14,6 @@ use wg_2024::packet::{Ack, FloodRequest, Fragment, Nack, NackType, NodeType, Pac
 use bevy::utils::HashSet;
 use std::io::{Read};
 use crate::simulation_control::simulation_control::MyNodeType;
-use std::time::{Duration, Instant};
 
 
 pub struct Server{
@@ -69,7 +67,7 @@ impl Server {
         }
     }
     pub fn run(&mut self) {
-        // 1️⃣ Caricamento iniziale (immagini e testi)
+        // Caricamento iniziale (immagini e testi)
         if let Err(e) = self.load_image_paths_from_file() {
             log::error!("Errore load_image_paths: {}", e);
         }
@@ -77,16 +75,12 @@ impl Server {
             log::error!("Errore load_text_paths: {}", e);
         }
 
-        // 2️⃣ Prima flood per costruire la topologia
+        //  Prima flood per costruire la topologia
         self.floading();
-
-        // 3️⃣ Ticker per il controllo periodico dei timeout
-        let check_interval = Duration::from_millis(100);
-        let ticker = tick(check_interval);
 
         loop {
             select_biased! {
-                // ◼️ 4.1 Ricevo un pacchetto
+                // 4.1 Ricevo un pacchetto
                 recv(self.packet_recv) -> packet => {
                     match packet {
                         Ok(pkt) => self.handle_packet(pkt),
@@ -94,14 +88,14 @@ impl Server {
                     }
                 },
 
-                // ◼️ 4.2 Ricevo un segnale di flood
+                // 4.2 Ricevo un segnale di flood
                 recv(self.rcv_flood) -> flood => {
                     if flood.is_ok() {
                         self.floading();
                     }
                 },
 
-                // ◼️ 4.3 Ricevo un comando dal controller
+                // 4.3 Ricevo un comando dal controller
                 recv(self.rcv_command) -> cmd => {
                     if let Ok(command) = cmd {
                         match command {
@@ -119,15 +113,9 @@ impl Server {
                         }
                     }
                 },
-
-                // ◼️ 5️⃣ Ticker: controllo timeout frammenti
-                recv(ticker) -> _ => {
-                    self.check_timeouts();
-                },
             }
         }
     }
-
     fn handle_packet(&mut self, packet: Packet) {
         let p = packet.clone();
         match p.pack_type {
@@ -192,96 +180,111 @@ impl Server {
             self.fragment_recv.remove(&session_key);
         }
     }
-    /// 1️⃣ Handle NACK: rispedisco subito, resetto backoff
-    fn handle_nack(&mut self, fragment: Nack, _pos: &u64, session: &u64) {
-        let idx = fragment.fragment_index as usize;
-        // Rimuovi drone in errore se serve
-        if let NackType::ErrorInRouting(bad) = fragment.nack_type {
-            self.remove_drone(bad);
+    fn send_data_fragments(
+        &mut self,
+        id: NodeId,
+        dati: Box<[( [u8;128], u8 )]>,
+        session: u64,
+    ) {
+        let total = dati.len();
+        let window = WINDOW_SIZE.min(total);
+
+        // Init di Data senza last_send/backoff
+        let data = Data {
+            dati,
+            total_expected: total,
+            counter: total as u64,
+            who_ask: id,
+            acked: vec![false; total],
+            retry_count: vec![0; total],
+            next_to_send: window,
+        };
+        self.fragment_send.insert(session, data);
+
+        // Invio dei primi `window` frammenti
+        for idx in 0..window {
+            self.send_single_fragment(session, idx);
         }
-        // Se ho ancora quel frammento da inviare:
-        if let Some(d) = self.fragment_send.get_mut(session) {
-            if idx < d.total_expected && !d.acked[idx] {
-                // aggiorno counters
-                d.retry_count[idx] += 1;
-                // resetto il backoff a quello di partenza
-                d.backoff[idx] = TIMEOUT.min(MAX_BACKOFF);
-                // aggiorno last_send prima di inviare
-                d.last_send[idx] = Instant::now();
-                // **invia subito**, senza attendere un secondo
-                // (chiude il borrow di d)
-            }
-        }
-        // fuori dal borrow di fragment_send...
-        self.send_single_fragment(*session, idx);
     }
 
-    /// 2️⃣ Handle ACK: sliding window + misura RTT per backoff adattivo
+    /// Invia un singolo frammento (non aggiorna più alcun timer)
+    fn send_single_fragment(&mut self, session: u64, idx: usize) {
+        let data = &self.fragment_send[&session];
+        let (chunk, _) = data.dati[idx];
+        if let Some(path) = self.routing(data.who_ask) {
+            let hdr  = SourceRoutingHeader::new(path, 1);
+            let frag = Fragment::new(idx as u64, data.total_expected as u64, chunk);
+            let pkt  = Packet::new_fragment(hdr, session, frag);
+            self.send_packet(pkt);
+        }
+    }
+
+    /// Gestisce l’ACK: avanza la finestra, senza calcolare RTT/timer
     fn handle_ack(&mut self, ack: Ack, session: u64) {
         let mut next_idx = None;
         if let Some(d) = self.fragment_send.get_mut(&session) {
             let idx = ack.fragment_index as usize;
             if idx < d.total_expected && !d.acked[idx] {
-                // calcolo un sample di RTT
-                let now = Instant::now();
-                let sample = now.duration_since(d.last_send[idx]);
-                // EWMA per backoff (opzionale)
-                // backoff[idx] = (backoff[idx].mul_f32(7.0) + sample.mul_f32(3.0)) / 10;
-                // ma per semplicità lo lasciamo fisso…
+                d.acked[idx]    = true;
+                d.counter        = d.counter.saturating_sub(1);
 
-                d.acked[idx] = true;
-                d.counter = d.counter.saturating_sub(1);
-
-                // se “slot in finestra” libero, preparo il prossimo
+                // se c’è un “posto libero” nella finestra, lo preparo
                 if d.next_to_send < d.total_expected {
                     next_idx = Some(d.next_to_send);
                     d.next_to_send += 1;
                 }
             }
         }
-        // fuori dal borrow: mando il frammento successivo
+
+        // Fuori dal borrow, mando il frammento successivo (se c’è)
         if let Some(i) = next_idx {
             self.send_single_fragment(session, i);
         }
-        // rimuovo la sessione se finita
+
+        // Rimuovo la sessione se tutti i frammenti sono stati acked
         if let Some(d) = self.fragment_send.get(&session) {
             if d.counter == 0 {
-                println!("🎉 Tutti frammenti sessione {} completati", session);
                 self.fragment_send.remove(&session);
             }
         }
     }
 
-    /// 3️⃣ Invia SOLO i primi WINDOW_SIZE frammenti
-    fn send_data_fragments(
-        &mut self,
-        id: NodeId,
-        dati: Box<[([u8; 128], u8)]>,
-        session: u64,
-    ) {
-        let total = dati.len();
-        let now = Instant::now();
-        let window = WINDOW_SIZE.min(total);
+    /// Gestisce il NACK: ritenta fino a MAX_RETRIES, senza backoff/timer
+    fn handle_nack(&mut self, fragment: Nack, _pos: &u64, session: &u64) {
+        let sess = *session;
+        if !self.fragment_send.contains_key(&sess) { return; }
 
-        let data = Data {
-            counter:        total as u64,
-            total_expected: total,
-            who_ask:        id,
-            dati,
-            last_send:      vec![now; total],
-            backoff:        vec![TIMEOUT; total],
-            retry_count:    vec![0; total],
-            acked:          vec![false; total],
-            next_to_send:   window,
+        // Se c’è stato un errore di routing, aggiorna la topologia
+        if let NackType::ErrorInRouting(bad) = fragment.nack_type {
+            self.remove_drone(bad);
+        }
+
+        // Raccolgo tutti i dati in un singolo mutable borrow
+        let (retry, who, chunk, cnt, total, idx) = {
+            let data = self.fragment_send.get_mut(&sess).unwrap();
+            let idx = fragment.fragment_index as usize;
+            if idx >= data.total_expected || data.acked[idx] {
+                return;
+            }
+            if data.retry_count[idx] < MAX_RETRIES.try_into().unwrap() {
+                data.retry_count[idx] += 1;
+                (true, data.who_ask, data.dati[idx].0, data.retry_count[idx], data.total_expected, idx)
+            } else {
+                // superati i retry massimi: abbandono
+                return;
+            }
         };
-        self.fragment_send.insert(session, data);
 
-        // invio iniziale di tutta la finestra
-        for idx in 0..window {
-            self.send_single_fragment(session, idx);
+        // Fuori dal borrow, invio un solo retry
+        if retry {
+            if let Some(path) = self.routing(who) {
+                let hdr  = SourceRoutingHeader::new(path, 1);
+                let frag = Fragment::new(idx as u64, total as u64, chunk);
+                let pkt  = Packet::new_fragment(hdr, sess, frag);
+                self.send_packet(pkt);
+            }
         }
     }
-
     fn handle_flood_request(&mut self, packet: Packet) {
         if let PacketType::FloodRequest(mut flood) = packet.pack_type {
             // Se già visitato: rispondo subito
@@ -660,22 +663,6 @@ impl Server {
             _ => {}
         }
     }
-    fn send_single_fragment(&mut self, session: u64, idx: usize) {
-        let data = &self.fragment_send[&session];
-        let (chunk, len) = data.dati[idx];
-        if let Some(path) = self.routing(data.who_ask) {
-            let hdr = SourceRoutingHeader::new(path, 1);
-            let frag = Fragment::new(idx as u64, data.total_expected as u64, chunk);
-            let pkt  = Packet::new_fragment(hdr, session, frag);
-            self.send_packet(pkt);
-            // aggiorna timer
-            let now = Instant::now();
-            let d_mut = self.fragment_send.get_mut(&session).unwrap();
-            d_mut.last_send[idx] = now;
-            // backoff rimane invariato (o potresti volerlo resettare qua)
-        }
-    }
-
     pub fn load_text_paths_from_file(&mut self) -> io::Result<()> {
         let path_file = Path::new(&self.path);
         if !path_file.is_file() {
@@ -836,57 +823,6 @@ impl Server {
         self.next_session_id += 1;
         id
     }
-    fn check_timeouts(&mut self) {
-        let mut to_resend = Vec::new();
-        let mut to_abort  = Vec::new();
-
-        // 1) raccolta frammenti da retry
-        for (&sess, data) in &self.fragment_send {
-            for i in 0..data.total_expected {
-                if data.acked[i] { continue; }      // 🌟 salto già confermati
-                if data.last_send[i].elapsed() > data.backoff[i] {
-                    if data.retry_count[i] < MAX_RETRIES {
-                        to_resend.push((sess, i));
-                    } else {
-                        to_abort.push(sess);
-                    }
-                }
-            }
-        }
-
-        // 2) eseguo retry
-        for (sess, idx) in to_resend {
-            let (who, chunk, total) = {
-                let d = &self.fragment_send[&sess];
-                (d.who_ask, d.dati[idx].0, d.total_expected)
-            };
-            if let Some(path) = self.routing(who) {
-                let hdr  = SourceRoutingHeader::new(path, 1);
-                let frag = Fragment::new(idx as u64, total as u64, chunk);
-                let pkt  = Packet::new_fragment(hdr, sess, frag);
-                self.send_packet(pkt);
-
-                // aggiorno backoff e retry_count
-                let now = Instant::now();
-                if let Some(dmut) = self.fragment_send.get_mut(&sess) {
-                    dmut.last_send[idx]   = now;
-                    dmut.retry_count[idx] += 1;
-                    dmut.backoff[idx]     = (dmut.backoff[idx] * 2).min(MAX_BACKOFF);
-                    println!(
-                        "⏳ Timeout-retry frammento {} sess. {} (#{}, backoff={:?})",
-                        idx, sess, dmut.retry_count[idx], dmut.backoff[idx]
-                    );
-                }
-            }
-        }
-
-        // 3) pulizia sessioni abortite
-        for sess in to_abort {
-            println!("❌ Abort sessione {} per retry massimi", sess);
-            self.fragment_send.remove(&sess);
-        }
-    }
-
 
 }
 fn title_and_extension(name: &str) -> (String, String) {
