@@ -109,7 +109,7 @@ impl WebBrowser {
                 self.get_list(id_server)
             },
             ContentCommands::GetMediaPosition(id_server, id_media) => {
-                println!("GETMEDIAPOSITION\nclient: {}, server id: {}", self.config.id,id_server);
+                println!("GETMEDIAPOSITION {}\nclient: {}, server id: {}", id_media,self.config.id,id_server);
                 self.get_position(id_server, id_media)
             },
             ContentCommands::GetMedia(id_media_server, id_media) => {
@@ -184,6 +184,7 @@ impl WebBrowser {
     }
 
     pub fn search_type_servers(& mut self) {
+        println!("servers known to web browser: {:?}",self.servers);
         println!("Asked server type");
         for server in self.servers.clone() {
             println!("Asked server type to server{}",server);
@@ -403,6 +404,7 @@ impl WebBrowser {
                             TextServer::ServerTypeText(server_type) => {
 
                                 if server_type == ServerType::TextServer && !self.text_servers.contains(&src_id) {
+                                    println!("client found: {} as the TextServer",src_id);
                                     self.text_servers.push(src_id.clone());
                                 }
 
@@ -460,7 +462,7 @@ impl WebBrowser {
                     if let Ok(message) = MediaServer::reassemble_msg(fragments){
                         match message{
                             MediaServer::ServerTypeMedia(server_type) => {
-                                println!("server found is of type: {:?}", server_type);
+                                println!("client found: {} as the MediaServer",src_id);
 
                                 if server_type == ServerType::MediaServer && !self.media_servers.contains(&src_id){
                                     self.media_servers.push(src_id.clone());

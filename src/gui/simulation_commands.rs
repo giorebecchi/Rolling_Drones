@@ -38,7 +38,12 @@ fn build_adjacency_list(nodes: &[NodeConfig]) -> HashMap<NodeId, Vec<NodeId>> {
     graph
 }
 
-fn has_path(graph: &HashMap<NodeId, Vec<NodeId>>, source: NodeId, target: NodeId) -> bool {
+fn has_path(
+    graph: &HashMap<NodeId, Vec<NodeId>>,
+    nodes: &[NodeConfig],
+    source: NodeId,
+    target: NodeId
+) -> bool {
     if source == target {
         return true;
     }
@@ -56,7 +61,16 @@ fn has_path(graph: &HashMap<NodeId, Vec<NodeId>>, source: NodeId, target: NodeId
                     return true;
                 }
 
-                if !visited.contains(&neighbor) {
+                let is_drone = nodes.iter()
+                    .find(|n| n.id == neighbor)
+                    .map(|n| n.node_type == NodeType::Drone)
+                    .unwrap_or(false);
+
+                let is_source = neighbor == source;
+                let is_target = neighbor == target;
+
+
+                if (is_drone || is_source || is_target) && !visited.contains(&neighbor) {
                     visited.insert(neighbor);
                     queue.push_back(neighbor);
                 }
@@ -81,7 +95,7 @@ fn validate_chat_connectivity(nodes: &[NodeConfig]) -> Result<(), String> {
     for client in &chat_clients {
         let mut can_reach_server = false;
         for server in &chat_servers {
-            if has_path(&graph, client.id, server.id) {
+            if has_path(&graph, nodes, client.id, server.id) {
                 can_reach_server = true;
                 break;
             }
@@ -94,14 +108,14 @@ fn validate_chat_connectivity(nodes: &[NodeConfig]) -> Result<(), String> {
     for server in &chat_servers {
         let mut reachable_client_ids = Vec::new();
         for client in &chat_clients {
-            if has_path(&graph, server.id, client.id) {
+            if has_path(&graph, nodes, server.id, client.id) {
                 reachable_client_ids.push(client.id);
             }
         }
 
         if reachable_client_ids.len() < 2 {
             return Err(format!(
-                "ChatServer {} must be able to reach at least 2 different ChatClients, but can only reach {}",
+                "ChatServer {} must be able to reach at least 2 different ChatClients through drones, but can only reach {}",
                 server.id,
                 reachable_client_ids.len()
             ));
@@ -129,20 +143,28 @@ fn validate_web_media_connectivity(nodes: &[NodeConfig]) -> Result<(), String> {
     for browser in &web_browsers {
         let mut can_reach_text = false;
         for text in &text_servers {
-            if has_path(&graph, browser.id, text.id) {
+            if has_path(&graph, nodes, browser.id, text.id) {
                 can_reach_text = true;
                 break;
             }
         }
         if !can_reach_text {
-            return Err(format!("WebBrowser {} cannot reach any TextServer", browser.id));
+            return Err(format!("WebBrowser {} cannot reach any TextServer ", browser.id));
+        }
+    }
+
+    for browser in &web_browsers {
+        for media in &media_servers {
+            if !has_path(&graph, nodes, browser.id, media.id) {
+                return Err(format!("WebBrowser {} cannot reach MediaServer {} ", browser.id, media.id));
+            }
         }
     }
 
     for text in &text_servers {
         for media in &media_servers {
-            if !has_path(&graph, text.id, media.id) {
-                return Err(format!("TextServer {} cannot reach MediaServer {}", text.id, media.id));
+            if !has_path(&graph, nodes, text.id, media.id) {
+                return Err(format!("TextServer {} cannot reach MediaServer {} ", text.id, media.id));
             }
         }
     }
