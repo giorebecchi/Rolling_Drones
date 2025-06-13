@@ -1,3 +1,4 @@
+use crossbeam_channel::tick;
 use base64::engine::general_purpose::STANDARD as BASE64;
 use base64::Engine;
 use crate::servers::utilities_max::*;
@@ -14,6 +15,8 @@ use wg_2024::packet::{Ack, FloodRequest, Fragment, Nack, NackType, NodeType, Pac
 use bevy::utils::HashSet;
 use std::io::{Read};
 use crate::simulation_control::simulation_control::MyNodeType;
+use std::time::{Duration, Instant};
+
 
 pub struct Server{
     server_id: NodeId,
@@ -66,46 +69,65 @@ impl Server {
         }
     }
     pub fn run(&mut self) {
-        self.load_image_paths_from_file();
-        self.load_text_paths_from_file();
+        // 1️⃣ Caricamento iniziale (immagini e testi)
+        if let Err(e) = self.load_image_paths_from_file() {
+            log::error!("Errore load_image_paths: {}", e);
+        }
+        if let Err(e) = self.load_text_paths_from_file() {
+            log::error!("Errore load_text_paths: {}", e);
+        }
+
+        // 2️⃣ Prima flood per costruire la topologia
         self.floading();
 
+        // 3️⃣ Ticker per il controllo periodico dei timeout
+        let check_interval = Duration::from_millis(100);
+        let ticker = tick(check_interval);
 
         loop {
             select_biased! {
-                    recv(self.packet_recv) -> packet => {
-                        if let Ok(packet) = packet {
-                            self.handle_packet(packet);
-                        }
-                        else{
-                            break
-                        }
-                    },
-                    recv(self.rcv_flood) -> flood => {
-                        if let Ok(_) = flood {
-                            self.floading();
-                        }
+                // ◼️ 4.1 Ricevo un pacchetto
+                recv(self.packet_recv) -> packet => {
+                    match packet {
+                        Ok(pkt) => self.handle_packet(pkt),
+                        Err(_)  => break,   // canale chiuso => esco
                     }
-                    recv(self.rcv_command) -> sc_command => {
-                        if let Ok(command) = sc_command {
-                            match command {
-                                ServerCommands::SendTopologyGraph=>{
-                                   let _ = self.send_event.send(ServerEvent::GraphMax(self.server_id, self.nodes_map.clone()));
-                                },
-                                ServerCommands::AddSender(id, sender)=>{
-                                    self.floading();
-                                    self.packet_send.insert(id, sender);
+                },
 
-                                },
-                                ServerCommands::RemoveSender(_)=>{
-                                    self.floading();
-                                }
+                // ◼️ 4.2 Ricevo un segnale di flood
+                recv(self.rcv_flood) -> flood => {
+                    if flood.is_ok() {
+                        self.floading();
+                    }
+                },
+
+                // ◼️ 4.3 Ricevo un comando dal controller
+                recv(self.rcv_command) -> cmd => {
+                    if let Ok(command) = cmd {
+                        match command {
+                            ServerCommands::SendTopologyGraph => {
+                                let _ = self.send_event
+                                    .send(ServerEvent::GraphMax(self.server_id, self.nodes_map.clone()));
+                            }
+                            ServerCommands::AddSender(id, sender) => {
+                                self.packet_send.insert(id, sender);
+                                self.floading();
+                            }
+                            ServerCommands::RemoveSender(id) => {
+                                self.remove_drone(id);
                             }
                         }
                     }
-                }
+                },
+
+                // ◼️ 5️⃣ Ticker: controllo timeout frammenti
+                recv(ticker) -> _ => {
+                    self.check_timeouts();
+                },
+            }
         }
     }
+
     fn handle_packet(&mut self, packet: Packet) {
         let p = packet.clone();
         match p.pack_type {
@@ -165,70 +187,101 @@ impl Server {
         // 5) Se completo, processo e pulisco
         if entry.counter == entry.total_expected as u64 {
             self.processed_sessions.insert(session_key);
+            println!("HANDLO IL COMANDO ");
             self.handle_command(session_key);
             self.fragment_recv.remove(&session_key);
         }
     }
-    fn handle_ack(&mut self, _ack: Ack, session: u64) {
+    /// 1️⃣ Handle NACK: rispedisco subito, resetto backoff
+    fn handle_nack(&mut self, fragment: Nack, _pos: &u64, session: &u64) {
+        let idx = fragment.fragment_index as usize;
+        // Rimuovi drone in errore se serve
+        if let NackType::ErrorInRouting(bad) = fragment.nack_type {
+            self.remove_drone(bad);
+        }
+        // Se ho ancora quel frammento da inviare:
+        if let Some(d) = self.fragment_send.get_mut(session) {
+            if idx < d.total_expected && !d.acked[idx] {
+                // aggiorno counters
+                d.retry_count[idx] += 1;
+                // resetto il backoff a quello di partenza
+                d.backoff[idx] = TIMEOUT.min(MAX_BACKOFF);
+                // aggiorno last_send prima di inviare
+                d.last_send[idx] = Instant::now();
+                // **invia subito**, senza attendere un secondo
+                // (chiude il borrow di d)
+            }
+        }
+        // fuori dal borrow di fragment_send...
+        self.send_single_fragment(*session, idx);
+    }
 
-        if let Some(data_struct) = self.fragment_send.get_mut(&session) {
-            if data_struct.counter > 0 {
-                data_struct.counter -= 1;
+    /// 2️⃣ Handle ACK: sliding window + misura RTT per backoff adattivo
+    fn handle_ack(&mut self, ack: Ack, session: u64) {
+        let mut next_idx = None;
+        if let Some(d) = self.fragment_send.get_mut(&session) {
+            let idx = ack.fragment_index as usize;
+            if idx < d.total_expected && !d.acked[idx] {
+                // calcolo un sample di RTT
+                let now = Instant::now();
+                let sample = now.duration_since(d.last_send[idx]);
+                // EWMA per backoff (opzionale)
+                // backoff[idx] = (backoff[idx].mul_f32(7.0) + sample.mul_f32(3.0)) / 10;
+                // ma per semplicità lo lasciamo fisso…
 
-                if data_struct.counter == 0 {
-                    drop(data_struct);
-                    self.fragment_send.remove(&session);
+                d.acked[idx] = true;
+                d.counter = d.counter.saturating_sub(1);
+
+                // se “slot in finestra” libero, preparo il prossimo
+                if d.next_to_send < d.total_expected {
+                    next_idx = Some(d.next_to_send);
+                    d.next_to_send += 1;
                 }
-            } else {
             }
-        } else {
+        }
+        // fuori dal borrow: mando il frammento successivo
+        if let Some(i) = next_idx {
+            self.send_single_fragment(session, i);
+        }
+        // rimuovo la sessione se finita
+        if let Some(d) = self.fragment_send.get(&session) {
+            if d.counter == 0 {
+                println!("🎉 Tutti frammenti sessione {} completati", session);
+                self.fragment_send.remove(&session);
+            }
         }
     }
-    fn handle_nack(&mut self, fragment: Nack, position: &u64, session: &u64) {
 
-        if !self.fragment_send.contains_key(session) {
-            return;
-        }
+    /// 3️⃣ Invia SOLO i primi WINDOW_SIZE frammenti
+    fn send_data_fragments(
+        &mut self,
+        id: NodeId,
+        dati: Box<[([u8; 128], u8)]>,
+        session: u64,
+    ) {
+        let total = dati.len();
+        let now = Instant::now();
+        let window = WINDOW_SIZE.min(total);
 
-        let data_struct = self.fragment_send.get(session).unwrap();
-        let destination = data_struct.who_ask;
-        let buf_len = data_struct.dati.len();
+        let data = Data {
+            counter:        total as u64,
+            total_expected: total,
+            who_ask:        id,
+            dati,
+            last_send:      vec![now; total],
+            backoff:        vec![TIMEOUT; total],
+            retry_count:    vec![0; total],
+            acked:          vec![false; total],
+            next_to_send:   window,
+        };
+        self.fragment_send.insert(session, data);
 
-        // 3. Se buffer vuoto, niente da ritrasmettere
-        if buf_len == 0 {
-            return;
-        }
-
-        let nacked_idx = fragment.fragment_index as usize;
-        if nacked_idx >= buf_len {
-            return;
-        }
-
-        let chunk_data = data_struct.dati[nacked_idx].0.clone();
-
-        match fragment.nack_type {
-            NackType::ErrorInRouting(bad_node) => {
-                self.remove_drone(bad_node);
-            }
-            NackType::Dropped => {
-                // Non rimuovo nodi, continuo a ritrasmettere
-            }
-            _ => {
-                return;
-            }
-        }
-
-        if let Some(root) = self.routing(destination) {
-            let total = buf_len as u64;
-            let source = SourceRoutingHeader::new(root.clone(), 1);
-            let fr = Fragment::new(*position, total, chunk_data);
-            let pack = Packet::new_fragment(source, *session, fr);
-
-            self.send_packet(pack);
-        } else {
-
+        // invio iniziale di tutta la finestra
+        for idx in 0..window {
+            self.send_single_fragment(session, idx);
         }
     }
+
     fn handle_flood_request(&mut self, packet: Packet) {
         if let PacketType::FloodRequest(mut flood) = packet.pack_type {
             // Se già visitato: rispondo subito
@@ -337,7 +390,6 @@ impl Server {
         self.fragment_recv.retain(|&(who, _), _| who != node_id);
         self.fragment_send.retain(|_, data| data.who_ask != node_id);
     }
-
     fn send_packet(&mut self, mut packet: Packet) {
         if packet.routing_header.hops.len() < 2 {
             return; // Nessun nodo successivo disponibile
@@ -429,6 +481,7 @@ impl Server {
             ComandoText::Media(media) => {
                 match media {
                     MediaServer::ServerTypeMedia(ServerType) => {
+                        println!("SERVERTYPEMEDIA");
                         if self.media_others.contains_key(&id_client) {} else {
                             if ServerType == ServerType::MediaServer {
                                 self.media_others.insert(id_client, Vec::new());
@@ -438,6 +491,7 @@ impl Server {
                         }
                     }
                     MediaServer::SendPath(v) => {
+                        println!("SERVERSENDPATH");
                         if self.media_others.contains_key(&id_client) {
                             self.media_others.insert(id_client, v);
                         } else {}
@@ -448,10 +502,12 @@ impl Server {
             ComandoText::Text(text) => {
                 match text {
                     TextServer::ServerTypeReq => {
+                        println!("SERVERTYPEREQ");
                         let response = Risposta::Media(MediaServer::ServerTypeMedia(ServerType::MediaServer));
                         self.send_response(id_client, response);
                     }
                     TextServer::PathResolution => {
+                        println!("SERVERSENDPATHRESOLVE");
                         let response = Risposta::Media(MediaServer::SendPath(self.get_list()));
                         self.send_response(id_client, response);
                     }
@@ -467,11 +523,13 @@ impl Server {
             ComandoText::Client(client) => {
                 match client {
                     WebBrowserCommands::GetList => {
+                        println!("CLIENTGETLIST");
                         let list = self.get_list();
                         let response = Risposta::Text(TextServer::SendFileList(list));
                         self.send_response(id_client, response)
                     }
                     WebBrowserCommands::GetPosition(media) => {
+                        println!("CLIENTGETPOSITION");
                         let mut id_server = 0;
                         let server = self.find_position_media(media);
                         match server {
@@ -484,6 +542,7 @@ impl Server {
                         }
                     }
                     WebBrowserCommands::GetMedia(media_name) => {
+                        println!("CLIENTGETMEDIA");
                         match self.find_position_media(media_name.clone()) {
                             Ok(owner_id) => {
                                 if owner_id != self.server_id {
@@ -508,6 +567,7 @@ impl Server {
                     }
 
                     WebBrowserCommands::GetText(text_name) => {
+                        println!("CLIENTGETTEXT");
                         match self.find_position_text(text_name.clone()) {
                             Ok(owner_id) => {
                                 if owner_id != self.server_id {
@@ -531,6 +591,7 @@ impl Server {
                         }
                     }
                     WebBrowserCommands::GetServerType => {
+                        println!("CLIENTGETSERVERTYPE");
                         let response = Risposta::Text(TextServer::ServerTypeText(self.server_type.clone()));
                         self.send_response(id_client, response);
                         let response = Risposta::Media(MediaServer::ServerTypeMedia(ServerType::MediaServer));
@@ -543,9 +604,10 @@ impl Server {
     }
     fn send_response(&mut self, id: NodeId, response: Risposta) {
         let session = self.get_session();
-
+        print!("SEND RESPONSE ");
         match response {
             Risposta::Text(text) => {
+                println!("TEXT");
                 let dati = serialize(&text);
                 let total = dati.len();
                 let event: TextServerEvent;
@@ -575,6 +637,7 @@ impl Server {
                 self.send_data_fragments(id, dati, session);
             }
             Risposta::Media(media) => {
+                println!("MEDIA");
                 let dati = serialize(&media);
                 let total = dati.len();
                 let event: MediaServerEvent;
@@ -597,56 +660,22 @@ impl Server {
             _ => {}
         }
     }
-    fn send_data_fragments(&mut self, id: NodeId, dati: Box<[( [u8; 128], u8)]>, session: u64) {
-        let total = dati.len();
-        let d_to_send = Data {
-            counter: total as u64,
-            total_expected: total,
-            dati,
-            who_ask: id,
-        };
-        self.fragment_send.insert(session, d_to_send);
-
-        // Preparo una lista di pacchetti da inviare, senza prendere prestiti mutabili
-        let mut packets_to_send = Vec::new();
-
-        if let Some(path) = self.routing(id) {
-            // Ciclo sui frammenti in prestito immutabile
-            let fragments = &self.fragment_send[&session].dati;
-            for (i, (chunk, len)) in fragments.iter().enumerate() {
-                let routing = SourceRoutingHeader { hop_index: 1, hops: path.clone() };
-                let f = Fragment {
-                    fragment_index: i as u64,
-                    total_n_fragments: total as u64,
-                    length: *len,
-                    data: *chunk,
-                };
-                let p = Packet::new_fragment(routing, session, f);
-                packets_to_send.push(p);
-            }
-        } else if let Some(sender) = self.packet_send.get(&id) {
-            // Fallback diretto, se non c'è routing multiplo
-            let fragments = &self.fragment_send[&session].dati;
-            for (i, (chunk, len)) in fragments.iter().enumerate() {
-                let f = Fragment {
-                    fragment_index: i as u64,
-                    total_n_fragments: total as u64,
-                    length: *len,
-                    data: *chunk,
-                };
-                let hdr = SourceRoutingHeader { hop_index: 0, hops: vec![id] };
-                let p = Packet { routing_header: hdr, session_id: session, pack_type: PacketType::MsgFragment(f) };
-                packets_to_send.push(p);
-            }
-        } else {
-            eprintln!("[Server {}] impossibile raggiungere il client {}", self.server_id, id);
-        }
-
-        // Ora che non abbiamo più prese immutabili su self, possiamo inviare
-        for pkt in packets_to_send {
+    fn send_single_fragment(&mut self, session: u64, idx: usize) {
+        let data = &self.fragment_send[&session];
+        let (chunk, len) = data.dati[idx];
+        if let Some(path) = self.routing(data.who_ask) {
+            let hdr = SourceRoutingHeader::new(path, 1);
+            let frag = Fragment::new(idx as u64, data.total_expected as u64, chunk);
+            let pkt  = Packet::new_fragment(hdr, session, frag);
             self.send_packet(pkt);
+            // aggiorna timer
+            let now = Instant::now();
+            let d_mut = self.fragment_send.get_mut(&session).unwrap();
+            d_mut.last_send[idx] = now;
+            // backoff rimane invariato (o potresti volerlo resettare qua)
         }
     }
+
     pub fn load_text_paths_from_file(&mut self) -> io::Result<()> {
         let path_file = Path::new(&self.path);
         if !path_file.is_file() {
@@ -807,6 +836,58 @@ impl Server {
         self.next_session_id += 1;
         id
     }
+    fn check_timeouts(&mut self) {
+        let mut to_resend = Vec::new();
+        let mut to_abort  = Vec::new();
+
+        // 1) raccolta frammenti da retry
+        for (&sess, data) in &self.fragment_send {
+            for i in 0..data.total_expected {
+                if data.acked[i] { continue; }      // 🌟 salto già confermati
+                if data.last_send[i].elapsed() > data.backoff[i] {
+                    if data.retry_count[i] < MAX_RETRIES {
+                        to_resend.push((sess, i));
+                    } else {
+                        to_abort.push(sess);
+                    }
+                }
+            }
+        }
+
+        // 2) eseguo retry
+        for (sess, idx) in to_resend {
+            let (who, chunk, total) = {
+                let d = &self.fragment_send[&sess];
+                (d.who_ask, d.dati[idx].0, d.total_expected)
+            };
+            if let Some(path) = self.routing(who) {
+                let hdr  = SourceRoutingHeader::new(path, 1);
+                let frag = Fragment::new(idx as u64, total as u64, chunk);
+                let pkt  = Packet::new_fragment(hdr, sess, frag);
+                self.send_packet(pkt);
+
+                // aggiorno backoff e retry_count
+                let now = Instant::now();
+                if let Some(dmut) = self.fragment_send.get_mut(&sess) {
+                    dmut.last_send[idx]   = now;
+                    dmut.retry_count[idx] += 1;
+                    dmut.backoff[idx]     = (dmut.backoff[idx] * 2).min(MAX_BACKOFF);
+                    println!(
+                        "⏳ Timeout-retry frammento {} sess. {} (#{}, backoff={:?})",
+                        idx, sess, dmut.retry_count[idx], dmut.backoff[idx]
+                    );
+                }
+            }
+        }
+
+        // 3) pulizia sessioni abortite
+        for sess in to_abort {
+            println!("❌ Abort sessione {} per retry massimi", sess);
+            self.fragment_send.remove(&sess);
+        }
+    }
+
+
 }
 fn title_and_extension(name: &str) -> (String, String) {
     match name.rsplit_once('.') {
