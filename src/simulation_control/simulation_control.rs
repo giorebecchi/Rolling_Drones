@@ -811,21 +811,25 @@ impl SimulationController {
 
 
     pub fn crash(&mut self, id: NodeId) {
-        let nghb = self.neighbours.get(&id).unwrap();
-        for neighbour in nghb.iter(){
-            if let Some(sender) = self.drones.get(&neighbour) {
-                sender.send(DroneCommand::RemoveSender(id)).unwrap();
-            }
-        }
-
         if let Some(drone_sender) = self.drones.get(&id) {
             if let Err(err) = drone_sender.send(DroneCommand::Crash) {
                 println!("Failed to send Crash command to drone {}: {:?}", id, err);
             }
         } else {
             println!("No drone with ID {:?}", id);
+            return;
         }
 
+        if let Some(nghb) = self.neighbours.get(&id) {
+            for neighbour in nghb.iter() {
+                if let Some(sender) = self.drones.get(&neighbour) {
+                    if let Err(err) = sender.send(DroneCommand::RemoveSender(id)) {
+                        println!("Error {} when notifying {} about crashed node {}", err, neighbour, id);
+                    }
+
+                }
+            }
+        }
     }
 
     pub fn pdr(&mut self, id : NodeId, pdr: f32) {
