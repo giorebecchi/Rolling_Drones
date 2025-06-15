@@ -2,7 +2,6 @@ use bevy::prelude::*;
 use crate::network_initializer::network_initializer::*;
 use crate::gui::login_window::{NodeConfig, NodeType};
 use crate::gui::shared_info_plugin::{NodeCategory, SeenClients};
-use crate::simulation_control::simulation_control::MyNodeType;
 
 pub fn spawn_star_decagram(clients: &SeenClients) -> Vec<NodeConfig> {
     let config = parse_config();
@@ -37,8 +36,8 @@ pub fn spawn_star_decagram(clients: &SeenClients) -> Vec<NodeConfig> {
         if let Some(NodeCategory::Client(client_type)) = clients.nodes.get(&client.id) {
             let position = calculate_position(current_index);
             let node_type = match client_type {
-                MyNodeType::WebBrowser => NodeType::WebBrowser,
-                MyNodeType::ChatClient => NodeType::ChatClient,
+                NodeType::WebBrowser => NodeType::WebBrowser,
+                NodeType::ChatClient => NodeType::ChatClient,
                 _ => unreachable!(),
             };
             nodes.push(NodeConfig::new(
@@ -56,9 +55,9 @@ pub fn spawn_star_decagram(clients: &SeenClients) -> Vec<NodeConfig> {
         if let Some(NodeCategory::Server(server_type)) = clients.nodes.get(&server.id) {
             let position = calculate_position(current_index);
             let node_type = match server_type {
-                MyNodeType::TextServer => NodeType::TextServer,
-                MyNodeType::MediaServer => NodeType::MediaServer,
-                MyNodeType::ChatServer => NodeType::ChatServer,
+                NodeType::TextServer => NodeType::TextServer,
+                NodeType::MediaServer => NodeType::MediaServer,
+                NodeType::ChatServer => NodeType::ChatServer,
                 _ => unreachable!(),
             };
             nodes.push(NodeConfig::new(

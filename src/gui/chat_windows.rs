@@ -2,7 +2,7 @@ use std::collections::HashMap;
 use bevy::prelude::*;
 use bevy::window::PrimaryWindow;
 use bevy_egui::{egui, EguiContexts};
-use crate::gui::login_window::SimulationController;
+use crate::simulation_control::simulation_control::SimulationController;
 use wg_2024::network::NodeId;
 use crate::common_things::common::ClientType;
 use crate::gui::login_window::Clickable;

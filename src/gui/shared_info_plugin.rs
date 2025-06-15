@@ -1,17 +1,18 @@
 use std::collections::HashMap;
-use std::num::NonZero;
 use std::sync::{Arc, RwLock};
-use bevy::app::{App, AppExit, Plugin, Update};
-use bevy::prelude::{in_state, EventWriter, IntoSystemConfigs, NextState, Res, ResMut, Resource};
+use bevy::app::{App, Plugin, Update};
+use bevy::prelude::{in_state, IntoSystemConfigs, NextState, Res, ResMut, Resource};
 use once_cell::sync::Lazy;
 use wg_2024::network::NodeId;
 use crate::gui::chat_windows::ChatState;
-use crate::gui::login_window::AppState;
+use crate::gui::login_window::{AppState, NodeType};
 use crate::gui::web_media_plugin::WebState;
-use crate::simulation_control::simulation_control::MyNodeType;
 
 pub static SHARED_STATE: Lazy<Arc<RwLock<ThreadInfo>>> = Lazy::new(|| {
     Arc::new(RwLock::new(ThreadInfo::default()))
+});
+pub static ERROR_VERIFY: Lazy<Arc<RwLock<TopologyError>>> = Lazy::new(|| {
+    Arc::new(RwLock::new(TopologyError::default()))
 });
 
 
@@ -19,9 +20,9 @@ pub static SHARED_STATE: Lazy<Arc<RwLock<ThreadInfo>>> = Lazy::new(|| {
 pub struct ThreadInfo {
     pub nodes: HashMap<NodeId, NodeCategory>,
     pub n_clients: usize,
-    pub client_types: Vec<(MyNodeType, NodeId)>,
+    pub client_types: Vec<(NodeType, NodeId)>,
     pub n_servers: usize,
-    pub server_types: Vec<(MyNodeType, NodeId)>,
+    pub server_types: Vec<(NodeType, NodeId)>,
     pub responses: HashMap<(NodeId,(NodeId,NodeId)),Vec<String>>,
     pub client_list: HashMap<(NodeId,NodeId), Vec<NodeId>>,
     pub chat_servers: HashMap<NodeId, Vec<NodeId>>,
@@ -34,9 +35,6 @@ pub struct ThreadInfo {
     pub target_media_server: HashMap<NodeId, NodeId>,
     pub actual_media_path: HashMap<NodeId, String>,
     pub actual_file_path: HashMap<NodeId, String>,
-    pub wrong_connections: HashMap<NodeId, Vec<NodeId>>,
-    pub incomplete_connections: Vec<(NodeId, NodeId)>,
-    pub wrong_pdr: HashMap<NodeId, bool>,
     pub is_updated: bool,
     pub ready_setup: bool,
 
@@ -54,33 +52,102 @@ impl Plugin for BackendBridgePlugin {
         app
 
             .init_resource::<StateBridge>()
-            .init_resource::<VerifyTopology>()
             .init_resource::<SeenClients>()
-            .add_systems(Update, (sync_before_setup,evaluate_state).run_if(in_state(AppState::SetUp)))
-            .add_systems(Update, sync_backend_to_frontend.run_if(in_state(AppState::InGame)))
-            .add_systems(Update, check_topology);
+            .init_resource::<ErrorConfig>()
+            .add_systems(Update, (sync_before_setup,sync_topology_error,evaluate_state).run_if(in_state(AppState::SetUp)))
+            .add_systems(Update, sync_backend_to_frontend.run_if(in_state(AppState::InGame)));
+
     }
 }
 #[derive(Clone, Copy, Debug)]
 pub enum NodeCategory {
-    Client(MyNodeType),
-    Server(MyNodeType),
+    Client(NodeType),
+    Server(NodeType),
 }
 #[derive(Resource,Default)]
 pub struct SeenClients{
     pub nodes: HashMap<NodeId, NodeCategory>,
-    pub clients : Vec<(MyNodeType,NodeId)>,
+    pub clients : Vec<(NodeType,NodeId)>,
     clients_len: usize,
-    pub servers: Vec<(MyNodeType, NodeId)>,
+    pub servers: Vec<(NodeType, NodeId)>,
     servers_len: usize,
     pub ready_setup: bool,
 }
-#[derive(Resource, Default)]
-pub struct VerifyTopology{
-    node_connection: HashMap<NodeId, Vec<NodeId>>,
-    incomplete_connections: Vec<(NodeId, NodeId)>,
-    wrong_pdr: HashMap<NodeId, bool>
+pub struct TopologyError{
+    pub connection_error: (bool, Result<(),String>),
+    pub isolated_node: (bool, Result<(),String>),
+    pub wrong_pdr: (bool, Result<(),String>),
+    pub is_updated: bool,
 
+}
+impl Default for TopologyError{
+    fn default() -> Self {
+        TopologyError{
+            connection_error: (false, Ok(())),
+            isolated_node: (false, Ok(())),
+            wrong_pdr: (false, Ok(())),
+            is_updated: false
+        }
+    }
+}
+#[derive(Resource, Default)]
+pub struct ErrorConfig{
+    pub error_pdr: String,
+    pub error_isolated: String,
+    pub error_connection: String,
+    updated: bool,
+    pub detected: bool,
+}
+fn sync_topology_error(
+    mut possible_error: ResMut<ErrorConfig>
+){
+    if let Ok(state) = ERROR_VERIFY.try_read() {
+        if state.is_updated{
+            let mut update1=false;
+            let mut update2=false;
+            let mut update3=false;
+            let mut error=false;
+            possible_error.error_connection=match state.connection_error.clone().1{
+                Ok(())=>{
+                    update1=true;
+                    String::new()
+                },
+                Err(err)=>{
+                    error=true;
+                    err
+                }
+            };
+            possible_error.error_pdr=match state.wrong_pdr.clone().1{
+                Ok(())=>{
+                    update2=true;
+                    String::new()
+                },
+                Err(err)=>{
+                    error=true;
+                    err
+                }
+            };
+            possible_error.error_isolated=match state.isolated_node.clone().1{
+                Ok(())=>{
+                    update3=true;
+                    String::new()
+                },
+                Err(err)=>{
+                    error=true;
+                    err
+                },
+            };
+            possible_error.updated=update1&&update2&&update3;
+            possible_error.detected=error;
+
+
+        }
+        drop(state);
+
+        if let Ok(mut state) = ERROR_VERIFY.try_write(){
+            state.is_updated=false;
+        }
+    }
 }
 
 fn sync_before_setup(
@@ -90,12 +157,13 @@ fn sync_before_setup(
     if let Ok(state) = SHARED_STATE.try_read() {
         if state.is_updated{
 
-                seen_clients.clients=state.client_types.clone();
-                seen_clients.clients_len+=state.n_clients;
-                seen_clients.servers.extend(state.server_types.clone());
-                seen_clients.servers_len+=state.n_servers;
-                seen_clients.ready_setup=state.ready_setup;
-                seen_clients.nodes=state.nodes.clone();
+
+            seen_clients.clients=state.client_types.clone();
+            seen_clients.clients_len+=state.n_clients;
+            seen_clients.servers.extend(state.server_types.clone());
+            seen_clients.servers_len+=state.n_servers;
+            seen_clients.ready_setup=state.ready_setup;
+            seen_clients.nodes=state.nodes.clone();
 
 
             }
@@ -113,8 +181,7 @@ fn sync_before_setup(
 
 fn sync_backend_to_frontend(
     mut chat_state: ResMut<ChatState>,
-    mut web_state: ResMut<WebState>,
-    mut topology: ResMut<VerifyTopology>
+    mut web_state: ResMut<WebState>
 ) {
 
     if let Ok(state) = SHARED_STATE.try_read() {
@@ -130,9 +197,7 @@ fn sync_backend_to_frontend(
             web_state.target_media_server=state.target_media_server.clone();
             web_state.actual_media_path=state.actual_media_path.clone();
             web_state.actual_file_path=state.actual_file_path.clone();
-            topology.node_connection=state.wrong_connections.clone();
-            topology.incomplete_connections=state.incomplete_connections.clone();
-            topology.wrong_pdr=state.wrong_pdr.clone();
+
 
 
 
@@ -145,26 +210,10 @@ fn sync_backend_to_frontend(
     }
 }
 fn evaluate_state(
-    seen_clients: ResMut<SeenClients>,
+    topology_error: Res<ErrorConfig>,
     mut next_state: ResMut<NextState<AppState>>
 ){
-
-    if seen_clients.clients_len==seen_clients.clients.len()&&seen_clients.servers_len==seen_clients.servers.len()&&seen_clients.ready_setup{
-        println!("is it true {}", seen_clients.ready_setup);
-        next_state.set(AppState::InGame);
-
-    }
-
-}
-fn check_topology(
-    topology: Res<VerifyTopology>,
-    mut exit : EventWriter<AppExit>
-){
-    if !topology.node_connection.is_empty() || !topology.incomplete_connections.is_empty() || !topology.wrong_pdr.is_empty(){
-        let exit_code=NonZero::new(12).unwrap();
-        println!("Check the toml for errors in the configuration!!");
-        println!("Errors can be: \nclients/servers without a connection: {:?}\nnot full duplex connections: {:?}\n wrong pdr: {:?}", topology.node_connection, topology.incomplete_connections, topology.wrong_pdr);
-        exit.send(AppExit::Error(exit_code));
-
+    if topology_error.updated{
+        next_state.set(AppState::InGame)
     }
 }

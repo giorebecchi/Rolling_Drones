@@ -1,7 +1,7 @@
 use std::collections::{HashMap, HashSet};
 use std::{fs, thread};
 use bagel_bomber::BagelBomber;
-use bevy::prelude::{ResMut};
+use bevy::prelude::{ResMut, Vec2};
 use crossbeam_channel::{unbounded, Receiver, Sender};
 use fungi_drone::FungiDrone;
 use Krusty_Club::Krusty_C;
@@ -20,10 +20,11 @@ use wg_2024_rust::drone::RustDrone;
 use crate::clients::chat_client::ChatClient;
 use crate::clients::web_browser::WebBrowser;
 use crate::common_things::common::{BackGroundFlood, ChatClientEvent, CommandChat, ContentCommands, ServerCommands, ServerEvent, WebBrowserEvents};
-use crate::gui::login_window::SimulationController;
-use crate::gui::shared_info_plugin::{NodeCategory, SHARED_STATE};
+use crate::gui::login_window::{NodeConfig, NodeType};
+use crate::simulation_control::simulation_control::SimulationController;
+use crate::gui::shared_info_plugin::{NodeCategory, ERROR_VERIFY, SHARED_STATE};
+use crate::network_initializer::connection_validity::{validate_drone_pdr, validate_duplex_connections, would_break_connectivity};
 use crate::servers::ChatServer::Server;
-use crate::simulation_control::simulation_control::MyNodeType;
 use crate::servers::TextServerFillo::Server as TextServerBaia;
 use crate::servers::MediaServerFillo::Server as MediaServerBaia;
 use crate::servers::Chat_max::Server as ChatMax;
@@ -43,7 +44,6 @@ pub fn start_simulation(
     mut simulation_controller: ResMut<SimulationController>
 ) {
     let config = parse_config();
-    check_full_duplex_connections(&config);
 
     let (packet_channels, command_chat_channel,
         command_web_channel, background_flooding, server_commands) =
@@ -147,22 +147,32 @@ pub fn start_simulation(
     });
     let mut nodes=HashMap::new();
     for client in client.keys(){
-        nodes.insert(*client, NodeCategory::Client(MyNodeType::ChatClient));
+        nodes.insert(*client, NodeCategory::Client(NodeType::ChatClient));
     }
     for web in web_client.keys(){
-        nodes.insert(*web, NodeCategory::Client(MyNodeType::WebBrowser));
+        nodes.insert(*web, NodeCategory::Client(NodeType::WebBrowser));
     }
     for text in text_servers.keys(){
-        nodes.insert(*text, NodeCategory::Server(MyNodeType::TextServer));
+        nodes.insert(*text, NodeCategory::Server(NodeType::TextServer));
     }
     for media in media_servers.keys(){
-        nodes.insert(*media, NodeCategory::Server(MyNodeType::MediaServer));
+        nodes.insert(*media, NodeCategory::Server(NodeType::MediaServer));
     }
     for chat in chat_servers.keys(){
-        nodes.insert(*chat, NodeCategory::Server(MyNodeType::ChatServer));
+        nodes.insert(*chat, NodeCategory::Server(NodeType::ChatServer));
     }
+    let isolated_node=would_break_connectivity(&convert_to_config(config.clone(), nodes.clone()));
+    let wrong_pdr=validate_drone_pdr(&convert_to_config(config.clone(), nodes.clone()));
+    let connection_error=validate_duplex_connections(&convert_to_config(config, nodes.clone()));
+    println!("wrong_pdr: {:?}", wrong_pdr);
+    if let Ok(mut state) = ERROR_VERIFY.write(){
+        state.connection_error=(false,connection_error.clone());
+        state.wrong_pdr=(false, wrong_pdr.clone());
+        state.isolated_node=(false, isolated_node.clone());
+        state.is_updated=true;
+    }
+
     if let Ok(mut state)=SHARED_STATE.write(){
-        state.ready_setup=true;
         state.nodes=nodes;
         state.is_updated=true;
     }
@@ -216,12 +226,6 @@ fn spawn_drones(
     node_event_send: Sender<DroneEvent>
 ) {
     for (i,cfg_drone) in config.drone.iter().cloned().enumerate() {
-        if cfg_drone.pdr>1.0{
-            if let Ok(mut state)= SHARED_STATE.write(){
-                state.wrong_pdr.insert(cfg_drone.id, true);
-                state.is_updated=true;
-            }
-        }
         let (controller_drone_send, controller_drone_recv) = unbounded();
         controller_drones.insert(cfg_drone.id, controller_drone_send);
         packet_drones.insert(cfg_drone.id, packet_channels[&cfg_drone.id].0.clone());
@@ -289,9 +293,6 @@ fn spawn_servers_baia(
     let n_servers = config.server.len();
 
     for (i, cfg_server) in config.server.iter().cloned().enumerate() {
-        if cfg_server.connected_drone_ids.is_empty() {
-            topology_error(cfg_server.id, cfg_server.connected_drone_ids.clone());
-        }
 
         let rcv = packet_channels[&cfg_server.id].1.clone();
         let packet_send = cfg_server.connected_drone_ids.iter()
@@ -382,7 +383,7 @@ fn spawn_chat_server(
         server.run();
     });
     chat_servers.insert(id, server_commands[&id].0.clone());
-    set_node_types(MyNodeType::ChatServer, n_servers, id);
+    set_node_types(NodeType::ChatServer, n_servers, id);
 }
 
 fn spawn_text_server(
@@ -402,7 +403,7 @@ fn spawn_text_server(
         server.run();
     });
     text_servers.insert(id, server_commands[&id].0.clone());
-    set_node_types(MyNodeType::TextServer, n_servers, id);
+    set_node_types(NodeType::TextServer, n_servers, id);
 }
 
 fn spawn_media_server(
@@ -422,7 +423,7 @@ fn spawn_media_server(
         server.run();
     });
     media_servers.insert(id, server_commands[&id].0.clone());
-    set_node_types(MyNodeType::MediaServer, n_servers, id);
+    set_node_types(NodeType::MediaServer, n_servers, id);
 }
 fn spawn_clients(
     config: &Config,
@@ -440,9 +441,6 @@ fn spawn_clients(
     let n_clients = config.client.len();
 
     for (i, cfg_client) in config.client.iter().cloned().enumerate() {
-        if cfg_client.connected_drone_ids.is_empty() {
-            topology_error(cfg_client.id, cfg_client.connected_drone_ids.clone());
-        }
 
         let packet_send: HashMap<NodeId, Sender<Packet>> = cfg_client.connected_drone_ids.iter()
             .map(|nid| (*nid, packet_channels[nid].0.clone()))
@@ -510,7 +508,7 @@ fn spawn_chat_client(
     thread::spawn(move || {
         client_instance.run();
     });
-    set_node_types(MyNodeType::ChatClient, n_clients, id);
+    set_node_types(NodeType::ChatClient, n_clients, id);
 }
 
 fn spawn_web_browser(
@@ -538,37 +536,39 @@ fn spawn_web_browser(
     thread::spawn(move || {
         web_browser.run();
     });
-    set_node_types(MyNodeType::WebBrowser, n_clients, id);
+    set_node_types(NodeType::WebBrowser, n_clients, id);
 }
-fn set_node_types(node_type: MyNodeType, n: usize, id: NodeId){
+fn set_node_types(node_type: NodeType, n: usize, id: NodeId){
     if let Ok(mut state) = SHARED_STATE.write() {
         match node_type{
-            MyNodeType::WebBrowser=>{
+            NodeType::WebBrowser=>{
                 state.n_clients=n;
-                state.client_types.push((MyNodeType::WebBrowser, id));
+                state.client_types.push((NodeType::WebBrowser, id));
                 state.is_updated=true;
             },
-            MyNodeType::ChatClient=>{
+            NodeType::ChatClient=>{
                 state.n_clients=n;
-                state.client_types.push((MyNodeType::ChatClient, id));
+                state.client_types.push((NodeType::ChatClient, id));
                 state.is_updated=true;
             },
-            MyNodeType::TextServer=>{
+            NodeType::TextServer=>{
                 state.n_servers=n;
-                state.server_types.push((MyNodeType::TextServer, id));
+                state.server_types.push((NodeType::TextServer, id));
                 state.is_updated=true;
 
 
             },
-            MyNodeType::MediaServer=> {
+            NodeType::MediaServer=> {
                 state.n_servers = n;
-                state.server_types.push((MyNodeType::MediaServer, id));
+                state.server_types.push((NodeType::MediaServer, id));
                 state.is_updated = true;
             },
-            MyNodeType::ChatServer=> {
+            NodeType::ChatServer=> {
                 state.n_servers = n;
-                state.server_types.push((MyNodeType::ChatServer, id));
+                state.server_types.push((NodeType::ChatServer, id));
                 state.is_updated = true;
+            },
+            NodeType::Drone=> {
             }
         }
     }
@@ -648,12 +648,7 @@ fn spawn_servers_max(
     let n_servers = config.server.len();
 
     for (i, cfg_server) in config.server.iter().cloned().enumerate() {
-        if cfg_server.connected_drone_ids.is_empty(){
-            topology_error(cfg_server.id, cfg_server.connected_drone_ids.clone());
-        }
-        if cfg_server.connected_drone_ids.is_empty(){
-            topology_error(cfg_server.id, cfg_server.connected_drone_ids.clone());
-        }
+
         let rcv = packet_channels[&cfg_server.id].1.clone();
         let packet_send = cfg_server.connected_drone_ids.iter()
             .map(|nid| (*nid, packet_channels[nid].0.clone()))
@@ -733,7 +728,7 @@ fn spawn_chat_server_max(
         server.run();
     });
     chat_servers.insert(id, server_commands[&id].0.clone());
-    set_node_types(MyNodeType::ChatServer, n_servers, id);
+    set_node_types(NodeType::ChatServer, n_servers, id);
 }
 fn spawn_text_server_max(
     id: NodeId,
@@ -752,69 +747,47 @@ fn spawn_text_server_max(
         server.run();
     });
     text_servers.insert(id, server_commands[&id].0.clone());
-    set_node_types(MyNodeType::TextServer, n_servers, id);
+    set_node_types(NodeType::TextServer, n_servers, id);
 }
 
-fn topology_error(id: NodeId, connected_ids: Vec<NodeId>){
-    if let Ok(mut state) = SHARED_STATE.write(){
-        state.wrong_connections.insert(id, connected_ids);
-        state.is_updated=true;
-    }
-}
-fn check_full_duplex_connections(config: &Config){
-    let mut incomplete_connections = Vec::new();
 
-    let mut connection_map: HashMap<NodeId, HashSet<NodeId>> = HashMap::new();
 
-    for client in &config.client {
-        let connected_set: HashSet<NodeId> = client.connected_drone_ids.iter().cloned().collect();
-        connection_map.insert(client.id, connected_set);
+pub fn convert_to_config(
+    config: Config,
+    nodes_cat: HashMap<NodeId,NodeCategory>
+)->Vec<NodeConfig>{
+    let mut nodes_config=Vec::new();
+    for drone in config.drone{
+        nodes_config.push(NodeConfig{
+            node_type: NodeType::Drone,
+            id: drone.id,
+            position: Vec2::default(),
+            connected_node_ids: drone.connected_node_ids,
+            pdr: drone.pdr,
+        })
     }
-    for server in &config.server{
-        let connected_set: HashSet<NodeId> = server.connected_drone_ids.iter().cloned().collect();
-        connection_map.insert(server.id, connected_set);
-    }
-    for drone in &config.drone{
-        let connected_set: HashSet<NodeId> = drone.connected_node_ids.iter().cloned().collect();
-        connection_map.insert(drone.id, connected_set);
-    }
+    for client in config.client{
+        let node_cat=nodes_cat.get(&client.id);
+        if let Some(cat)=node_cat{
+            let category=match cat{
+                NodeCategory::Client(client)=>client,
+                NodeCategory::Server(server)=>server,
+            };
+            nodes_config.push(NodeConfig::new(category.clone(), client.id, Vec2::default(), client.connected_drone_ids, -1.00));
 
-    for client in &config.client {
-        for &neighbor_id in &client.connected_drone_ids {
-            if let Some(neighbor_connections) = connection_map.get(&neighbor_id) {
-                if !neighbor_connections.contains(&client.id) {
-                    incomplete_connections.push((client.id, neighbor_id));
-                }
-            } else {
-                incomplete_connections.push((client.id, neighbor_id));
-            }
         }
     }
-    for server in &config.server {
-        for &neighbor_id in &server.connected_drone_ids {
-            if let Some(neighbor_connections) = connection_map.get(&neighbor_id) {
-                if !neighbor_connections.contains(&server.id) {
-                    incomplete_connections.push((server.id, neighbor_id));
-                }
-            } else {
-                incomplete_connections.push((server.id, neighbor_id));
-            }
-        }
-    }
-    for drone in &config.drone {
-        for &neighbor_id in &drone.connected_node_ids {
-            if let Some(neighbor_connections) = connection_map.get(&neighbor_id) {
-                if !neighbor_connections.contains(&drone.id) {
-                    incomplete_connections.push((drone.id, neighbor_id));
-                }
-            } else {
-                incomplete_connections.push((drone.id, neighbor_id));
-            }
-        }
-    }
-    if let Ok(mut state) = SHARED_STATE.write(){
-        state.incomplete_connections=incomplete_connections;
-        state.is_updated=true;
-    }
+    for server in config.server{
+        let node_cat=nodes_cat.get(&server.id);
+        if let Some(cat)=node_cat{
+            let category=match cat{
+                NodeCategory::Client(client)=>client,
+                NodeCategory::Server(server)=>server,
+            };
+            nodes_config.push(NodeConfig::new(category.clone(), server.id, Vec2::default(), server.connected_drone_ids, -1.00));
 
+        }
+
+    }
+    nodes_config
 }

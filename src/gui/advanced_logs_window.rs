@@ -2,7 +2,8 @@ use std::collections::{HashMap, HashSet};
 use bevy::prelude::*;
 use bevy_egui::{EguiContexts, egui};
 use wg_2024::network::NodeId;
-use crate::gui::login_window::{AppState, DisplayableLog, NodeConfig, NodeType, NodesConfig, SimWindows, SimulationController};
+use crate::gui::login_window::{AppState, DisplayableLog, NodeConfig, NodeType, NodesConfig, SimWindows};
+use crate::simulation_control::simulation_control::SimulationController;
 use petgraph::visit::{EdgeRef, IntoEdgeReferences, IntoNodeIdentifiers};
 
 pub struct AdvancedLogsPlugin;
@@ -258,26 +259,6 @@ fn log_window(
 
                     ui.separator();
 
-                    ui.collapsing("Debug Info", |ui| {
-                        ui.label(format!("Looking for routes with key: ({}, {})", node.0, session_id));
-                        ui.label("All route_attempt entries:");
-
-                        let mut route_entries: Vec<_> = sim_log.route_attempt.iter().collect();
-                        route_entries.sort_by_key(|((node, session), _)| (*node, *session));
-
-                        for ((node_id, session), routes) in route_entries.iter().take(10) {
-                            ui.label(format!("  Node {}, Session {}: {} routes", node_id, session, routes.len()));
-                        }
-
-                        let node_routes: Vec<_> = sim_log.route_attempt.iter()
-                            .filter(|((n, _), _)| *n == node.0)
-                            .collect();
-
-                        ui.label(format!("Routes for node {}: {}", node.0, node_routes.len()));
-                        for ((_, session), routes) in node_routes {
-                            ui.label(format!("  Session {}: {} routes", session, routes.len()));
-                        }
-                    });
 
                     ui.group(|ui| {
                         ui.label("Routes taken:");
@@ -373,57 +354,78 @@ fn log_window(
 
                     ui.separator();
                     ui.collapsing("Other errors for this session", |ui| {
-                        let lost_nacks = sim_log.lost_nack.iter()
-                            .filter(|((_, session), _)| *session == *session_id)
-                            .map(|((node_id, _), nacks)| {
-                                format!("Lost NACK at Drone {}: {:?}", node_id, nacks)
-                            })
-                            .collect::<Vec<_>>()
-                            .join("\n");
+                        egui::ScrollArea::vertical()
+                            .max_height(200.0)
+                            .show(ui, |ui| {
+                                let mut has_any_errors = false;
 
-                        if !lost_nacks.is_empty() {
-                            ui.label("Lost NACKs:");
-                            ui.label(lost_nacks);
-                        }
+                                // Lost NACKs
+                                let lost_nacks: Vec<_> = sim_log.lost_nack.iter()
+                                    .filter(|((_, session), _)| *session == *session_id)
+                                    .collect();
 
-                        let lost_acks = sim_log.lost_ack.iter()
-                            .filter(|((_, session), _)| *session == *session_id)
-                            .map(|((node_id, _), acks)| {
-                                format!("Lost ACK at Drone {}: {:?}", node_id, acks)
-                            })
-                            .collect::<Vec<_>>()
-                            .join("\n");
+                                if !lost_nacks.is_empty() {
+                                    has_any_errors = true;
+                                    ui.group(|ui| {
+                                        ui.label("Lost NACKs:");
+                                        for ((node_id, _), nacks) in lost_nacks {
+                                            ui.label(format!("  • Lost NACK at Drone {}: {:?}", node_id, nacks));
+                                        }
+                                    });
+                                    ui.add_space(5.0);
+                                }
 
-                        if !lost_acks.is_empty() {
-                            ui.label("Lost ACKs:");
-                            ui.label(lost_acks);
-                        }
+                                // Lost ACKs
+                                let lost_acks: Vec<_> = sim_log.lost_ack.iter()
+                                    .filter(|((_, session), _)| *session == *session_id)
+                                    .collect();
 
-                        let lost_flood_req = sim_log.lost_flood_req.iter()
-                            .filter(|((_, session), _)| *session == *session_id)
-                            .map(|((node_id, _), reqs)| {
-                                format!("Lost FloodReq at Drone {}: {:?}", node_id, reqs)
-                            })
-                            .collect::<Vec<_>>()
-                            .join("\n");
+                                if !lost_acks.is_empty() {
+                                    has_any_errors = true;
+                                    ui.group(|ui| {
+                                        ui.label("Lost ACKs:");
+                                        for ((node_id, _), acks) in lost_acks {
+                                            ui.label(format!("  • Lost ACK at Drone {}: {:?}", node_id, acks));
+                                        }
+                                    });
+                                    ui.add_space(5.0);
+                                }
 
-                        if !lost_flood_req.is_empty() {
-                            ui.label("Lost Flood Requests:");
-                            ui.label(lost_flood_req);
-                        }
+                                // Lost Flood Requests
+                                let lost_flood_req: Vec<_> = sim_log.lost_flood_req.iter()
+                                    .filter(|((_, session), _)| *session == *session_id)
+                                    .collect();
 
-                        let lost_flood_resp = sim_log.lost_flood_resp.iter()
-                            .filter(|((_, session), _)| *session == *session_id)
-                            .map(|((node_id, _), resps)| {
-                                format!("Lost FloodResp at Drone {}: {:?}", node_id, resps)
-                            })
-                            .collect::<Vec<_>>()
-                            .join("\n");
+                                if !lost_flood_req.is_empty() {
+                                    has_any_errors = true;
+                                    ui.group(|ui| {
+                                        ui.label("Lost Flood Requests:");
+                                        for ((node_id, _), reqs) in lost_flood_req {
+                                            ui.label(format!("  • Lost FloodReq at Drone {}: {:?}", node_id, reqs));
+                                        }
+                                    });
+                                    ui.add_space(5.0);
+                                }
 
-                        if !lost_flood_resp.is_empty() {
-                            ui.label("Lost Flood Responses:");
-                            ui.label(lost_flood_resp);
-                        }
+                                // Lost Flood Responses
+                                let lost_flood_resp: Vec<_> = sim_log.lost_flood_resp.iter()
+                                    .filter(|((_, session), _)| *session == *session_id)
+                                    .collect();
+
+                                if !lost_flood_resp.is_empty() {
+                                    has_any_errors = true;
+                                    ui.group(|ui| {
+                                        ui.label("Lost Flood Responses:");
+                                        for ((node_id, _), resps) in lost_flood_resp {
+                                            ui.label(format!("  • Lost FloodResp at Drone {}: {:?}", node_id, resps));
+                                        }
+                                    });
+                                }
+
+                                if !has_any_errors {
+                                    ui.label("No other errors found for this session.");
+                                }
+                            });
                     });
 
                 } else {

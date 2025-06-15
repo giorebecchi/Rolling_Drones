@@ -12,7 +12,7 @@ use wg_2024::packet;
 use wg_2024::packet::{Ack, FloodRequest, FloodResponse, Fragment, NackType, NodeType, Packet, PacketType};
 use crate::common_things::common::*;
 use crate::servers::assembler::*;
-use crate::simulation_control::simulation_control::MyNodeType;
+use crate::gui::login_window::NodeType as MyNodeType;
 
 #[derive(Serialize, Clone, Debug)]
 pub struct drops{
@@ -61,7 +61,6 @@ impl Server{
         }
     }
     pub(crate) fn run(&mut self) {
-        self.flooding();
         loop {
             select_biased!{
                 recv(self.packet_recv) -> packet => {

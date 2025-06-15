@@ -1,25 +1,37 @@
-
 use crate::common_things::common::ServerEvent;
-use crossbeam_channel::{select_biased, unbounded, Sender};
+use crossbeam_channel::{select_biased, unbounded, Receiver, Sender};
 use std::collections::{HashMap, HashSet};
-use wg_2024::controller::{DroneCommand,DroneEvent};
+use bevy::prelude::Resource;
+use wg_2024::controller::{DroneCommand, DroneEvent};
 use wg_2024::network::{NodeId};
 use wg_2024::packet::{Ack, Fragment, Packet, PacketType};
 use petgraph::Graph;
 use petgraph::graph::NodeIndex;
 use petgraph::graphmap::UnGraphMap;
 use wg_2024::packet::PacketType::{FloodRequest, MsgFragment};
-use crate::gui::login_window::{NodeType, SimulationController, SHARED_LOG};
+use crate::gui::login_window::{NodeType, SHARED_LOG};
 use crate::gui::shared_info_plugin::SHARED_STATE;
 use crate::common_things::common::{BackGroundFlood, ChatClientEvent, ChatEvent, ChatServerEvent, ClientType, CommandChat, ContentCommands, ContentRequest, ContentType, MediaServerEvent, RequestEvent, ServerCommands, TextServerEvent, WebBrowserEvents};
 
-#[derive(Clone, Debug, PartialEq, Eq, Hash, Copy)]
-pub enum MyNodeType{
-    WebBrowser,
-    ChatClient,
-    TextServer,
-    MediaServer,
-    ChatServer
+
+#[derive(Clone,Resource)]
+pub struct SimulationController {
+    pub drones: HashMap<NodeId, Sender<DroneCommand>>,
+    pub packet_channel: HashMap<NodeId, Sender<Packet>>,
+    pub node_event_send: Sender<DroneEvent>,
+    pub node_event_recv: Receiver<DroneEvent>,
+    pub neighbours: HashMap<NodeId, Vec<NodeId>>,
+    pub client : HashMap<NodeId, Sender<CommandChat>>,
+    pub web_client : HashMap<NodeId, Sender<ContentCommands>>,
+    pub text_server: HashMap<NodeId, Sender<ServerCommands>>,
+    pub chat_server: HashMap<NodeId, Sender<ServerCommands>>,
+    pub media_server: HashMap<NodeId, Sender<ServerCommands>>,
+    pub chat_event: Receiver<ChatClientEvent>,
+    pub web_event : Receiver<WebBrowserEvents>,
+    pub server_event: Receiver<ServerEvent>,
+    pub background_flooding: HashMap<NodeId, Sender<BackGroundFlood>>,
+    pub chat_active: bool,
+    pub web_active: bool,
 }
 
 
@@ -501,7 +513,7 @@ impl SimulationController {
 
     }
 
-    fn handle_text_packet_info(&self, server_id: NodeId, server_type: MyNodeType, packet_info: TextServerEvent, session_id: u64) {
+    fn handle_text_packet_info(&self, server_id: NodeId, server_type: NodeType, packet_info: TextServerEvent, session_id: u64) {
         let message = match packet_info {
             TextServerEvent::SendingServerTypeText(size) => {
                 format!(
@@ -546,7 +558,7 @@ impl SimulationController {
         }
     }
 
-    fn handle_media_packet_info(&self, server_id: NodeId, server_type: MyNodeType, packet_info: MediaServerEvent, session_id: u64) {
+    fn handle_media_packet_info(&self, server_id: NodeId, server_type: NodeType, packet_info: MediaServerEvent, session_id: u64) {
         let message = match packet_info {
             MediaServerEvent::SendingServerTypeMedia(size) => {
                 format!(
@@ -573,7 +585,7 @@ impl SimulationController {
         }
     }
 
-    fn handle_chat_packet_info_server(&self, server_id: NodeId, server_type: MyNodeType, packet_info: ChatServerEvent, session_id: u64) {
+    fn handle_chat_packet_info_server(&self, server_id: NodeId, server_type: NodeType, packet_info: ChatServerEvent, session_id: u64) {
         let message = match packet_info {
             ChatServerEvent::SendingServerTypeChat(size) => {
                 format!(
@@ -653,17 +665,17 @@ impl SimulationController {
         }
     }
 
-    fn determine_node_type(&self, node_id: NodeId) -> MyNodeType {
+    fn determine_node_type(&self, node_id: NodeId) -> NodeType {
         if self.client.contains_key(&node_id) {
-            MyNodeType::ChatClient
+            NodeType::ChatClient
         } else if self.web_client.contains_key(&node_id) {
-            MyNodeType::WebBrowser
+            NodeType::WebBrowser
         } else if self.text_server.contains_key(&node_id) {
-            MyNodeType::TextServer
+            NodeType::TextServer
         } else if self.media_server.contains_key(&node_id) {
-            MyNodeType::MediaServer
+            NodeType::MediaServer
         } else {
-            MyNodeType::ChatServer
+            NodeType::ChatServer
         }
     }
 
@@ -697,7 +709,7 @@ impl SimulationController {
             PacketType::Nack(nack) => {
                 self.handle_dropped_nack(drone, packet.session_id, nack);
             }
-            PacketType::FloodRequest(flood_req) => {
+            FloodRequest(flood_req) => {
                 self.handle_dropped_flood_request(drone, packet.session_id, flood_req);
             }
             PacketType::FloodResponse(flood_resp) => {
@@ -820,13 +832,16 @@ impl SimulationController {
             return;
         }
 
-        if let Some(nghb) = self.neighbours.get(&id) {
+        if let Some(nghb) = self.neighbours.clone().get(&id) {
             for neighbour in nghb.iter() {
-                if let Some(sender) = self.drones.get(&neighbour) {
-                    if let Err(err) = sender.send(DroneCommand::RemoveSender(id)) {
-                        println!("Error {} when notifying {} about crashed node {}", err, neighbour, id);
+                if self.drones.contains_key(&neighbour) {
+                    if let Some(sender) = self.drones.get(&neighbour) {
+                        if let Err(err) = sender.send(DroneCommand::RemoveSender(id)) {
+                            println!("Error {} when notifying {} about crashed node {}", err, neighbour, id);
+                        }
                     }
-
+                }else {
+                    self.remove_sender(id, *neighbour);
                 }
             }
         }
