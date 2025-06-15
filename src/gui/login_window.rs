@@ -515,6 +515,7 @@ fn initiate_flood(
     sim: Res<SimulationController>
 ){
     sim.initiate_flood();
+    sim.initiate_flood();
 
 }
 pub static SHARED_LOG: Lazy<Arc<RwLock<SimLog>>>=Lazy::new (||{
