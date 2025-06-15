@@ -4,7 +4,7 @@
 
 ## 🌐 Overview
 
-Welcome to a cutting-edge simulation environment where **clients**, **servers**, and **drones**. This project demonstrates the power of Rust's threading model combined with real-time visualization to create a robust network topology simulator.
+Welcome to a cutting-edge simulation environment with **clients**, **servers**, and **drones**. This project demonstrates the power of Rust's threading model combined with real-time visualization to create a robust network topology simulator.
 
 ## 🚀 Quick Start
 
