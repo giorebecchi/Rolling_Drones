@@ -699,7 +699,9 @@ impl WebBrowser {
 
         let result = dijkstra(&self.topology_graph, source.clone(), Some(destination_id.clone()), |edge|{
             let dest = edge.1;
-            if self.problematic_nodes.contains(&dest) || self.clients.contains(&dest){
+            if self.problematic_nodes.contains(&dest) 
+                || self.clients.contains(&dest)
+                || (self.servers.contains(&dest) && &dest != destination_id){
                 1_000
             }else { 
                 let reliability = self.node_data.get(&dest).map(|data| data.reliability()).unwrap_or(1.0);
