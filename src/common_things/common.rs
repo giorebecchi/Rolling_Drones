@@ -4,7 +4,7 @@ use petgraph::prelude::UnGraphMap;
 use serde::{Deserialize, Serialize};
 use wg_2024::network::NodeId;
 use wg_2024::packet::Packet;
-use crate::simulation_control::simulation_control::MyNodeType;
+use crate::gui::login_window::NodeType as MyNodeType;
 
 //comandi sim_control
 #[derive(Clone)]

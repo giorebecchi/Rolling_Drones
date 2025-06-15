@@ -13,7 +13,7 @@ use wg_2024::network::{NodeId, SourceRoutingHeader};
 use wg_2024::packet::{Ack, FloodRequest, Fragment, Nack, NackType, NodeType, Packet, PacketType};
 use bevy::utils::HashSet;
 use std::io::{Read};
-use crate::simulation_control::simulation_control::MyNodeType;
+use crate::gui::login_window::NodeType as MyNodeType;
 
 
 pub struct Server{
@@ -75,8 +75,6 @@ impl Server {
             log::error!("Errore load_text_paths: {}", e);
         }
 
-        //  Prima flood per costruire la topologia
-        self.floading();
 
         loop {
             select_biased! {

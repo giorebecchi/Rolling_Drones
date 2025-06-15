@@ -65,7 +65,6 @@ impl ChatClient {
         }
     }
     pub fn run(&mut self) {
-        self.initiate_flooding();
         self.send_type_client();
 
         loop{

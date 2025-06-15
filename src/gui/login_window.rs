@@ -5,15 +5,13 @@ use bevy::prelude::*;
 use bevy::winit::WinitSettings;
 use bevy_egui::{egui, EguiContexts, EguiPlugin};
 use bevy_egui::egui::menu;
-use crossbeam_channel::{Receiver, Sender};
 use wg_2024::network::{NodeId};
 use crate::gui::star_decagram::spawn_star_decagram;
 use crate::gui::double_chain::spawn_double_chain;
 use crate::gui::butterfly::spawn_butterfly;
 use crate::simulation_control::simulation_control::*;
-use wg_2024::controller::{DroneCommand, DroneEvent};
-use wg_2024::packet::{Ack, FloodRequest, FloodResponse, Fragment, Nack, Packet};
-use crate::common_things::common::{BackGroundFlood, ChatClientEvent, ClientType, CommandChat, ContentCommands, WebBrowserEvents, ServerCommands, ServerEvent};
+use wg_2024::packet::{Ack, FloodRequest, FloodResponse, Fragment, Nack};
+use crate::common_things::common::ClientType;
 use bevy_framepace::{FramepacePlugin, FramepaceSettings, Limiter};
 use std::sync::{Arc};
 use egui::{Color32, RichText};
@@ -24,13 +22,14 @@ use crate::gui::chat_windows::ChatSystemPlugin;
 use crate::gui::shared_info_plugin::{BackendBridgePlugin, SeenClients};
 use crate::gui::web_media_plugin::WebMediaPlugin;
 use crate::gui::advanced_logs_window::AdvancedLogsPlugin;
+use crate::gui::error_display::ErrorMessagePlugin;
 use crate::gui::simulation_commands::SimulationCommandsPlugin;
 use crate::network_initializer::network_initializer::start_simulation;
 
 #[derive(Resource, Default, Debug)]
 pub struct NodeEntities(pub Vec<Entity>);
 
-#[derive(Default,Debug,Clone,PartialEq)]
+#[derive(Default,Debug,Clone,Eq,PartialEq,Hash,Copy)]
 pub enum NodeType{
     #[default]
     Drone,
@@ -41,25 +40,7 @@ pub enum NodeType{
     ChatClient
 }
 
-#[derive(Clone,Resource)]
-pub struct SimulationController {
-    pub drones: HashMap<NodeId, Sender<DroneCommand>>,
-    pub packet_channel: HashMap<NodeId, Sender<Packet>>,
-    pub node_event_send: Sender<DroneEvent>,
-    pub node_event_recv: Receiver<DroneEvent>,
-    pub neighbours: HashMap<NodeId, Vec<NodeId>>,
-    pub client : HashMap<NodeId, Sender<CommandChat>>,
-    pub web_client : HashMap<NodeId, Sender<ContentCommands>>,
-    pub text_server: HashMap<NodeId, Sender<ServerCommands>>,
-    pub chat_server: HashMap<NodeId, Sender<ServerCommands>>,
-    pub media_server: HashMap<NodeId, Sender<ServerCommands>>,
-    pub chat_event: Receiver<ChatClientEvent>,
-    pub web_event : Receiver<WebBrowserEvents>,
-    pub server_event: Receiver<ServerEvent>,
-    pub background_flooding: HashMap<NodeId, Sender<BackGroundFlood>>,
-    pub chat_active: bool,
-    pub web_active: bool,
-}
+
 
 #[derive(Default,Debug,Clone)]
 pub struct NodeConfig{
@@ -104,6 +85,7 @@ pub fn main() {
         })
         .add_plugins(WebMediaPlugin)
         .add_plugins(EguiPlugin)
+        .add_plugins(ErrorMessagePlugin)
         .init_resource::<OccupiedScreenSpace>()
         .init_resource::<UserConfig>()
         .init_resource::<NodesConfig>()
@@ -408,9 +390,9 @@ fn ui_settings(
                             }
                         }
                     });
-                    let client_types: HashSet<MyNodeType> = HashSet::from([
-                        MyNodeType::WebBrowser,
-                        MyNodeType::ChatClient,
+                    let client_types: HashSet<NodeType> = HashSet::from([
+                        NodeType::WebBrowser,
+                        NodeType::ChatClient,
                     ]);
 
                     let mut client_log = String::with_capacity(1024);
@@ -470,7 +452,7 @@ pub struct SimWindows{
 }
 #[derive(Resource, Clone, Default)]
 pub struct DisplayableLog{
-    pub flooding_log: HashMap<(MyNodeType, NodeId), String>,
+    pub flooding_log: HashMap<(NodeType, NodeId), String>,
     pub msg_log: HashMap<(NodeId, u64), String>,
     pub lost_msg: HashMap<(NodeId, u64), Vec<Fragment>>,
     pub lost_ack: HashMap<(NodeId, u64), Vec<Ack>>,
@@ -478,14 +460,14 @@ pub struct DisplayableLog{
     pub lost_flood_resp: HashMap<(NodeId, u64), Vec<FloodResponse>>,
     pub lost_nack : HashMap<(NodeId, u64), Vec<Nack>>,
     pub route_attempt: HashMap<(NodeId,u64) , Vec<Vec<NodeId>>>,
-    pub nack_log: HashMap<(MyNodeType, NodeId), String>,
+    pub nack_log: HashMap<(NodeType, NodeId), String>,
     pub graph : HashMap<NodeId,UnGraphMap<NodeId, u32>>,
     pub server_graph : HashMap<NodeId, Graph<(NodeId,wg_2024::packet::NodeType), f64, petgraph::Directed>>,
 }
 
 #[derive(Resource, Default)]
 pub struct SimLog{
-    pub flooding_log: HashMap<(MyNodeType,NodeId), String>,
+    pub flooding_log: HashMap<(NodeType,NodeId), String>,
     pub msg_log: HashMap<(NodeId, u64), String>,
     pub lost_msg: HashMap<(NodeId, u64), Vec<Fragment>>,
     pub lost_ack: HashMap<(NodeId, u64), Vec<Ack>>,
@@ -493,7 +475,7 @@ pub struct SimLog{
     pub lost_flood_resp: HashMap<(NodeId, u64), Vec<FloodResponse>>,
     pub lost_nack : HashMap<(NodeId, u64), Vec<Nack>>,
     pub route_attempt: HashMap<(NodeId,u64), Vec<Vec<NodeId>>>,
-    pub nack_log: HashMap<(MyNodeType,NodeId), String>,
+    pub nack_log: HashMap<(NodeType,NodeId), String>,
     pub graph : HashMap<NodeId,UnGraphMap<NodeId, u32>>,
     pub server_graph : HashMap<NodeId, Graph<(NodeId,wg_2024::packet::NodeType), f64, petgraph::Directed>>,
     pub is_updated: bool,

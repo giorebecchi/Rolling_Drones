@@ -2,7 +2,6 @@ use bevy::prelude::*;
 use crate::gui::login_window::{NodeConfig, NodeType};
 use crate::gui::shared_info_plugin::SeenClients;
 use crate::network_initializer::network_initializer::parse_config;
-use crate::simulation_control::simulation_control::MyNodeType;
 
 pub fn spawn_butterfly(
     clients: &mut SeenClients,
@@ -20,8 +19,8 @@ pub fn spawn_butterfly(
         for (client_type, id) in &clients.clients{
             if id.clone() == client.id{
                 match client_type{
-                    MyNodeType::WebBrowser=>all_nodes.push((NodeType::WebBrowser, client.id, client.connected_drone_ids.clone(), -1.00)),
-                    MyNodeType::ChatClient=>all_nodes.push((NodeType::ChatClient, client.id, client.connected_drone_ids.clone(), -1.00)),
+                    NodeType::WebBrowser=>all_nodes.push((NodeType::WebBrowser, client.id, client.connected_drone_ids.clone(), -1.00)),
+                    NodeType::ChatClient=>all_nodes.push((NodeType::ChatClient, client.id, client.connected_drone_ids.clone(), -1.00)),
                     _=>unreachable!()
                 }
             }
@@ -31,9 +30,9 @@ pub fn spawn_butterfly(
         for (server_type, id) in &clients.servers {
             if id.clone()==server.id {
                 match server_type {
-                    MyNodeType::TextServer => all_nodes.push((NodeType::TextServer, server.id, server.connected_drone_ids.clone(), -1.00)),
-                    MyNodeType::MediaServer => all_nodes.push((NodeType::MediaServer, server.id, server.connected_drone_ids.clone(), -1.00)),
-                    MyNodeType::ChatServer=>all_nodes.push((NodeType::ChatServer, server.id, server.connected_drone_ids.clone(), -1.00)),
+                    NodeType::TextServer => all_nodes.push((NodeType::TextServer, server.id, server.connected_drone_ids.clone(), -1.00)),
+                    NodeType::MediaServer => all_nodes.push((NodeType::MediaServer, server.id, server.connected_drone_ids.clone(), -1.00)),
+                    NodeType::ChatServer=>all_nodes.push((NodeType::ChatServer, server.id, server.connected_drone_ids.clone(), -1.00)),
                     _ => unreachable!()
                 }
             }

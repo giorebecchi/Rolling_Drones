@@ -72,7 +72,6 @@ impl WebBrowser {
         }
     }
     pub fn run(& mut self) {
-        self.flooding();
         self.send_type_sim();
 
         loop{

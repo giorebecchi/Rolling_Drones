@@ -3,7 +3,7 @@ use std::fs;
 use std::io::{BufRead, BufReader};
 use bevy::prelude::*;
 use bevy_egui::{egui, EguiContexts};
-use crate::gui::login_window::SimulationController;
+use crate::simulation_control::simulation_control::SimulationController;
 use wg_2024::network::NodeId;
 use crate::common_things::common::ClientType;
 use crate::gui::chat_windows::{handle_clicks, OpenWindows};
@@ -40,18 +40,12 @@ struct ImageState {
     egui_textures: HashMap<NodeId, Option<(egui::TextureId, egui::Vec2)>>,
 }
 
-// Cache for text file content with pagination support
 #[derive(Resource)]
 struct TextFileCache {
-    // Stores lines of text for each window
     file_lines: HashMap<NodeId, Vec<String>>,
-    // Current page for each window
     current_page: HashMap<NodeId, usize>,
-    // Total line count for each window
     total_lines: HashMap<NodeId, usize>,
-    // Lines per page
     lines_per_page: usize,
-    // Page input field content for each window
     page_input: HashMap<NodeId, String>,
 }
 
@@ -61,7 +55,7 @@ impl Default for TextFileCache {
             file_lines: HashMap::new(),
             current_page: HashMap::new(),
             total_lines: HashMap::new(),
-            lines_per_page: 50, // Adjustable based on performance needs
+            lines_per_page: 50,
             page_input: HashMap::new(),
         }
     }
@@ -88,13 +82,12 @@ impl TextFileCache {
         let lines = self.file_lines.get(window_id)?;
         let page = self.current_page.get(window_id).copied().unwrap_or(0);
 
-        // Safety check for lines_per_page
         if self.lines_per_page == 0 {
             return Some(String::new());
         }
 
         let start = page.saturating_mul(self.lines_per_page);
-        let end = ((page + 1).saturating_mul(self.lines_per_page)).min(lines.len());
+        let end = (page + 1).saturating_mul(self.lines_per_page).min(lines.len());
 
         if start >= lines.len() {
             return Some(String::new());
@@ -106,12 +99,10 @@ impl TextFileCache {
     fn get_total_pages(&self, window_id: &NodeId) -> usize {
         let total = self.total_lines.get(window_id).copied().unwrap_or(0);
 
-        // Safety checks
         if total == 0 || self.lines_per_page == 0 {
-            return 1; // At least one page even if empty
+            return 1;
         }
 
-        // Safe division with ceiling
         total.saturating_add(self.lines_per_page - 1) / self.lines_per_page
     }
 
@@ -120,7 +111,6 @@ impl TextFileCache {
         if let Some(page) = self.current_page.get_mut(&window_id) {
             if *page + 1 < total_pages {
                 *page += 1;
-                // Update the page input field
                 self.page_input.insert(window_id, (*page + 1).to_string());
             }
         }
@@ -129,7 +119,6 @@ impl TextFileCache {
     fn prev_page(&mut self, window_id: NodeId) {
         if let Some(page) = self.current_page.get_mut(&window_id) {
             *page = page.saturating_sub(1);
-            // Update the page input field
             self.page_input.insert(window_id, (*page + 1).to_string());
         }
     }
@@ -387,7 +376,6 @@ fn window_format(
                         },
                         MediaDisplayType::TextFile => {
                             if let Some(path_to_file) = web_state.actual_file_path.get(&window_id) {
-                                // Load file into cache if not already loaded
                                 if !text_cache.file_lines.contains_key(&window_id) {
                                     match text_cache.load_file(window_id, path_to_file) {
                                         Ok(_) => {},
@@ -400,7 +388,6 @@ fn window_format(
                                     }
                                 }
 
-                                // Display current page content
                                 if let Some(content) = text_cache.get_page_content(&window_id) {
                                     let text_scroll_id = ui.make_persistent_id(format!("text_scroll_{}", window_id));
                                     ui.push_id(text_scroll_id, |ui| {
@@ -415,7 +402,6 @@ fn window_format(
                                             });
                                     });
 
-                                    // Pagination controls
                                     ui.horizontal(|ui| {
                                         let current_page = text_cache.current_page.get(&window_id).copied().unwrap_or(0);
                                         let total_pages = text_cache.get_total_pages(&window_id);
@@ -442,10 +428,8 @@ fn window_format(
 
                                         ui.add_space(10.0);
 
-                                        // Jump to page
                                         ui.label("Go to page:");
 
-                                        // Get or initialize the page input for this window
                                         let page_input = text_cache.page_input
                                             .entry(window_id)
                                             .or_insert_with(|| (current_page + 1).to_string());
@@ -463,7 +447,6 @@ fn window_format(
                                                     if let Ok(page_num) = input.parse::<usize>() {
                                                         if page_num > 0 && page_num <= total_pages {
                                                             text_cache.current_page.insert(window_id, page_num - 1);
-                                                            // Update the input to reflect the new page
                                                             text_cache.page_input.insert(window_id, page_num.to_string());
                                                         }
                                                     }

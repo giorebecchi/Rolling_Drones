@@ -9,7 +9,8 @@ use bevy::render::render_resource::encase::private::RuntimeSizedArray;
 use wg_2024::network::{NodeId, SourceRoutingHeader};
 use wg_2024::packet::{Ack, FloodRequest, FloodResponse, Fragment, Nack, NackType, NodeType, Packet, PacketType};
 use bevy::utils::HashSet;
-use crate::simulation_control::simulation_control::MyNodeType;use std::time::Duration;
+use crate::gui::login_window::NodeType as MyNodeType;
+use std::time::Duration;
 
 
 pub struct Server {
@@ -53,8 +54,6 @@ impl Server {
         }
     }
     pub fn run(&mut self) {
-        // flood iniziale per costruire la topologia
-        self.floading();
 
         let mut last_check   = Instant::now();
         let   check_interval = Duration::from_millis(100);
