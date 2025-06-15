@@ -98,6 +98,9 @@ This simulator pushes Rust's concurrency model to its limits while providing vis
 - Learning concurrent programming patterns
 - Visualizing network topology behavior
 
+## 👀 Check out our Demo!
+![Demo](assets/images/Rolling_Drones_demo.gif)
+
 ---
 
 *Built with 🦀 Rust | Visualized with 🎮 Bevy*
