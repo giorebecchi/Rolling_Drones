@@ -1,3 +1,2 @@
 assets/multimedia/media/dumbimage.png
-assets/multimedia/media/donut.png
 assets/multimedia/text_files/divina_commedia.txt

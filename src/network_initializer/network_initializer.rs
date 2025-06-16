@@ -688,9 +688,12 @@ fn spawn_servers_max(
             },
             (1, 3) => {
                 match i {
+                    1=> spawn_text_server_max(cfg_server.id, rcv, packet_send, rcv_flood, rcv_command,
+                                              server_event_send.clone(), text_servers, server_commands,
+                                              "assets/multimedia/path_max/max_server.txt", n_servers),
                     _ => spawn_text_server_max(cfg_server.id, rcv, packet_send, rcv_flood, rcv_command,
                                            server_event_send.clone(), text_servers, server_commands,
-                                               "assets/multimedia/path_max/max_server.txt", n_servers),
+                                               "assets/multimedia/path_max/max_server2.txt", n_servers),
 
                 }
             },
@@ -699,9 +702,12 @@ fn spawn_servers_max(
                     match i  {
                         0 => spawn_chat_server_max(cfg_server.id, rcv, packet_send, rcv_flood, rcv_command,
                                                server_event_send.clone(), chat_servers, server_commands, n_servers),
-                        _=> spawn_text_server_max(cfg_server.id, rcv, packet_send, rcv_flood, rcv_command,
+                        1=> spawn_text_server_max(cfg_server.id, rcv, packet_send, rcv_flood, rcv_command,
                                                server_event_send.clone(), text_servers, server_commands,
                                                   "assets/multimedia/path_max/max_server.txt", n_servers),
+                        _=> spawn_text_server_max(cfg_server.id, rcv, packet_send, rcv_flood, rcv_command,
+                                                  server_event_send.clone(), text_servers, server_commands,
+                                                  "assets/multimedia/path_max/max_server2.txt", n_servers),
 
                     }
                 } else {
