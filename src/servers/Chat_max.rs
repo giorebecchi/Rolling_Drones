@@ -92,7 +92,6 @@ impl Server {
             }
         }
     }
-
     fn handle_packet(&mut self, packet: Packet) {
         let p = packet.clone();
         match packet.pack_type {
@@ -110,10 +109,10 @@ impl Server {
             PacketType::FloodResponse(_) => {
                 self.handle_flood_response(p);
             }
-            PacketType::Nack(nack) => {
+            PacketType::Nack(ref nack) => {
                 let session = packet.session_id;
                 let position = nack.fragment_index;
-                self.handle_nack(nack, &position, &session);
+                self.handle_nack(nack.clone(), &position, &session, packet);
             }
         }
     }
@@ -156,8 +155,6 @@ impl Server {
             self.fragment_recv.remove(&session_key);
         }
     }
-
-
     fn send_response(&mut self, id: NodeId, response: Risposta, session: &u64) {
         if let Risposta::Chat(chat) = response {
             // 1) serializzo in Box<[chunk]>
@@ -165,7 +162,30 @@ impl Server {
             let total = dati.len();
 
             // 2) event tracing (unchanged) …
-            //    → invio ServerEvent::ChatPacketInfo …
+            let event: ChatServerEvent;
+            match chat{
+                ChatResponse::ServerTypeChat(_) => {
+                    event = ChatServerEvent::SendingServerTypeChat(total as u64);
+                }
+                ChatResponse::RegisterClient(_) => {
+                    event = ChatServerEvent::ClientRegistration(total as u64);
+                }
+                ChatResponse::RegisteredClients(_) => {
+                    event = ChatServerEvent::SendingClientList(total as u64);
+                }
+                ChatResponse::SendMessage(_) => {
+                    event = ChatServerEvent::ForwardingMessage(total as u64);
+                }
+                ChatResponse::EndChat(_) => {
+                    event = ChatServerEvent::ClientElimination(total as u64);
+                }
+                ChatResponse::ForwardMessage(_) => {
+                    event = ChatServerEvent::ForwardingMessage(total as u64);
+                }
+            }
+            let type_ = MyNodeType::ChatServer;
+            let server_event = ServerEvent::ChatPacketInfo(self.server_id, type_, event, *session);
+            let _ = self.send_event.send(server_event);
 
             // 3) costruisco Data *semplificato*
             let data = Data {
@@ -185,8 +205,6 @@ impl Server {
             }
         }
     }
-
-    /// Invia un singolo frammento di chat (senza timer/backoff)
     fn send_single_fragment(&mut self, session: u64, idx: usize) {
         let d = &self.fragment_send[&session];
         let (chunk, _) = d.dati[idx];
@@ -197,8 +215,6 @@ impl Server {
             self.send_packet(pkt);
         }
     }
-
-    /// Handle di ACK rimasto invariato, ma senza backoff/timer
     fn handle_ack(&mut self, ack: Ack, session: u64) {
         let mut next_idx = None;
         if let Some(d) = self.fragment_send.get_mut(&session) {
@@ -224,15 +240,15 @@ impl Server {
             }
         }
     }
-
-    /// Handle di NACK: ritenta fino a MAX_RETRIES, senza timer/backoff
-    fn handle_nack(&mut self, fragment: Nack, _pos: &u64, session: &u64) {
+    fn handle_nack(&mut self, fragment: Nack, _pos: &u64, session: &u64, packet: Packet) {
         let sess = *session;
         if !self.fragment_send.contains_key(&sess) { return; }
 
         // ErrorInRouting → rimuovi il nodo
         if let NackType::ErrorInRouting(bad) = fragment.nack_type {
-            self.remove_drone(bad);
+            let bad_next = packet.routing_header.hops[0];
+            self.remove_link(bad, bad_next);
+            self.floading();
         }
 
         // Mut borrow per aggiornare retry_count
@@ -262,10 +278,8 @@ impl Server {
             }
         }
     }
-
     fn handle_flood_request(&mut self, packet: Packet) {
         if let PacketType::FloodRequest(mut flood) = packet.pack_type {
-            // Se già visitato: rispondo subito
             let key = (flood.initiator_id, flood.flood_id);
             if self.already_visited.contains(&key) {
                 flood.path_trace.push((self.server_id, NodeType::Server));
@@ -274,17 +288,17 @@ impl Server {
                 return;
             }
 
-            // Altrimenti segno come visitato e proseguo
             self.already_visited.insert(key.clone());
             flood.path_trace.push((self.server_id, NodeType::Server));
 
             if self.packet_send.len() == 1 {
-                // ultimo nodo: mando risposta
+                // ultimo nodo: risposta diretta
                 let response = FloodRequest::generate_response(&flood, packet.session_id);
                 self.send_packet(response);
             } else {
-                // inoltro a tutti tranne il precedente
-                let prev = packet.routing_header
+                // inoltro a tutti tranne il precedente e sé stesso
+                let prev = packet
+                    .routing_header
                     .hops
                     .get(packet.routing_header.hop_index as usize - 1)
                     .cloned();
@@ -296,6 +310,9 @@ impl Server {
                 };
 
                 for (idd, mut neighbour) in self.packet_send.clone() {
+                    if idd == self.server_id {
+                        continue;
+                    }
                     if Some(idd) == prev {
                         continue;
                     }
@@ -371,7 +388,6 @@ impl Server {
         self.fragment_recv.retain(|&(who, _), _| who != node_id);
         self.fragment_send.retain(|_, data| data.who_ask != node_id);
     }
-
     fn send_packet(&mut self, mut packet: Packet) {
         if packet.routing_header.hops.len() < 2 {
             return;
@@ -528,6 +544,25 @@ impl Server {
         let id = self.next_session_id;
         self.next_session_id += 1;
         id
+    }
+    fn remove_link(&mut self, bad: NodeId, bad_next: NodeId) {
+        // Rimuove bad_next dai vicini di bad
+        if let Some((_, _, neighbors)) = self
+            .nodes_map
+            .iter_mut()
+            .find(|(id, _, _)| *id == bad)
+        {
+            neighbors.retain(|&n| n != bad_next);
+        }
+
+        // Rimuove bad dai vicini di bad_next
+        if let Some((_, _, neighbors)) = self
+            .nodes_map
+            .iter_mut()
+            .find(|(id, _, _)| *id == bad_next)
+        {
+            neighbors.retain(|&n| n != bad);
+        }
     }
 }
 
