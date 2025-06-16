@@ -115,24 +115,18 @@ fn validate_web_media_connectivity(nodes: &[NodeConfig]) -> Result<(), String> {
         .collect();
 
     for browser in &web_browsers {
-        let mut can_reach_text = false;
         for text in &text_servers {
-            if has_path(&graph, nodes, browser.id, text.id) {
-                can_reach_text = true;
-                break;
+            if !has_path(&graph, nodes, browser.id, text.id) {
+                return Err(format!("WebBrowser {} cannot reach TextServer {}", browser.id,text.id));
             }
         }
-        if !can_reach_text {
-            return Err(format!("WebBrowser {} cannot reach any TextServer ", browser.id));
-        }
-    }
-
-    for browser in &web_browsers {
         for media in &media_servers {
             if !has_path(&graph, nodes, browser.id, media.id) {
                 return Err(format!("WebBrowser {} cannot reach MediaServer {} ", browser.id, media.id));
             }
         }
+
+
     }
 
     for text in &text_servers {
