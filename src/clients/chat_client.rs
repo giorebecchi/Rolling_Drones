@@ -72,6 +72,12 @@ impl ChatClient {
                 recv(self.receiver_msg) -> message =>{
                     if let Ok(message) = message {
                         // self.build_topology();
+                        match message.pack_type.clone(){
+                            PacketType::Nack(nack)=>{
+                                println!("sono il chatclient {}, packet: {:?}, route: {}",self.config.id,message.pack_type,message.routing_header);
+                            }
+                            _=>{}
+                        }
                         self.handle_incoming(message)
                     }
                 }
@@ -338,6 +344,7 @@ impl ChatClient {
         let ack = self.ack(&packet);
         let prev = packet.routing_header.hops[packet.routing_header.hop_index-1];
         if let Err(()) = self.send_packet(&prev, ack){
+            println!("client is inside this condition");
             self.handle_fragments(packet.clone());
         }
 

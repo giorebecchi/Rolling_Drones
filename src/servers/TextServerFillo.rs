@@ -31,6 +31,7 @@ pub struct Server{
     server_id: NodeId,
     server_type: ServerType,
     session_id: u64,
+    flood_id: u64,
     paths: HashMap<String,String>,
     texts_ids: Vec<TextId>,
     flooding: Vec<FloodResponse>,
@@ -72,6 +73,7 @@ impl Server{
             server_id:id,
             server_type: ServerType::TextServer,
             session_id:0,
+            flood_id: 0,
             paths:all_paths,
             texts_ids:texts_ids,
             flooding: Vec::new(),
@@ -586,19 +588,16 @@ impl Server{
 
     pub(crate) fn flooding(&mut self){
         println!("server {} is starting a flooding",self.server_id);
-        let mut flood_id = 0;
-        for i in self.flooding.iter(){
-            flood_id = i.flood_id+1;
-        }
         let flood = packet::Packet{
             routing_header: SourceRoutingHeader::empty_route(),
-            session_id: flood_id,
+            session_id: self.flood_id,
             pack_type: PacketType::FloodRequest(FloodRequest{
-                flood_id,
+                flood_id: self.flood_id,
                 initiator_id: self.server_id,
                 path_trace: vec![(self.server_id, NodeType::Server)],
             }),
         };
+        self.flood_id+=1;
         for (id,neighbour) in self.packet_send.clone(){
             if let Err(_)=neighbour.send(flood.clone()){
                 println!("error flood request");

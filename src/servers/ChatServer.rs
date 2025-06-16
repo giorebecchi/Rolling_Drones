@@ -26,6 +26,7 @@ pub struct Server{
     server_id: NodeId,
     server_type: ServerType,
     session_id: u64,
+    flood_id: u64,
     registered_clients: Vec<NodeId>,
     flooding: Vec<FloodResponse>,
     neigh_map: Graph<(NodeId,NodeType), f64, petgraph::Directed>,
@@ -46,6 +47,7 @@ impl Server{
             server_id:id,
             server_type: ServerType::CommunicationServer,
             session_id:0,
+            flood_id: 0,
             registered_clients: Vec::new(),
             flooding: Vec::new(),
             neigh_map: Graph::new(),
@@ -65,6 +67,12 @@ impl Server{
             select_biased!{
                 recv(self.packet_recv) -> packet => {
                     if let Ok(packet) = packet {
+                        match packet.pack_type.clone(){
+                            PacketType::Nack(nack)=>{
+                                println!("sono il chatserver {}, packet: {:?}, route: {}",self.server_id,packet.pack_type,packet.routing_header);
+                            }
+                            _=>{}
+                        }
                         self.handle_packet(packet);
                     }
                 },
@@ -269,11 +277,13 @@ impl Server{
     }
 
     fn packet_recover(&mut self, s_id: u64, lost_fragment_index: u64){
+        println!("did I call packet_recover? I'm chatserver {}",self.server_id);
         if self.fragments_send.contains_key(&s_id){
             let info = self.fragments_send.get(&s_id).unwrap();
             for i in info.2.clone().iter(){
                 if i.fragment_index==lost_fragment_index{
                     if let Some(srh) = self.best_path_custom_cost(info.0.clone(),info.1.clone()){
+                        println!("server {} route called after calling packet_recover: {}",self.server_id,srh);
                         let pack = Packet{
                             routing_header: srh,
                             session_id: s_id.clone(),
@@ -489,19 +499,17 @@ impl Server{
 
     pub(crate) fn flooding(&mut self){
         println!("server {} is starting a flooding",self.server_id);
-        let mut flood_id = 0;
-        for i in self.flooding.iter(){
-            flood_id = i.flood_id+1;
-        }
+
         let flood = packet::Packet{
             routing_header: SourceRoutingHeader::empty_route(),
-            session_id: flood_id,
+            session_id: self.flood_id,
             pack_type: PacketType::FloodRequest(FloodRequest{
-                flood_id,
+                flood_id: self.flood_id,
                 initiator_id: self.server_id,
                 path_trace: vec![(self.server_id, NodeType::Server)],
             }),
         };
+        self.flood_id+=1;
         for (id,neighbour) in self.packet_send.clone(){
             if let Err(_)=neighbour.send(flood.clone()){
                 println!("error flood request");
