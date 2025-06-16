@@ -14,6 +14,7 @@ use wg_2024::packet::{Ack, FloodRequest, FloodResponse, Fragment, Nack};
 use crate::common_things::common::ClientType;
 use bevy_framepace::{FramepacePlugin, FramepaceSettings, Limiter};
 use std::sync::{Arc};
+use bevy::sprite::Anchor;
 use egui::{Color32, RichText};
 use once_cell::sync::Lazy;
 use petgraph::Graph;
@@ -23,6 +24,7 @@ use crate::gui::shared_info_plugin::{BackendBridgePlugin, SeenClients};
 use crate::gui::web_media_plugin::WebMediaPlugin;
 use crate::gui::advanced_logs_window::AdvancedLogsPlugin;
 use crate::gui::error_display::ErrorMessagePlugin;
+use crate::gui::highlighted_routes::RouteHighlightPlugin;
 use crate::gui::simulation_commands::SimulationCommandsPlugin;
 use crate::network_initializer::network_initializer::start_simulation;
 
@@ -86,6 +88,9 @@ pub fn main() {
         .add_plugins(WebMediaPlugin)
         .add_plugins(EguiPlugin)
         .add_plugins(ErrorMessagePlugin)
+        .add_plugins(RouteHighlightPlugin {
+            game_state: AppState::InGame,
+        })
         .init_resource::<OccupiedScreenSpace>()
         .init_resource::<UserConfig>()
         .init_resource::<NodesConfig>()
@@ -98,8 +103,7 @@ pub fn main() {
         .add_systems(Update, (ui_settings,sync_log))
         .add_systems(Startup, setup_camera)
         .add_systems(OnEnter(AppState::SetUp), start_simulation)
-        .add_systems(OnEnter(AppState::InGame), (setup_network,initiate_flood))
-        .add_systems(Update , (draw_connections,set_up_bundle).run_if(in_state(AppState::InGame)))
+        .add_systems(OnEnter(AppState::InGame), (setup_network,initiate_flood,set_up_bundle).chain())
 
         .run();
 }
@@ -166,19 +170,51 @@ pub fn set_up_bundle(
     mut entity_vector: ResMut<NodeEntities>,
     asset_server: Res<AssetServer>
 ) {
-
     for node_data in node_data.0.iter() {
+        let (image_path, clickable) = match node_data.node_type {
+            NodeType::Drone => ("images/Rolling_Drone.png", None),
+            NodeType::ChatClient => (
+                "images/client.png",
+                Some(Clickable {
+                    name: node_data.id,
+                    window_type: ClientType::ChatClient
+                })
+            ),
+            NodeType::WebBrowser => (
+                "images/web_browser.png",
+                Some(Clickable {
+                    name: node_data.id,
+                    window_type: ClientType::WebBrowser
+                })
+            ),
+            NodeType::TextServer => ("images/server.png", None),
+            NodeType::MediaServer => ("images/mediaserver_icon.png", None),
+            _ => ("images/chatserver_icon.png", None),
+        };
 
-        if node_data.node_type == NodeType::Drone {
-            let entity = commands.spawn((
+        let mut entity_commands = commands.spawn((
+            Sprite {
+                image: asset_server.load(image_path),
+                custom_size: Some(Vec2::new(45., 45.)),
+                ..default()
+            },
+            Transform::from_xyz(node_data.position[0], node_data.position[1], 0.),
+        ));
+
+        if let Some(clickable_component) = clickable {
+            entity_commands.insert(clickable_component);
+        }
+
+        let entity = entity_commands.with_children(|parent| {
+            parent.spawn((
                 Sprite {
-                    image: asset_server.load("images/Rolling_Drone.png"),
-                    custom_size: Some(Vec2::new(45., 45.)),
+                    color: Color::srgba(0.1, 0.1, 0.1, 0.95),
+                    custom_size: Some(Vec2::new(35., 20.)),
                     ..default()
                 },
-                Transform::from_xyz(node_data.position[0], node_data.position[1], 0.),
-            )).with_children(|parent| {
-                parent.spawn((
+                Transform::from_translation(Vec3::new(-30., -30., 2.))
+            )).with_children(|bg_parent| {
+                bg_parent.spawn((
                     Text2d::new(format!("{}", node_data.id)),
                     TextFont {
                         font: asset_server.load("fonts/FiraSans-Bold.ttf"),
@@ -186,148 +222,15 @@ pub fn set_up_bundle(
                         ..default()
                     },
                     TextColor(Color::srgb(1., 0., 0.)),
-                    Transform::from_translation(Vec3::new(-30., -30., 0.))
+                    Transform::from_translation(Vec3::new(0., 0., 0.1))
                 ));
-            }).id();
-            entity_vector.0.push(entity);
-        } else if node_data.node_type==NodeType::ChatClient{
-            let entity=commands.spawn((
-                Sprite {
-                    image: asset_server.load("images/client.png"),
-                    custom_size: Some(Vec2::new(45., 45.)),
-                    ..default()
-                },
-                Transform::from_xyz(node_data.position[0], node_data.position[1], 0.),
-                Clickable {
-                    name: node_data.id,
-                    window_type: ClientType::ChatClient
-                },
-                )).with_children(|parent|{
-                parent.spawn((
-                    Text2d::new(format!("{}",node_data.id)),
-                    TextFont {
-                        font: asset_server.load("fonts/FiraSans-Bold.ttf"),
-                        font_size: 12.,
-                        ..default()
-                    },
-                    TextColor(Color::srgb(1.,0.,0.)),
-                    Transform::from_translation(Vec3::new(-30.,-30.,0.))
-                    ));
-            }).id();
-            entity_vector.0.push(entity);
-        }else if node_data.node_type==NodeType::WebBrowser{
-            let entity=commands.spawn((
-                Sprite {
-                    image: asset_server.load("images/web_browser.png"),
-                    custom_size: Some(Vec2::new(45., 45.)),
-                    ..default()
-                },
-                Transform::from_xyz(node_data.position[0], node_data.position[1], 0.),
-                Clickable {
-                    name: node_data.id,
-                    window_type: ClientType::WebBrowser
-                },
-            )).with_children(|parent|{
-                parent.spawn((
-                    Text2d::new(format!("{}",node_data.id)),
-                    TextFont {
-                        font: asset_server.load("fonts/FiraSans-Bold.ttf"),
-                        font_size: 12.,
-                        ..default()
-                    },
-                    TextColor(Color::srgb(1.,0.,0.)),
-                    Transform::from_translation(Vec3::new(-30.,-30.,0.))
-                ));
-            }).id();
-            entity_vector.0.push(entity);
+            });
+        }).id();
 
-        } else if node_data.node_type==NodeType::TextServer{
-            let entity=commands.spawn((
-                Sprite {
-                    image: asset_server.load("images/server.png"),
-                    custom_size: Some(Vec2::new(45., 45.)),
-                    ..default()
-                },
-                Transform::from_xyz(node_data.position[0], node_data.position[1], 0.)
-
-            )).with_children(|parent|{
-                parent.spawn((
-                    Text2d::new(format!("{}",node_data.id)),
-                    TextFont {
-                        font: asset_server.load("fonts/FiraSans-Bold.ttf"),
-                        font_size: 12.,
-                        ..default()
-                    },
-                    TextColor(Color::srgb(1.,0.,0.)),
-                    Transform::from_translation(Vec3::new(-30.,-30.,0.))
-                ));
-            }).id();
-            entity_vector.0.push(entity);
-
-        }else if node_data.node_type==NodeType::MediaServer{
-            let entity=commands.spawn((
-                Sprite {
-                    image: asset_server.load("images/mediaserver_icon.png"),
-                    custom_size: Some(Vec2::new(45., 45.)),
-                    ..default()
-                },
-                Transform::from_xyz(node_data.position[0], node_data.position[1], 0.)
-            )).with_children(|parent|{
-                parent.spawn((
-                    Text2d::new(format!("{}",node_data.id)),
-                    TextFont {
-                        font: asset_server.load("fonts/FiraSans-Bold.ttf"),
-                        font_size: 12.,
-                        ..default()
-                    },
-                    TextColor(Color::srgb(1.,0.,0.)),
-                    Transform::from_translation(Vec3::new(-30.,-30.,0.))
-                ));
-            }).id();
-            entity_vector.0.push(entity);
-
-        }else{
-            let entity=commands.spawn((
-                Sprite {
-                    image: asset_server.load("images/chatserver_icon.png"),
-                    custom_size: Some(Vec2::new(45., 45.)),
-                    ..default()
-                },
-                Transform::from_xyz(node_data.position[0], node_data.position[1], 0.)
-            )).with_children(|parent|{
-                parent.spawn((
-                    Text2d::new(format!("{}",node_data.id)),
-                    TextFont {
-                        font: asset_server.load("fonts/FiraSans-Bold.ttf"),
-                        font_size: 12.,
-                        ..default()
-                    },
-                    TextColor(Color::srgb(1.,0.,0.)),
-                    Transform::from_translation(Vec3::new(-30.,-30.,0.))
-                ));
-            }).id();
-            entity_vector.0.push(entity);
-        }
-    }
-
-
-}
-pub fn draw_connections(
-    mut gizmos : Gizmos,
-    node_data: Res<NodesConfig>,
-) {
-    for node in &node_data.0 {
-        for connected_id in &node.connected_node_ids {
-            if let Some(connected_node) = node_data.0.iter().find(|n| n.id == *connected_id) {
-
-                let start = node.position;
-                let end = connected_node.position;
-                gizmos.line_2d(start,end,Color::WHITE);
-
-            }
-        }
+        entity_vector.0.push(entity);
     }
 }
+
 fn ui_settings(
     mut contexts: EguiContexts,
     mut occupied_screen_space: ResMut<OccupiedScreenSpace>,
@@ -370,7 +273,9 @@ fn ui_settings(
             .rect
             .width();
         occupied_screen_space.right = {
-            let mut collapsed = ctx.data_mut(|d| *d.get_persisted_mut_or_default::<bool>(egui::Id::new("right_panel_collapsed")));
+            let mut collapsed = ctx.data_mut(|d| {
+                *d.get_persisted_mut_or_insert_with(egui::Id::new("right_panel_collapsed"), || true)
+            });
 
             let panel = egui::SidePanel::right("right_panel")
                 .resizable(true)
@@ -381,6 +286,9 @@ fn ui_settings(
                         if ui.button(if collapsed { "show" } else { "collapse" }).clicked() {
                             collapsed = !collapsed;
                             ctx.data_mut(|d| d.insert_persisted(egui::Id::new("right_panel_collapsed"), collapsed));
+                        }
+                        if ui.button("Advanced Logs").clicked(){
+                            sim_windows.advanced_logs=true;
                         }
 
                         if !collapsed {
@@ -433,9 +341,6 @@ fn ui_settings(
                                 });
 
                             });
-                        if ui.button("Advanced Logs").clicked(){
-                            sim_windows.advanced_logs=true;
-                        }
                     }
 
                     ui.allocate_rect(ui.available_rect_before_wrap(), egui::Sense::hover());

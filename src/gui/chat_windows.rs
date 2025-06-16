@@ -72,8 +72,8 @@ pub fn handle_clicks(
                         open_windows.click_count+=1;
 
                         match clickable.window_type{
-                            ClientType::ChatClient=>sim.get_chat_servers(),
-                            ClientType::WebBrowser=> sim.get_web_servers()
+                            ClientType::ChatClient=>sim.get_chat_servers(clickable.name),
+                            ClientType::WebBrowser=> sim.get_web_servers(clickable.name)
 
                         }
 
