@@ -8,3 +8,4 @@ pub mod web_media_plugin;
 pub mod advanced_logs_window;
 pub mod simulation_commands;
 pub mod error_display;
+mod highlighted_routes;

@@ -10,20 +10,19 @@ pub fn spawn_double_chain(
     let config = parse_config();
     let node_count = config.client.len() + config.server.len() + config.drone.len();
 
-    let nodes_per_row = if node_count % 2 == 0 {
-        node_count / 2
-    } else {
-        (node_count + 1) / 2
-    };
 
-    let num_rows = (node_count + nodes_per_row - 1) / nodes_per_row;
+    let nodes_in_first_row = (node_count + 1) / 2;
+    let nodes_in_second_row = node_count - nodes_in_first_row;
 
     let horizontal_spacing = 100.0;
     let vertical_spacing = 100.0;
-    let base_y_offset = ((num_rows - 1) as f32 * vertical_spacing) / 2.0;
+
+    let first_row_y = vertical_spacing / 2.0;
+    let second_row_y = -vertical_spacing / 2.0;
 
     let mut nodes = Vec::with_capacity(node_count);
     let mut all_nodes = Vec::with_capacity(node_count);
+
 
     for drone in &config.drone {
         all_nodes.push((NodeType::Drone, drone.id, &drone.connected_node_ids, drone.pdr));
@@ -55,18 +54,14 @@ pub fn spawn_double_chain(
     }
 
     for (i, (node_type, id, connected_ids, pdr)) in all_nodes.iter().enumerate() {
-        let row = i / nodes_per_row;
-        let position_in_row = i % nodes_per_row;
-
-        let nodes_in_current_row = if row == num_rows - 1 {
-            node_count - (row * nodes_per_row)
+        let (row, nodes_in_row, position_in_row) = if i < nodes_in_first_row {
+            (0, nodes_in_first_row, i)
         } else {
-            nodes_per_row
+            (1, nodes_in_second_row, i - nodes_in_first_row)
         };
 
-        let x = (position_in_row as f32 - (nodes_in_current_row - 1) as f32 / 2.0) * horizontal_spacing;
-
-        let y = base_y_offset - (row as f32 * vertical_spacing);
+        let x = (position_in_row as f32 - (nodes_in_row - 1) as f32 / 2.0) * horizontal_spacing;
+        let y = if row == 0 { first_row_y } else { second_row_y };
 
         nodes.push(NodeConfig::new(
             node_type.clone(),
@@ -74,7 +69,6 @@ pub fn spawn_double_chain(
             Vec2::new(x, y),
             (*connected_ids).clone(),
             *pdr
-
         ));
     }
 

@@ -2,6 +2,7 @@ use bevy::prelude::*;
 use bevy_egui::{egui, EguiContexts};
 use egui::{Color32, RichText};
 use wg_2024::network::NodeId;
+use crate::gui::highlighted_routes::ConnectionUpdateQueue;
 use crate::gui::login_window::{AppState, NodeConfig, NodeType, NodesConfig, SimWindows};
 use crate::network_initializer::connection_validity::{simulate_network_change, would_break_connectivity};
 use crate::simulation_control::simulation_control::SimulationController;
@@ -34,6 +35,7 @@ fn simulation_commands_window(
     mut contexts: EguiContexts,
     mut nodes: ResMut<NodesConfig>,
     mut sim: ResMut<SimulationController>,
+    mut connections: ResMut<ConnectionUpdateQueue>,
     mut sim_windows: ResMut<SimWindows>,
     mut sim_commands: ResMut<SimulationCommandsState>
 ) {
@@ -96,9 +98,7 @@ fn simulation_commands_window(
                                         if let Some(index) = nodes.0.iter().position(|node| node.id == id) {
                                             nodes.0.remove(index);
                                         }
-                                        for node in nodes.0.iter_mut() {
-                                            node.connected_node_ids.retain(|&conn_id| conn_id != id);
-                                        }
+                                        connections.remove_all_connections_for_node(id);
                                         sim_commands.selected_crash_drone = None;
                                         sim_commands.connectivity_error = None;
                                     }
@@ -181,16 +181,7 @@ fn simulation_commands_window(
                                 sim.add_sender(to_id, from_id);
                                 sim.initiate_flood();
 
-                                if let Some(from_node) = nodes.0.iter_mut().find(|n| n.id == from_id) {
-                                    if !from_node.connected_node_ids.contains(&to_id) {
-                                        from_node.connected_node_ids.push(to_id);
-                                    }
-                                }
-                                if let Some(to_node) = nodes.0.iter_mut().find(|n| n.id == to_id) {
-                                    if !to_node.connected_node_ids.contains(&from_id) {
-                                        to_node.connected_node_ids.push(from_id);
-                                    }
-                                }
+                                connections.add_connection(from_id, to_id);
 
                                 sim_commands.selected_add_target = None;
                                 sim_commands.selected_add_neighbor = None;
@@ -268,12 +259,7 @@ fn simulation_commands_window(
                                     Ok(_) => {
                                         sim.remove_sender(to_id, from_id);
 
-                                        if let Some(from_node) = nodes.0.iter_mut().find(|n| n.id == from_id) {
-                                            from_node.connected_node_ids.retain(|&id| id != to_id);
-                                        }
-                                        if let Some(to_node) = nodes.0.iter_mut().find(|n| n.id == to_id) {
-                                            to_node.connected_node_ids.retain(|&id| id != from_id);
-                                        }
+                                        connections.remove_connection(from_id, to_id);
 
                                         sim_commands.selected_remove_target = None;
                                         sim_commands.selected_remove_neighbor = None;

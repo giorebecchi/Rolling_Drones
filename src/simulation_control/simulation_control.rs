@@ -703,6 +703,7 @@ impl SimulationController {
 
         match packet.pack_type.clone() {
             MsgFragment(fragment) => {
+                println!("dropped packet:{:?} has route {}",packet.pack_type,packet.routing_header);
                 self.handle_dropped_msg_fragment(drone, packet.session_id, fragment);
             }
             PacketType::Ack(ack) => {
@@ -919,14 +920,18 @@ impl SimulationController {
         self.client.get(&client_id).unwrap().send(CommandChat::RegisterClient(server_id)).unwrap();
     }
 
-    pub fn get_chat_servers(&self){
-        for (_,sender) in self.client.iter(){
-            sender.send(CommandChat::SearchChatServers).unwrap();
+    pub fn get_chat_servers(&self,client_id: NodeId){
+        for (id,sender) in self.client.iter(){
+            if *id==client_id {
+                sender.send(CommandChat::SearchChatServers).unwrap();
+            }
         }
     }
-    pub fn get_web_servers(&self){
-        for (_,sender) in self.web_client.iter(){
-            sender.send(ContentCommands::SearchTypeServers).unwrap()
+    pub fn get_web_servers(&self, client_id: NodeId){
+        for (id,sender) in self.web_client.iter(){
+            if *id==client_id {
+                sender.send(ContentCommands::SearchTypeServers).unwrap();
+            }
         }
     }
     pub fn get_media_list(&self, web_browser: NodeId, text_server: NodeId){
