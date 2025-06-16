@@ -47,9 +47,8 @@ fn simulation_commands_window(
             .collapsible(true)
             .default_size([450., 400.]);
 
-        let ctx = contexts.ctx_mut();
 
-        window.show(ctx, |ui| {
+        window.show(contexts.ctx_mut(), |ui| {
             ui.heading("Simulation Controls");
 
             if let Some(error) = &sim_commands.connectivity_error {

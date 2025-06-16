@@ -13,31 +13,29 @@ pub fn spawn_butterfly(
 
     let mut all_nodes = Vec::new();
 
+    // Add all drones from config
     for drone in config.drone {
         all_nodes.push((NodeType::Drone, drone.id, drone.connected_node_ids, drone.pdr));
     }
 
-    for client in &config.client {
-        for (client_type, id) in &clients.clients {
-            if id.clone() == client.id {
-                match client_type {
-                    NodeType::WebBrowser => all_nodes.push((NodeType::WebBrowser, client.id, client.connected_drone_ids.clone(), -1.00)),
-                    NodeType::ChatClient => all_nodes.push((NodeType::ChatClient, client.id, client.connected_drone_ids.clone(), -1.00)),
-                    _ => unreachable!()
-                }
+    // Add all clients from SeenClients with their correct types
+    for (client_type, client_id) in &clients.clients {
+        // Find the matching client in config to get its connected_drone_ids
+        for client in &config.client {
+            if client.id == *client_id {
+                all_nodes.push((client_type.clone(), client.id, client.connected_drone_ids.clone(), -1.00));
+                break;
             }
         }
     }
 
-    for server in config.server {
-        for (server_type, id) in &clients.servers {
-            if id.clone() == server.id {
-                match server_type {
-                    NodeType::TextServer => all_nodes.push((NodeType::TextServer, server.id, server.connected_drone_ids.clone(), -1.00)),
-                    NodeType::MediaServer => all_nodes.push((NodeType::MediaServer, server.id, server.connected_drone_ids.clone(), -1.00)),
-                    NodeType::ChatServer => all_nodes.push((NodeType::ChatServer, server.id, server.connected_drone_ids.clone(), -1.00)),
-                    _ => unreachable!()
-                }
+    // Add all servers from SeenClients with their correct types
+    for (server_type, server_id) in &clients.servers {
+        // Find the matching server in config to get its connected_drone_ids
+        for server in &config.server {
+            if server.id == *server_id {
+                all_nodes.push((server_type.clone(), server.id, server.connected_drone_ids.clone(), -1.00));
+                break;
             }
         }
     }

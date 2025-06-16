@@ -31,9 +31,8 @@ fn log_window(
             .collapsible(true)
             .default_size([600., 700.]);
 
-        let ctx = contexts.ctx_mut();
 
-        window.show(ctx, |ui| {
+        window.show(contexts.ctx_mut(), |ui| {
             ui.label("Node: ");
             let current_selected_client = match log_info.selected_node.clone() {
                 Some((id, node_type)) => format!("{:?} :{}", node_type, id),
