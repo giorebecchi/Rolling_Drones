@@ -134,7 +134,7 @@ impl Server {
             PacketType::Nack(nack) => {
                 let session = packet.session_id;
                 let position = nack.fragment_index;
-                self.handle_nack(nack, &position, &session);
+                self.handle_nack(nack, &position, &session, packet);
             }
         }
     }
@@ -173,17 +173,11 @@ impl Server {
         // 5) Se completo, processo e pulisco
         if entry.counter == entry.total_expected as u64 {
             self.processed_sessions.insert(session_key);
-            println!("HANDLO IL COMANDO ");
             self.handle_command(session_key);
             self.fragment_recv.remove(&session_key);
         }
     }
-    fn send_data_fragments(
-        &mut self,
-        id: NodeId,
-        dati: Box<[( [u8;128], u8 )]>,
-        session: u64,
-    ) {
+    fn send_data_fragments(&mut self, id: NodeId, dati: Box<[( [u8;128], u8 )]>, session: u64, ) {
         let total = dati.len();
         let window = WINDOW_SIZE.min(total);
 
@@ -204,8 +198,6 @@ impl Server {
             self.send_single_fragment(session, idx);
         }
     }
-
-    /// Invia un singolo frammento (non aggiorna più alcun timer)
     fn send_single_fragment(&mut self, session: u64, idx: usize) {
         let data = &self.fragment_send[&session];
         let (chunk, _) = data.dati[idx];
@@ -216,8 +208,6 @@ impl Server {
             self.send_packet(pkt);
         }
     }
-
-    /// Gestisce l’ACK: avanza la finestra, senza calcolare RTT/timer
     fn handle_ack(&mut self, ack: Ack, session: u64) {
         let mut next_idx = None;
         if let Some(d) = self.fragment_send.get_mut(&session) {
@@ -246,15 +236,15 @@ impl Server {
             }
         }
     }
-
-    /// Gestisce il NACK: ritenta fino a MAX_RETRIES, senza backoff/timer
-    fn handle_nack(&mut self, fragment: Nack, _pos: &u64, session: &u64) {
+    fn handle_nack(&mut self, fragment: Nack, _pos: &u64, session: &u64, packet: Packet) {
         let sess = *session;
         if !self.fragment_send.contains_key(&sess) { return; }
 
         // Se c’è stato un errore di routing, aggiorna la topologia
         if let NackType::ErrorInRouting(bad) = fragment.nack_type {
-            self.remove_drone(bad);
+            let bad_next = packet.routing_header.hops[0];
+            self.remove_link(bad, bad_next);
+            self.floading();
         }
 
         // Raccolgo tutti i dati in un singolo mutable borrow
@@ -285,7 +275,6 @@ impl Server {
     }
     fn handle_flood_request(&mut self, packet: Packet) {
         if let PacketType::FloodRequest(mut flood) = packet.pack_type {
-            // Se già visitato: rispondo subito
             let key = (flood.initiator_id, flood.flood_id);
             if self.already_visited.contains(&key) {
                 flood.path_trace.push((self.server_id, NodeType::Server));
@@ -294,17 +283,17 @@ impl Server {
                 return;
             }
 
-            // Altrimenti segno come visitato e proseguo
             self.already_visited.insert(key.clone());
             flood.path_trace.push((self.server_id, NodeType::Server));
 
             if self.packet_send.len() == 1 {
-                // ultimo nodo: mando risposta
+                // ultimo nodo: risposta diretta
                 let response = FloodRequest::generate_response(&flood, packet.session_id);
                 self.send_packet(response);
             } else {
-                // inoltro a tutti tranne il precedente
-                let prev = packet.routing_header
+                // inoltro a tutti tranne il precedente e sé stesso
+                let prev = packet
+                    .routing_header
                     .hops
                     .get(packet.routing_header.hop_index as usize - 1)
                     .cloned();
@@ -316,6 +305,9 @@ impl Server {
                 };
 
                 for (idd, mut neighbour) in self.packet_send.clone() {
+                    if idd == self.server_id {
+                        continue;
+                    }
                     if Some(idd) == prev {
                         continue;
                     }
@@ -482,7 +474,6 @@ impl Server {
             ComandoText::Media(media) => {
                 match media {
                     MediaServer::ServerTypeMedia(ServerType) => {
-                        println!("SERVERTYPEMEDIA");
                         if self.media_others.contains_key(&id_client) {} else {
                             if ServerType == ServerType::MediaServer {
                                 self.media_others.insert(id_client, Vec::new());
@@ -492,7 +483,6 @@ impl Server {
                         }
                     }
                     MediaServer::SendPath(v) => {
-                        println!("SERVERSENDPATH");
                         if self.media_others.contains_key(&id_client) {
                             self.media_others.insert(id_client, v);
                         } else {}
@@ -503,12 +493,10 @@ impl Server {
             ComandoText::Text(text) => {
                 match text {
                     TextServer::ServerTypeReq => {
-                        println!("SERVERTYPEREQ");
                         let response = Risposta::Media(MediaServer::ServerTypeMedia(ServerType::MediaServer));
                         self.send_response(id_client, response);
                     }
                     TextServer::PathResolution => {
-                        println!("SERVERSENDPATHRESOLVE");
                         let response = Risposta::Media(MediaServer::SendPath(self.get_list()));
                         self.send_response(id_client, response);
                     }
@@ -524,13 +512,11 @@ impl Server {
             ComandoText::Client(client) => {
                 match client {
                     WebBrowserCommands::GetList => {
-                        println!("CLIENTGETLIST");
                         let list = self.get_list();
                         let response = Risposta::Text(TextServer::SendFileList(list));
                         self.send_response(id_client, response)
                     }
                     WebBrowserCommands::GetPosition(media) => {
-                        println!("CLIENTGETPOSITION");
                         let mut id_server = 0;
                         let server = self.find_position_media(media);
                         match server {
@@ -543,7 +529,6 @@ impl Server {
                         }
                     }
                     WebBrowserCommands::GetMedia(media_name) => {
-                        println!("CLIENTGETMEDIA");
                         match self.find_position_media(media_name.clone()) {
                             Ok(owner_id) => {
                                 if owner_id != self.server_id {
@@ -568,7 +553,6 @@ impl Server {
                     }
 
                     WebBrowserCommands::GetText(text_name) => {
-                        println!("CLIENTGETTEXT");
                         match self.find_position_text(text_name.clone()) {
                             Ok(owner_id) => {
                                 if owner_id != self.server_id {
@@ -592,7 +576,6 @@ impl Server {
                         }
                     }
                     WebBrowserCommands::GetServerType => {
-                        println!("CLIENTGETSERVERTYPE");
                         let response = Risposta::Text(TextServer::ServerTypeText(self.server_type.clone()));
                         self.send_response(id_client, response);
                         let response = Risposta::Media(MediaServer::ServerTypeMedia(ServerType::MediaServer));
@@ -605,10 +588,8 @@ impl Server {
     }
     fn send_response(&mut self, id: NodeId, response: Risposta) {
         let session = self.get_session();
-        print!("SEND RESPONSE ");
         match response {
             Risposta::Text(text) => {
-                println!("TEXT");
                 let dati = serialize(&text);
                 let total = dati.len();
                 let event: TextServerEvent;
@@ -638,7 +619,6 @@ impl Server {
                 self.send_data_fragments(id, dati, session);
             }
             Risposta::Media(media) => {
-                println!("MEDIA");
                 let dati = serialize(&media);
                 let total = dati.len();
                 let event: MediaServerEvent;
@@ -820,6 +800,25 @@ impl Server {
         let id = self.next_session_id;
         self.next_session_id += 1;
         id
+    }
+    fn remove_link(&mut self, bad: NodeId, bad_next: NodeId) {
+        // Rimuove bad_next dai vicini di bad
+        if let Some((_, _, neighbors)) = self
+            .nodes_map
+            .iter_mut()
+            .find(|(id, _, _)| *id == bad)
+        {
+            neighbors.retain(|&n| n != bad_next);
+        }
+
+        // Rimuove bad dai vicini di bad_next
+        if let Some((_, _, neighbors)) = self
+            .nodes_map
+            .iter_mut()
+            .find(|(id, _, _)| *id == bad_next)
+        {
+            neighbors.retain(|&n| n != bad);
+        }
     }
 
 }
