@@ -35,6 +35,7 @@ pub struct Server{
     rcv_flood: Receiver<BackGroundFlood>,
     rcv_command: Receiver<ServerCommands>,
     send_event: Sender<ServerEvent>,
+    requested_peers: HashSet<NodeId>,
 }
 
 
@@ -64,6 +65,7 @@ impl Server {
             rcv_flood,
             rcv_command,
             send_event,
+            requested_peers: HashSet::new(),
         }
     }
     pub fn run(&mut self) {
@@ -322,22 +324,26 @@ impl Server {
     fn handle_flood_response(&mut self, packet: Packet) {
         if let PacketType::FloodResponse(ref flood_response) = packet.pack_type {
             let path = &flood_response.path_trace;
+            // Se il path è vuoto, non facciamo nulla
             if path.is_empty() {
                 return;
             }
 
+            // L'iniziatore è il primo elemento del path
             let initiator_id = path[0].0;
 
-            // 1) Aggiorno la topologia come prima…
+            // 1) Aggiorno la topologia
             for i in 0..path.len() {
                 let (node_id, node_type) = path[i];
                 let prev = if i > 0 { Some(path[i - 1].0) } else { None };
                 let next = if i + 1 < path.len() { Some(path[i + 1].0) } else { None };
 
                 if let Some(entry) = self.nodes_map.iter_mut().find(|(id, _, _)| *id == node_id) {
+                    // Aggiorna tipo se necessario
                     if entry.1 != node_type {
                         entry.1 = node_type;
                     }
+                    // Aggiunge prev e next se mancanti
                     if let Some(p) = prev {
                         if !entry.2.contains(&p) {
                             entry.2.push(p);
@@ -349,6 +355,7 @@ impl Server {
                         }
                     }
                 } else {
+                    // Nodo nuovo: crea una voce
                     let mut conns = Vec::new();
                     if let Some(p) = prev { conns.push(p); }
                     if let Some(n) = next { conns.push(n); }
@@ -356,9 +363,9 @@ impl Server {
                 }
             }
 
-            // 2) Se sono io l’iniziator, preparo la lista dei soli Server da interrogare
+            // 2) Se sono io l'iniziator, invio richieste solo ai nuovi server
             if initiator_id == self.server_id {
-                let server_peers: Vec<NodeId> = self.nodes_map
+                let new_peers: Vec<NodeId> = self.nodes_map
                     .iter()
                     .filter_map(|(peer_id, node_type, _)| {
                         if *peer_id != self.server_id && *node_type == NodeType::Server {
@@ -367,15 +374,19 @@ impl Server {
                             None
                         }
                     })
+                    .filter(|peer_id| !self.requested_peers.contains(peer_id))
                     .collect();
 
-                for peer_id in server_peers {
+                for peer_id in new_peers {
+                    // Segna il peer come già interrogato
+                    self.requested_peers.insert(peer_id);
+                    // Invia la richiesta di path resolution
                     let req = Risposta::Text(TextServer::ServerTypeReq);
                     self.send_response(peer_id, req);
                 }
             }
 
-            // 3) Forward del flood-response se non è il mio
+            // 3) Forward del flood-response agli altri se non sono l'iniziator
             if initiator_id != self.server_id {
                 let previous_node = packet.routing_header
                     .hops
