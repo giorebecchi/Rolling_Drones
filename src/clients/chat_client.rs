@@ -1,6 +1,5 @@
 use std::collections::{HashMap, HashSet};
 use crossbeam_channel::{select_biased, Receiver, Sender};
-use egui::debug_text::print;
 use petgraph::algo::dijkstra;
 use petgraph::{Direction};
 use petgraph::graphmap::{UnGraphMap};
@@ -71,13 +70,6 @@ impl ChatClient {
             select_biased! {
                 recv(self.receiver_msg) -> message =>{
                     if let Ok(message) = message {
-                        // self.build_topology();
-                        match message.pack_type.clone(){
-                            PacketType::Nack(nack)=>{
-                                println!("sono il chatclient {}, packet: {:?}, route: {}",self.config.id,message.pack_type,message.routing_header);
-                            }
-                            _=>{}
-                        }
                         self.handle_incoming(message)
                     }
                 }
@@ -89,7 +81,6 @@ impl ChatClient {
                 
                 recv(self.receiver_commands) -> command =>{
                     if let Ok(command) = command {
-                        // self.build_topology();
                         self.handle_sim_command(command);
                     }
                 }
@@ -161,8 +152,9 @@ impl ChatClient {
     pub fn add_sender(&mut self, node_to_add: NodeId, sender: Sender<Packet>) {
         if !self.send_packets.contains_key(&node_to_add){
             self.send_packets.insert(node_to_add, sender);
-            println!("added drone");
-        }else { println!("already has this drone as a neighbour") }
+        }else { 
+            return;
+        }
     }
     
     pub fn remove_sender(&mut self, node: NodeId) {
@@ -534,7 +526,6 @@ impl ChatClient {
 
     pub fn handle_flood_req(& mut self, packet: Packet) {
         if let PacketType::FloodRequest(mut flood_request) = packet.clone().pack_type {
-            //println!("chatclient {} flood {:?}", self.config.id, flood_request);
             //check if the pair (flood_id, initiator id) has already been received -> self.visited_nodes
             if self.visited_nodes.contains(&(flood_request.flood_id, flood_request.initiator_id)){
                 flood_request.path_trace.push((self.config.id.clone(), NodeType::Client));
@@ -718,8 +709,4 @@ impl ChatClient {
         let ack_packet = Packet::new_ack(source_routing_header, packet.session_id, fragment_index );
         ack_packet
     }
-}
-
-pub fn main(){
-
 }
