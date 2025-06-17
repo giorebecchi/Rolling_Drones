@@ -327,9 +327,8 @@ impl Server {
             }
 
             let initiator_id = path[0].0;
-            let flood_key = (initiator_id, flood_response.flood_id);
 
-            // Processiamo sempre (aggiorna la topologia)
+            // 1) Aggiorno la topologia come prima…
             for i in 0..path.len() {
                 let (node_id, node_type) = path[i];
                 let prev = if i > 0 { Some(path[i - 1].0) } else { None };
@@ -357,11 +356,33 @@ impl Server {
                 }
             }
 
-            // Forwardiamo sempre, tranne se la flood è nostra
-            if initiator_id != self.server_id {
-                let previous_node = packet.routing_header.hops.get(packet.routing_header.hop_index as usize - 1).cloned();
+            // 2) Se sono io l’iniziator, preparo la lista dei soli Server da interrogare
+            if initiator_id == self.server_id {
+                let server_peers: Vec<NodeId> = self.nodes_map
+                    .iter()
+                    .filter_map(|(peer_id, node_type, _)| {
+                        if *peer_id != self.server_id && *node_type == NodeType::Server {
+                            Some(*peer_id)
+                        } else {
+                            None
+                        }
+                    })
+                    .collect();
 
-                for (neighbor_id, sender) in self.packet_send.iter() {
+                for peer_id in server_peers {
+                    let req = Risposta::Text(TextServer::ServerTypeReq);
+                    self.send_response(peer_id, req);
+                }
+            }
+
+            // 3) Forward del flood-response se non è il mio
+            if initiator_id != self.server_id {
+                let previous_node = packet.routing_header
+                    .hops
+                    .get(packet.routing_header.hop_index as usize - 1)
+                    .cloned();
+
+                for (neighbor_id, sender) in &self.packet_send {
                     if Some(*neighbor_id) != previous_node {
                         let _ = sender.send(packet.clone());
                     }
@@ -369,6 +390,8 @@ impl Server {
             }
         }
     }
+
+
     fn remove_drone(&mut self, node_id: NodeId) {
         // 1) rimuovo dalla topologia
         self.nodes_map.retain(|(id, _, _)| *id != node_id);
@@ -497,7 +520,10 @@ impl Server {
                         self.send_response(id_client, response);
                     }
                     TextServer::PathResolution => {
-                        let response = Risposta::Media(MediaServer::SendPath(self.get_list()));
+                        // invio SOLAMENTE la lista dei media
+                        let media_ids = self.get_media_ids();
+                        let response =
+                            Risposta::Media(MediaServer::SendPath(media_ids));
                         self.send_response(id_client, response);
                     }
                     _ => {}
@@ -819,6 +845,12 @@ impl Server {
         {
             neighbors.retain(|&n| n != bad);
         }
+    }
+    fn get_media_ids(&self) -> Vec<MediaId> {
+        self.media_list
+            .iter()
+            .map(|(media_id, _path)| media_id.clone())
+            .collect()
     }
 
 }
