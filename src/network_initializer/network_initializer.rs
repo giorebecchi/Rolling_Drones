@@ -164,7 +164,6 @@ pub fn start_simulation(
     let isolated_node=would_break_connectivity(&convert_to_config(config.clone(), nodes.clone()));
     let wrong_pdr=validate_drone_pdr(&convert_to_config(config.clone(), nodes.clone()));
     let connection_error=validate_duplex_connections(&convert_to_config(config, nodes.clone()));
-    println!("wrong_pdr: {:?}", wrong_pdr);
     if let Ok(mut state) = ERROR_VERIFY.write(){
         state.connection_error=(false,connection_error.clone());
         state.wrong_pdr=(false, wrong_pdr.clone());

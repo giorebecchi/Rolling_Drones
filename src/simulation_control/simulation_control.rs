@@ -627,11 +627,9 @@ impl SimulationController {
     fn handle_drone_event(&mut self, drone_event: DroneEvent, flood_req_hash: &mut HashSet<(NodeId, u64)>) {
         match drone_event {
             DroneEvent::PacketSent(ref packet) => {
-                //println!("packet forwarded: {:?}, route: {}",packet.pack_type, packet.routing_header);
                 self.handle_packet_sent(packet, flood_req_hash);
             }
             DroneEvent::PacketDropped(ref packet) => {
-                //println!("nack packet: {:?}, route: {}",packet.pack_type, packet.routing_header);
                 self.handle_packet_dropped(packet);
             }
             DroneEvent::ControllerShortcut(ref controller_shortcut) => {
@@ -703,7 +701,6 @@ impl SimulationController {
 
         match packet.pack_type.clone() {
             MsgFragment(fragment) => {
-                println!("dropped packet:{:?} has route {}",packet.pack_type,packet.routing_header);
                 self.handle_dropped_msg_fragment(drone, packet.session_id, fragment);
             }
             PacketType::Ack(ack) => {
