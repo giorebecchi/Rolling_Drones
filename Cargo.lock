@@ -44,11 +44,9 @@ dependencies = [
  "log",
  "once_cell",
  "petgraph 0.7.1",
- "rolling_drone",
  "rustafarian-drone",
  "rustbusters-drone",
  "rusteze_drone",
- "rusty_tester",
  "serde",
  "serde_json",
  "skylink",
@@ -4845,16 +4843,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "rolling_drone"
-version = "0.1.0"
-source = "git+https://github.com/giorebecchi/RollingDrone.git#b5c9cd6328ba62e026b8accf0701ef9ffd84abdf"
-dependencies = [
- "crossbeam-channel",
- "rand 0.9.1",
- "wg_2024",
-]
-
-[[package]]
 name = "ron"
 version = "0.8.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -4966,15 +4954,6 @@ name = "rustversion"
 version = "1.0.21"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "8a0d197bd2c9dc6e53b84da9556a69ba4cdfab8619eb41a8bd1cc2027a0f6b1d"
-
-[[package]]
-name = "rusty_tester"
-version = "0.2.0"
-source = "git+https://github.com/rusty-drone-2024/rusty-tester#f0b116f5e2fc2479c7fad317cbc3d4b7d54e755f"
-dependencies = [
- "crossbeam-channel",
- "wg_2024",
-]
 
 [[package]]
 name = "rustybuzz"

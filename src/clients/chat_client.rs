@@ -135,9 +135,6 @@ impl ChatClient {
             CommandChat::RemoveSender(node_id) => {
                 self.remove_sender(node_id);
             }
-            CommandChat::TopologyChanged => {
-                self.handle_topology();
-            }
             
             _ => {}
         }
@@ -174,13 +171,7 @@ impl ChatClient {
             println!("removed drone");
         }else { println!("this drone can't be removed as it's not a neighbour") }
     }
-    
-    pub fn handle_topology(& mut self){
-        self.flood.clear();
-        //self.topology.clear();
-        self.initiate_flooding();
-        //println!("initiating new flooding");
-    }
+
 
     pub fn search_chat_servers(&mut self) {
         //println!("topology here: {:?}", self.topology);

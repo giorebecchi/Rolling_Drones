@@ -176,18 +176,14 @@ pub enum MediaServer{
 //possibility:
 #[derive(Debug)]
 pub enum ContentCommands{
-    TopologyChanged,
-    GetPathResolution, //sent to the text server, to resolve all the text files from media servers (1st step)
     GetTextList(NodeId), //sent to client, client needs to ask text server, node id text server? probably better if automated
     GetMediaPosition(NodeId, MediaId), //sent to client with id of media needed, same problem with id of text server
     GetMedia(NodeId, MediaId), //sent to client with id of media, node id of the media server, probably better automated if possible
-    GetServerType(NodeId), //sent to client, node id of the server needed,
     GetText(NodeId, TextId), //sent to client, text id of the text file needed
     SearchTypeServers,
     SendTopologyGraph,
     AddSender(NodeId, Sender<Packet>),
-    RemoveSender(NodeId),
-    Crash
+    RemoveSender(NodeId)
 }
 pub enum BackGroundFlood{
     Start
@@ -196,25 +192,14 @@ pub enum BackGroundFlood{
 //from client to SC
 #[derive(Debug)]
 pub enum WebBrowserEvents{ //not complete
-    TypeClient(ClientType, NodeId), //type and id client, sent to sc at the start
     MediaServers(NodeId, Vec<NodeId>), //node id client, list of media servers found after the SearchTypeServers command is sent
     TextServers(NodeId, Vec<NodeId>), //node id client, list of test servers found after the SearchTypeServers command is sent
     ListFiles(NodeId, Vec<String>), //node id client, list of all the available files
     MediaPosition(NodeId, NodeId), //node id of client and the node id of the media server where the media is located
     SavedTextFile(NodeId, String), //node id client, path to file saved in SC folder in multimedia
-    SavedMedia(NodeId, String), //node id client, path to correct file save in SC folder in multimedia
-    PacketInfo(NodeId, ContentType, u64),
+    SavedMedia(NodeId, String),
     InfoRequest(NodeId, ContentRequest,  u64),
     Graph(NodeId, UnGraphMap<NodeId, u32>)
-}
-#[derive(Clone, Debug)]
-pub enum ContentType{
-    TextServerList(u64), //client sends to SC when {ContentType} is asked to server (u64 is #fragments)
-    MediaServerList(u64),//server sends to SC when {ContentType} is sent back to client (u64 is #fragments)
-    FileList(u64),
-    MediaPosition(u64),
-    SavedMedia(u64),
-    SavedText(u64),
 }
 #[derive(Debug)]
 pub enum ContentRequest{

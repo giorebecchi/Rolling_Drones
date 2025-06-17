@@ -11,7 +11,7 @@ use petgraph::graphmap::UnGraphMap;
 use wg_2024::packet::PacketType::{FloodRequest, MsgFragment};
 use crate::gui::login_window::{NodeType, SHARED_LOG};
 use crate::gui::shared_info_plugin::SHARED_STATE;
-use crate::common_things::common::{BackGroundFlood, ChatClientEvent, ChatEvent, ChatServerEvent, ClientType, CommandChat, ContentCommands, ContentRequest, ContentType, MediaServerEvent, RequestEvent, ServerCommands, TextServerEvent, WebBrowserEvents};
+use crate::common_things::common::{BackGroundFlood, ChatClientEvent, ChatEvent, ChatServerEvent, ClientType, CommandChat, ContentCommands, ContentRequest, MediaServerEvent, RequestEvent, ServerCommands, TextServerEvent, WebBrowserEvents};
 
 
 #[derive(Clone,Resource)]
@@ -288,9 +288,6 @@ impl SimulationController {
             WebBrowserEvents::SavedTextFile(client, actual_file) => {
                 self.handle_saved_text_file(client, actual_file);
             }
-            WebBrowserEvents::PacketInfo(client, packet_info, session_id) => {
-                self.handle_web_packet_info(client, packet_info, session_id);
-            }
             WebBrowserEvents::Graph(id, graph) => {
                 self.handle_web_graph(id, graph);
             }
@@ -367,51 +364,6 @@ impl SimulationController {
         }
     }
 
-    fn handle_web_packet_info(&self, client: NodeId, packet_info: ContentType, session_id: u64) {
-        let message = match packet_info {
-            ContentType::TextServerList(size) => {
-                format!(
-                    "Web browser: {} received list of Text Servers\n the message was made of {} fragments\n",
-                    client, size
-                )
-            }
-            ContentType::MediaServerList(size) => {
-                format!(
-                    "Web browser: {} received list of Media Servers\n the message was made of {} fragments\n",
-                    client, size
-                )
-            }
-            ContentType::FileList(size) => {
-                format!(
-                    "Web browser: {} received File List\n the message was made of {} fragments\n",
-                    client, size
-                )
-            }
-            ContentType::MediaPosition(size) => {
-                format!(
-                    "Web browser: {} received Media Position\n the message was made of {} fragments\n",
-                    client, size
-                )
-            }
-            ContentType::SavedText(size) => {
-                format!(
-                    "Web browser: {} received a  Text File\n the message was made of {} fragments\n",
-                    client, size
-                )
-            }
-            ContentType::SavedMedia(size) => {
-                format!(
-                    "Web browser: {} received a Media\n the message was made of {} fragments\n",
-                    client, size
-                )
-            }
-        };
-
-        if let Ok(mut state) = SHARED_LOG.write() {
-            state.msg_log.insert((client, session_id), message);
-            state.is_updated = true;
-        }
-    }
 
     fn handle_web_graph(&self, id: NodeId, graph: UnGraphMap<NodeId, u32>) {
         if let Ok(mut state) = SHARED_LOG.write() {

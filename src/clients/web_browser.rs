@@ -10,7 +10,6 @@ use wg_2024::network::{NodeId, SourceRoutingHeader};
 use wg_2024::packet::{FloodRequest, FloodResponse, Fragment, NackType, NodeType, Packet, PacketType};
 use crate::clients::assembler::{Fragmentation, NodeData};
 use crate::common_things::common::{ChatRequest, ClientType, ContentCommands, FileMetaData, MediaId, MediaServer, ServerType, TextServer, WebBrowserCommands, WebBrowserEvents};
-use crate::common_things::common::WebBrowserEvents::TypeClient;
 use base64::engine::general_purpose::STANDARD as BASE64;
 use petgraph::prelude::UnGraphMap;
 
@@ -72,7 +71,6 @@ impl WebBrowser {
         }
     }
     pub fn run(& mut self) {
-        self.send_type_sim();
 
         loop{
             select_biased! {
@@ -101,9 +99,6 @@ impl WebBrowser {
 
     fn handle_commands(&mut self, command: ContentCommands) {
         match command {
-            ContentCommands::GetServerType(id_server) => {
-                self.ask_type(id_server)
-            },
             ContentCommands::GetTextList(id_server) => {
                 self.get_list(id_server)
             },
@@ -129,9 +124,6 @@ impl WebBrowser {
             }
             ContentCommands::RemoveSender(node_id) => {
                 self.remove_sender(node_id);
-            }
-            ContentCommands::TopologyChanged => {
-                self.handle_topology();
             }
             
             _ => {}
@@ -176,11 +168,7 @@ impl WebBrowser {
         }
     }
 
-    pub fn send_type_sim(& mut self){
-        if let Err(_) = self.send_event.send(TypeClient(self.client_type.clone(), self.config.id.clone())){
-            println!("Error sending client type to simulation control")
-        }
-    }
+
 
     pub fn search_type_servers(& mut self) {
         println!("servers known to web browser: {:?}",self.servers);
