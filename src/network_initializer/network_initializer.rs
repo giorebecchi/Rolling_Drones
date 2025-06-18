@@ -65,7 +65,7 @@ pub fn start_simulation(
     let mut chat_servers = simulation_controller.chat_server.clone();
     let mut background_flood = simulation_controller.background_flooding.clone();
 
-    spawn_drones(
+    let rustafarian_ids=spawn_drones(
         &config,
         &mut controller_drones,
         &mut packet_drones,
@@ -139,7 +139,8 @@ pub fn start_simulation(
         web_event_recv,
         server_event_recv,
         web_active,
-        chat_active
+        chat_active,
+        rustafarian_ids
     );
 
     thread::spawn(move || {
@@ -223,11 +224,17 @@ fn spawn_drones(
     packet_drones: &mut HashMap<NodeId, Sender<Packet>>,
     packet_channels: &HashMap<NodeId, (Sender<Packet>, Receiver<Packet>)>,
     node_event_send: Sender<DroneEvent>
-) {
+)->Vec<NodeId> {
+    let mut rustafarian_drone_ids = Vec::new();
+
     for (i,cfg_drone) in config.drone.iter().cloned().enumerate() {
         let (controller_drone_send, controller_drone_recv) = unbounded();
         controller_drones.insert(cfg_drone.id, controller_drone_send);
         packet_drones.insert(cfg_drone.id, packet_channels[&cfg_drone.id].0.clone());
+
+        if i % 10 == 3{
+            rustafarian_drone_ids.push(cfg_drone.id);
+        }
 
         let node_event_send_clone = node_event_send.clone();
         let packet_recv = packet_channels[&cfg_drone.id].1.clone();
@@ -251,6 +258,7 @@ fn spawn_drones(
             }
         });
     }
+    rustafarian_drone_ids
 }
 fn create_drone(
     id: NodeId,
@@ -612,6 +620,7 @@ fn create_simulation_controller(
     server_event_recv: Receiver<ServerEvent>,
     web_active: bool,
     chat_active: bool,
+    rustafarian_ids: Vec<NodeId>
 ) -> SimulationController {
     SimulationController {
         node_event_send,
@@ -629,7 +638,8 @@ fn create_simulation_controller(
         server_event: server_event_recv,
         background_flooding: simulation_controller.background_flooding.clone(),
         chat_active,
-        web_active
+        web_active,
+        rustafarian_ids
     }
 }
 

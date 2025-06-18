@@ -32,6 +32,7 @@ pub struct SimulationController {
     pub background_flooding: HashMap<NodeId, Sender<BackGroundFlood>>,
     pub chat_active: bool,
     pub web_active: bool,
+    pub rustafarian_ids: Vec<NodeId>
 }
 
 
@@ -57,7 +58,8 @@ impl Default for SimulationController{
             server_event: server_recv,
             background_flooding: HashMap::new(),
             chat_active: true,
-            web_active: true
+            web_active: true,
+            rustafarian_ids: Vec::new()
         }
     }
 }
@@ -644,7 +646,10 @@ impl SimulationController {
     }
 
     fn handle_packet_dropped(&self, packet: &Packet) {
-        let drone = packet.routing_header.hops[packet.routing_header.hop_index];
+        let mut drone = packet.routing_header.hops[packet.routing_header.hop_index-1];
+        if !self.rustafarian_ids.contains(&drone){
+            drone=packet.routing_header.hops[packet.routing_header.hop_index];
+        }
 
         match packet.pack_type.clone() {
             MsgFragment(fragment) => {
