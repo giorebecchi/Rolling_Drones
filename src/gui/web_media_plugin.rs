@@ -37,7 +37,7 @@ impl Default for MediaDisplayType {
 #[derive(Resource, Default)]
 struct ImageState {
     handles: HashMap<NodeId, Option<Handle<Image>>>,
-    egui_textures: HashMap<NodeId, Option<(egui::TextureId, egui::Vec2)>>,
+    egui_textures: HashMap<NodeId, Option<(egui::TextureId, egui::Vec2)>>
 }
 
 #[derive(Resource)]
@@ -173,6 +173,7 @@ fn window_format(
                     }
                     state.egui_textures.insert(window_id, None);
                     state.handles.insert(window_id, None);
+                    web_state.new_image_arrived.insert(window_id, true);
 
                     web_state.last_loaded_path.insert(window_id, path.clone());
 
@@ -180,6 +181,7 @@ fn window_format(
                     let handle: Handle<Image> = asset_server.load(bevy_path);
                     state.handles.insert(window_id, Some(handle));
                 } else if state.handles.get(&window_id).unwrap_or(&None).is_none() {
+                    web_state.new_image_arrived.insert(window_id, true);
                     let bevy_path = path.strip_prefix("assets/").unwrap_or(&path).to_string();
                     let handle: Handle<Image> = asset_server.load(bevy_path);
                     state.handles.insert(window_id, Some(handle));
@@ -296,7 +298,6 @@ fn window_format(
                                                         web_state.current_display_type.insert(window_id, MediaDisplayType::TextFile);
                                                         sim.get_text_file(window_id, selected_text_server, media_path.clone());
                                                     } else {
-                                                        web_state.current_display_type.insert(window_id, MediaDisplayType::Image);
                                                         web_state.received_medias.insert(window_id, media_path.clone());
                                                         sim.get_media_position(window_id, selected_text_server, media_path.clone());
                                                     }
@@ -321,13 +322,13 @@ fn window_format(
 
                     ui.separator();
 
-                    if let Some(MediaDisplayType::Image) = web_state.current_display_type.get(&window_id) {
                         if let Some(media_server) = web_state.target_media_server.get(&window_id).cloned() {
                             if let Some(media_path) = web_state.received_medias.remove(&window_id) {
+                                web_state.current_display_type.insert(window_id, MediaDisplayType::Image);
+                                web_state.new_image_arrived.insert(window_id, false);
                                 sim.get_media_from(window_id, media_server, media_path.clone());
                             }
                         }
-                    }
 
                     ui.separator();
                     ui.heading("Media View");
@@ -338,57 +339,61 @@ fn window_format(
                             MediaDisplayType::Image => {
                                 if let Some(Some((texture_id, original_size))) = state.egui_textures.get(&window_id) {
                                     if let Some(Some(_)) = state.handles.get(&window_id) {
-                                        let image_scroll_id = ui.make_persistent_id(format!("image_scroll_{}", window_id));
-                                        ui.push_id(image_scroll_id, |ui| {
-                                            egui::ScrollArea::both().show(ui, |ui| {
-                                                let available_width = ui.available_width();
-                                                let available_height = 400.0;
+                                        if let Some(arrived)=web_state.new_image_arrived.get(&window_id){
+                                            if *arrived {
+                                                let image_scroll_id = ui.make_persistent_id(format!("image_scroll_{}", window_id));
+                                                ui.push_id(image_scroll_id, |ui| {
+                                                    egui::ScrollArea::both().show(ui, |ui| {
+                                                        let available_width = ui.available_width();
+                                                        let available_height = 400.0;
 
-                                                let scale_factor = (available_width / original_size.x)
-                                                    .min(available_height / original_size.y)
-                                                    .min(1.0);
+                                                        let scale_factor = (available_width / original_size.x)
+                                                            .min(available_height / original_size.y)
+                                                            .min(1.0);
 
-                                                let display_size = egui::Vec2::new(
-                                                    original_size.x * scale_factor,
-                                                    original_size.y * scale_factor
-                                                );
+                                                        let display_size = egui::Vec2::new(
+                                                            original_size.x * scale_factor,
+                                                            original_size.y * scale_factor
+                                                        );
 
-                                                let sized_texture = egui::load::SizedTexture::new(*texture_id, *original_size);
-                                                let image_source = egui::ImageSource::Texture(sized_texture);
+                                                        let sized_texture = egui::load::SizedTexture::new(*texture_id, *original_size);
+                                                        let image_source = egui::ImageSource::Texture(sized_texture);
 
-                                                let image_widget = egui::Image::new(image_source)
-                                                    .fit_to_exact_size(display_size);
+                                                        let image_widget = egui::Image::new(image_source)
+                                                            .fit_to_exact_size(display_size);
 
-                                                ui.add(image_widget);
-                                            });
-                                        });
+                                                        ui.add(image_widget);
+                                                    });
+                                                });
 
-                                        ui.label(format!("Original size: {}x{} pixels", original_size.x, original_size.y));
+                                                ui.label(format!("Original size: {}x{} pixels", original_size.x, original_size.y));
 
-                                        let clear_button_id = ui.make_persistent_id(format!("clear_image_button_{}", window_id));
-                                        ui.push_id(clear_button_id, |ui| {
-                                            if ui.button("Clear Image").clicked() {
-                                                should_clear_image = true;
+                                                let clear_button_id = ui.make_persistent_id(format!("clear_image_button_{}", window_id));
+                                                ui.push_id(clear_button_id, |ui| {
+                                                    if ui.button("Clear Image").clicked() {
+                                                        should_clear_image = true;
 
-                                                if let None = web_state.actual_media_path.get(&window_id) {
-                                                    println!("Error occured while clearing image");
-                                                }
+                                                        if let None = web_state.actual_media_path.get(&window_id) {
+                                                            println!("Error occured while clearing image");
+                                                        }
 
-                                                state.handles.insert(window_id, None);
-                                                state.egui_textures.insert(window_id, None);
-                                                web_state.received_medias.remove(&window_id);
-                                                web_state.actual_media_path.remove(&window_id);
-                                                web_state.last_loaded_path.remove(&window_id);
-                                                web_state.media_servers.remove(&window_id);
-                                                web_state.target_media_server.remove(&window_id);
-                                                web_state.current_display_type.insert(window_id, MediaDisplayType::None);
+                                                        state.handles.insert(window_id, None);
+                                                        state.egui_textures.insert(window_id, None);
+                                                        web_state.received_medias.remove(&window_id);
+                                                        web_state.actual_media_path.remove(&window_id);
+                                                        web_state.last_loaded_path.remove(&window_id);
+                                                        web_state.media_servers.remove(&window_id);
+                                                        web_state.target_media_server.remove(&window_id);
+                                                        web_state.current_display_type.insert(window_id, MediaDisplayType::None);
+                                                    }
+                                                });
+                                            }else{
+                                                ui.label("Loading image...");
                                             }
-                                        });
+                                        }
                                     } else {
                                         ui.label("Image handle invalid. Loading...");
                                     }
-                                } else if web_state.actual_media_path.contains_key(&window_id) {
-                                    ui.label("Loading image...");
                                 } else {
                                     ui.label("Loading image...");
                                 }
@@ -555,5 +560,6 @@ pub struct WebState {
     received_medias: HashMap<NodeId, String>,
     current_display_type: HashMap<NodeId, MediaDisplayType>,
     last_loaded_path: HashMap<NodeId, String>,
-    server_for_current_media: HashMap<NodeId, Option<NodeId>>
+    server_for_current_media: HashMap<NodeId, Option<NodeId>>,
+    new_image_arrived: HashMap<NodeId, bool>,
 }
