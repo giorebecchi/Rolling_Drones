@@ -24,9 +24,9 @@ use crate::gui::login_window::{NodeConfig, NodeType};
 use crate::simulation_control::simulation_control::SimulationController;
 use crate::gui::shared_info_plugin::{NodeCategory, ERROR_VERIFY, SHARED_STATE};
 use crate::network_initializer::connection_validity::{validate_drone_pdr, validate_duplex_connections, would_break_connectivity};
-use crate::servers::ChatServer::Server;
-use crate::servers::TextServerFillo::Server as TextServerBaia;
-use crate::servers::MediaServerFillo::Server as MediaServerBaia;
+use crate::servers::chat_server_fillo::Server;
+use crate::servers::text_server_fillo::Server as TextServerBaia;
+use crate::servers::media_server_fillo::Server as MediaServerBaia;
 use crate::servers::Chat_max::Server as ChatMax;
 use crate::servers::Text_max::Server as TextMax;
 

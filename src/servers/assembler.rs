@@ -19,7 +19,7 @@ pub trait Fragmentation{
             let fragment = &serialized_data[start..end];
             let packet = Packet{
                 routing_header: routing_header.clone(),
-                session_id:session_id,
+                session_id,
                 pack_type:MsgFragment(Fragment::from_string(i, tot_fragment, fragment.to_string()))
             };
             vec.push(packet);
