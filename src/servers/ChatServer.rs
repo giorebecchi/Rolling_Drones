@@ -3,19 +3,17 @@ use std::collections::{BinaryHeap, HashMap, HashSet};
 use std::fmt::Debug;
 use petgraph::graph::{Graph, NodeIndex};
 use crossbeam_channel::{select_biased, Receiver, Sender};
-use petgraph::data::Build;
 use petgraph::Incoming;
 use petgraph::prelude::EdgeRef;
 use serde::Serialize;
 use wg_2024::network::{NodeId, SourceRoutingHeader};
-use wg_2024::packet;
 use wg_2024::packet::{Ack, FloodRequest, FloodResponse, Fragment, NackType, NodeType, Packet, PacketType};
 use crate::common_things::common::*;
 use crate::servers::assembler::*;
 use crate::gui::login_window::NodeType as MyNodeType;
 
 #[derive(Serialize, Clone, Debug)]
-pub struct drops{
+pub struct Drops{
     dropped : u64,
     forwarded : u64,
 }
@@ -30,7 +28,7 @@ pub struct Server{
     registered_clients: Vec<NodeId>,
     flooding: Vec<FloodResponse>,
     neigh_map: Graph<(NodeId,NodeType), f64, petgraph::Directed>,
-    stats: HashMap<NodeIndex, drops>,
+    stats: HashMap<NodeIndex, Drops>,
     packet_recv: Receiver<Packet>,
     already_visited: HashSet<(NodeId,u64)>,
     pub packet_send: HashMap<NodeId, Sender<Packet>>,
@@ -52,9 +50,9 @@ impl Server{
             flooding: Vec::new(),
             neigh_map: Graph::new(),
             stats: HashMap::new(),
-            packet_recv:packet_recv,
+            packet_recv,
             already_visited:HashSet::new(),
-            packet_send:packet_send,
+            packet_send,
             fragments_recv : HashMap::new(),
             fragments_send : HashMap::new(),
             rcv_flood,
@@ -67,12 +65,12 @@ impl Server{
             select_biased!{
                 recv(self.packet_recv) -> packet => {
                     if let Ok(packet) = packet {
-                        match packet.pack_type.clone(){
-                            PacketType::Nack(nack)=>{
-                                println!("sono il chatserver {}, packet: {:?}, route: {}",self.server_id,packet.pack_type,packet.routing_header);
-                            }
-                            _=>{}
-                        }
+                        // match packet.pack_type.clone(){
+                        //     PacketType::Nack(_)=>{
+                        //         println!("sono il chatserver {}, packet: {:?}, route: {}",self.server_id,packet.pack_type,packet.routing_header);
+                        //     }
+                        //     _=>{}
+                        // }
                         self.handle_packet(packet);
                     }
                 },
@@ -134,7 +132,7 @@ impl Server{
     
     pub fn handle_packet(&mut self, p:Packet){
         match p.clone().pack_type {
-            PacketType::MsgFragment(_) => {println!("received packet {p}");self.handle_msg_fragment(p)}
+            PacketType::MsgFragment(_) => {/*println!("received packet {p}");*/self.handle_msg_fragment(p)}
             PacketType::Ack(_) => {self.handle_ack(p)}
             PacketType::Nack(_) => {self.handle_nack(p)}
             PacketType::FloodRequest(_) => {self.handle_flood_request(p)}
@@ -160,7 +158,7 @@ impl Server{
         // println!("flooding : {:?}", self.flooding); //fa vedere tutte le flood response salvaate nel server
         // println!("graph del chatserver {:?}: {:?}",self.server_id, self.neigh_map); //fa vedere il grafo (tutti i nodi e tutti gli edges)
         if let Some(srh) = self.best_path_custom_cost(id,nt){
-            println!("srh : {:?}",srh);
+            // println!("srh : {:?}",srh);
             if let Ok(vec) = p.serialize_data(srh,self.session_id){
                 let mut fragments_send = Vec::new();
                 for i in vec.iter(){
@@ -205,21 +203,21 @@ impl Server{
                     if let Ok(totalmsg) = ChatRequest::deserialize_data(vec){
                         match totalmsg{
                             ChatRequest::ServerType => {
-                                println!("Server type request received from client: {:?}!", p.routing_header.hops.clone()[0]);
+                                // println!("Server type request received from client: {:?}!", p.routing_header.hops.clone()[0]);
                                 self.send_packet(ChatResponse::ServerTypeChat(self.clone().server_type), p.routing_header.hops[0], NodeType::Client);
                             }
                             ChatRequest::RegisterClient(n) => {
-                                println!("Register client request received from client: {:?}!", p.routing_header.hops.clone()[0]);
+                                // println!("Register client request received from client: {:?}!", p.routing_header.hops.clone()[0]);
                                 self.registered_clients.push(n);
                                 self.send_packet(ChatResponse::RegisterClient(true), p.routing_header.hops[0], NodeType::Client);
                             }
                             ChatRequest::GetListClients => {
-                                println!("Get client list request received from client: {:?}!", p.routing_header.hops.clone()[0]);
+                                // println!("Get client list request received from client: {:?}!", p.routing_header.hops.clone()[0]);
                                 self.send_packet(ChatResponse::RegisteredClients(self.clone().registered_clients), p.routing_header.hops[0], NodeType::Client);
                             }
                             ChatRequest::SendMessage(mc, _) => {
-                                println!("Send message request received from client: {:?}!", p.routing_header.hops.clone()[0]);
-                                println!("Registered clients: {:?}",self.registered_clients);
+                                // println!("Send message request received from client: {:?}!", p.routing_header.hops.clone()[0]);
+                                // println!("Registered clients: {:?}",self.registered_clients);
                                 if self.registered_clients.contains(&mc.from_id) && self.registered_clients.contains(&mc.to_id){
                                     self.send_packet(ChatResponse::SendMessage(Ok("The server will forward the message to the final client".to_string())), p.routing_header.hops[0], NodeType::Client);
                                     self.send_packet(ChatResponse::ForwardMessage(mc.clone()), mc.to_id, NodeType::Client);
@@ -228,7 +226,7 @@ impl Server{
                                 }
                             }
                             ChatRequest::EndChat(n) => {
-                                println!("end chat request received from client: {:?}!", p.routing_header.hops.clone()[0]);
+                                // println!("end chat request received from client: {:?}!", p.routing_header.hops.clone()[0]);
                                 self.registered_clients.retain(|x| *x != n);
                                 self.send_packet(ChatResponse::EndChat(true), p.routing_header.hops[0], NodeType::Client);
                             }
@@ -237,7 +235,7 @@ impl Server{
                         if let Ok(totalmsg) = TextServer::deserialize_data(vec) {
                             match totalmsg {
                                 TextServer::ServerTypeReq => {
-                                    println!("Server type request received from server: {:?}!", p.routing_header.hops.clone()[0]);
+                                    // println!("Server type request received from server: {:?}!", p.routing_header.hops.clone()[0]);
                                     self.send_packet(ChatResponse::ServerTypeChat(self.clone().server_type), p.routing_header.hops[0], NodeType::Server);
                                 }
                                 _ => { println!("I shouldn't receive these commands"); }
@@ -277,13 +275,13 @@ impl Server{
     }
 
     fn packet_recover(&mut self, s_id: u64, lost_fragment_index: u64){
-        println!("did I call packet_recover? I'm chatserver {}",self.server_id);
+        // println!("did I call packet_recover? I'm chatserver {}",self.server_id);
         if self.fragments_send.contains_key(&s_id){
             let info = self.fragments_send.get(&s_id).unwrap();
             for i in info.2.clone().iter(){
                 if i.fragment_index==lost_fragment_index{
                     if let Some(srh) = self.best_path_custom_cost(info.0.clone(),info.1.clone()){
-                        println!("server {} route called after calling packet_recover: {}",self.server_id,srh);
+                        // println!("server {} route called after calling packet_recover: {}",self.server_id,srh);
                         let pack = Packet{
                             routing_header: srh,
                             session_id: s_id.clone(),
@@ -308,7 +306,7 @@ impl Server{
         if let PacketType::Nack(nack) = packet.pack_type{
             match nack.clone().nack_type{
                 NackType::ErrorInRouting(crashed_id) => {
-                    println!("sono il chat {:?} ho ricevuto un errorinrouting with route {:?}, the drone that crashed is {:?}", self.server_id, packet.routing_header.hops, crashed_id.clone());
+                    // println!("sono il chat {:?} ho ricevuto un errorinrouting with route {:?}, the drone that crashed is {:?}", self.server_id, packet.routing_header.hops, crashed_id.clone());
                     let node1;
                     let node2;
                     if self.node_exists(crashed_id, NodeType::Drone){
@@ -341,12 +339,6 @@ impl Server{
                     self.packet_recover(s_id, nack.fragment_index);
                 }
                 NackType::Dropped => {
-                        //non so se il clone di self vada bene, l'ho messo solo perchè dava errore
-                        // for neighbor in self.clone().neigh_map.neighbors(node) {
-                        //     if let Some(edge) = self.neigh_map.find_edge(node, neighbor) {
-                        //         self.neigh_map[edge] += 1.0;
-                        //     }
-                        // }
                         let mut first = true;
                         for i in packet.routing_header.hops.iter(){
                             let ni = self.find_node(*i, NodeType::Drone);
@@ -441,7 +433,7 @@ impl Server{
                 let mut safetoadd = true;
                 for i in self.flooding.iter() {
                     if i.flood_id < flood.flood_id {
-                        println!("the server is starting to receive new flood responses");
+                        // println!("the server is starting to receive new flood responses");
                         self.flooding.clear();
                         break;
                     } else if i.flood_id == flood.flood_id {} else {
@@ -459,8 +451,6 @@ impl Server{
                     }
 
                     for &(j, k) in flood.path_trace.iter().skip(1) {
-                        if let Some(&(prev_id, prev_nt)) = self.neigh_map.node_weight(prev) {
-                            // println!("trying to connect {:?} to {:?}", j, prev_id);
                             if self.node_exists(j.clone(), k.clone()) {
                                 let next = self.find_node(j.clone(), k.clone()).unwrap();
                                 // println!("trying to connect {:?} to {:?}", prev, next);
@@ -474,7 +464,7 @@ impl Server{
                                 prev = next;
                             } else {
                                 let newnodeid = self.neigh_map.add_node((j.clone(), k.clone()));
-                                self.stats.insert(newnodeid.clone(), drops { dropped: 0, forwarded: 1 });
+                                self.stats.insert(newnodeid.clone(), Drops { dropped: 0, forwarded: 1 });
                                 if self.neigh_map.find_edge(prev, newnodeid).is_none() {
                                     self.neigh_map.add_edge(prev, newnodeid, 0.0);
                                 }
@@ -483,14 +473,13 @@ impl Server{
                                 }
                                 prev = newnodeid;
                             }
-                        }
                     }
                     //println!("graph del chatserver {:?}, {:?}", self.server_id, self.neigh_map);
                 } else {
-                    println!("you received an outdated version of the flooding");
+                    // println!("you received an outdated version of the flooding");
                 }
             }else { 
-                println!("forwarding the flood because it is not mine");
+                // println!("forwarding the flood because it is not mine");
                 self.forward_packet(p);
             }
         }
@@ -498,9 +487,9 @@ impl Server{
 
 
     pub(crate) fn flooding(&mut self){
-        println!("server {} is starting a flooding",self.server_id);
+        // println!("server {} is starting a flooding",self.server_id);
 
-        let flood = packet::Packet{
+        let flood = Packet{
             routing_header: SourceRoutingHeader::empty_route(),
             session_id: self.flood_id,
             pack_type: PacketType::FloodRequest(FloodRequest{
@@ -510,31 +499,12 @@ impl Server{
             }),
         };
         self.flood_id+=1;
-        for (id,neighbour) in self.packet_send.clone(){
+        for (_,neighbour) in self.packet_send.clone(){
             if let Err(_)=neighbour.send(flood.clone()){
                 println!("error flood request");
             };
         }
     }
-
-
-    //funzione commentata perchè non ha senso, ho trasferito quello che facevo qui all'interno di handle_flood_request, perchè altrimenti il self.flooding risultava sempre vuoto
-    // fn neigh_mapping(&mut self){
-    //     let mut prev = self.neigh_map.add_node((self.server_id, NodeType::Server));
-    //     for i in self.flooding.iter(){
-    //         for (j,k) in i.path_trace.iter(){
-    //             if Self::node_exists(self.clone().neigh_map, j.clone(), k.clone()){
-    //                 let nodeid = self.find_node(j.clone(),k.clone()).unwrap();
-    //                 self.neigh_map.add_edge(nodeid, prev, 1);
-    //                 prev = nodeid;
-    //             } else{
-    //                 let newnodeid = self.neigh_map.add_node((j.clone(),k.clone()));
-    //                 self.neigh_map.add_edge(newnodeid, prev, 1);
-    //                 prev = newnodeid;
-    //             }
-    //         }
-    //     }
-    // }
 
     fn node_exists(&self, id:NodeId, nt:NodeType) -> bool {
         self.neigh_map.node_indices().any(|i| self.neigh_map[i] == (id,nt))
@@ -543,63 +513,7 @@ impl Server{
     fn find_node(&self, id: NodeId, nt: NodeType) -> Option<NodeIndex> {
         self.neigh_map.node_indices().find(|&i| self.neigh_map[i] == (id, nt))
     }
-
-
-    //classico get_route con djikstra
-
-    // fn get_route(&mut self, id:NodeId, nt:NodeType)->Option<SourceRoutingHeader>{
-    //     let start = self.find_node(self.server_id, NodeType::Server).unwrap_or_default();
-    //     let end = self.find_node(id,nt).unwrap_or_default();
-    //
-    //     let paths: HashMap<NodeIndex, u32> = dijkstra(&self.neigh_map, start, Some(end), |e| *e.weight());
-    //
-    //     if !paths.contains_key(&end) {
-    //         return None;
-    //     }
-    //
-    //     // Manual backtracking to reconstruct the shortest path
-    //     let mut path = vec![id];
-    //     let mut current = end;
-    //
-    //     while current != start {
-    //         let mut found = false;
-    //         for neighbor in self.neigh_map.neighbors(current) {
-    //             if let Some(weight) = self.neigh_map.find_edge(neighbor, current).map(|e| self.neigh_map[e]) {
-    //                 if let Some(&neighbor_dist) = paths.get(&neighbor) {
-    //                         if neighbor_dist + weight == paths[&current] {
-    //                             path.push(self.neigh_map[neighbor].0);
-    //                             current = neighbor;
-    //                             found = true;
-    //                             break;
-    //                         }
-    //                 }
-    //             }
-    //         }
-    //         if !found {
-    //             return None; // Shouldn't happen unless the graph is modified during traversal
-    //         }
-    //     }
-    //     path.reverse();
-    //     Some(SourceRoutingHeader{hops: path, hop_index:0})
-    // }
-
-
-    //altro metodo che permette di trovare la route più veloce basandosi sul costo dei collegamenti, ma senza bisogno di fare hashmap e robe varie come tocca fare per dijkstra
-    // fn get_route(&self, id:NodeId, nt:NodeType) -> Option<(SourceRoutingHeader)> {
-    //     // Return Vec<NodeId> instead of Vec<NodeIndex>
-    //     let start = self.find_node(self.server_id, NodeType::Server)?;
-    //     let end = self.find_node(id,nt)?;
-    //     let path = astar(
-    //         &self.neigh_map,
-    //         start,
-    //         |finish| finish == end, // Stop when reaching the end node
-    //         |e| *e.weight(),        // Edge cost
-    //         |_| 0.0                   // No heuristic (Dijkstra behavior)
-    //     ).map(|(cost, path)| (cost, path.into_iter().map(|idx| self.neigh_map[idx].0).collect())); // Convert NodeIndex -> NodeId
-    // Some(SourceRoutingHeader{hops:path?.1, hop_index:0})
-    // }
-
-
+    
     // Main function to calculate best path with non-linear cost
     fn best_path_custom_cost(&self, id: NodeId, nt: NodeType) -> Option<SourceRoutingHeader> {
         let start = self.find_node(self.server_id, NodeType::Server)?;
@@ -615,7 +529,7 @@ impl Server{
             if node == end {
                 let hops = path.into_iter().map(|idx| self.neigh_map[idx].0).collect();
                 let src =  SourceRoutingHeader{
-                    hops:hops,
+                    hops,
                     hop_index:0,
                 };
                 return Some(src);
@@ -647,22 +561,7 @@ impl Server{
 
         None
     }
-
-    // fn create_ack(&mut self, packet: Packet) ->Packet{
-    //     let ack = Ack{
-    //         fragment_index: if let PacketType::MsgFragment(fragment)=packet.pack_type{
-    //             fragment.fragment_index
-    //         }else {
-    //             0
-    //         },
-    //     };
-    //     let pack = Packet {
-    //         pack_type: PacketType::Ack(ack.clone()),
-    //         routing_header: self.get_route(packet.routing_header.hops[0], NodeType::Client).unwrap_or_default(),
-    //         session_id: packet.session_id,
-    //     };
-    //     pack
-    // }
+    
 }
 
 
@@ -693,32 +592,6 @@ fn create_ack(packet: Packet)->Packet{
     };
     pack
 }
-
-//stesso problema della funzione sopra, conviene usare l'algoritmo di routing per sicurezza
-// fn create_nack(packet: Packet,nack_type: NackType)->Packet{
-//     let mut vec = Vec::new();
-//     for node_id in (0..=packet.routing_header.hop_index).rev() {
-//         vec.push(packet.routing_header.hops[node_id]);
-//     }
-//     let nack = Nack {
-//         fragment_index: if let PacketType::MsgFragment(fragment) = packet.pack_type {
-//             fragment.fragment_index
-//         } else {
-//             0
-//         },
-//         nack_type,
-//     };
-//     let pack = Packet {
-//         pack_type: PacketType::Nack(nack.clone()),
-//         routing_header: SourceRoutingHeader {
-//             hop_index: 0,
-//             hops: vec.clone(),
-//         },
-//         session_id: packet.session_id,
-//     };
-//     pack
-// }
-
 
 #[derive(Debug,PartialEq,Clone,Copy)]
 pub struct PathCost(f64);
