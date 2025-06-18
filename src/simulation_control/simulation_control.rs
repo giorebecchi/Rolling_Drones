@@ -880,21 +880,25 @@ impl SimulationController {
     }
     pub fn get_media_list(&self, web_browser: NodeId, text_server: NodeId){
         if let Some(sender)=self.web_client.get(&web_browser){
+            println!("Client: {} Asked list of files from server {}",web_browser,text_server);
             sender.send(ContentCommands::GetTextList(text_server)).unwrap();
         }
     }
     pub fn get_text_file(&self, web_browser: NodeId, text_server: NodeId, text_file: String){
         if let Some(sender)=self.web_client.get(&web_browser){
+            println!("Client: {} Asked for text file {} from server {}",web_browser,text_file,text_server);
             sender.send(ContentCommands::GetText(text_server, text_file)).unwrap();
         }
     }
     pub fn get_media_position(&self, web_browser: NodeId, text_server:NodeId, media_path: String){
         if let Some(sender)=self.web_client.get(&web_browser){
+            println!("Client: {} Asked media position {} from server {}",web_browser,media_path,text_server);
             sender.send(ContentCommands::GetMediaPosition(text_server, media_path)).unwrap();
         }
     }
     pub fn get_media_from(&self, web_browser: NodeId, media_server: NodeId, media_path: String){
         if let Some(sender)= self.web_client.get(&web_browser){
+            println!("Client: {} Asked media {} from server {}",web_browser,media_path,media_server);
             sender.send(ContentCommands::GetMedia(media_server, media_path)).unwrap();
         }
     }
