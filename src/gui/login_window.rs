@@ -18,7 +18,7 @@ use egui::{Color32, RichText};
 use once_cell::sync::Lazy;
 use petgraph::Graph;
 use petgraph::prelude::UnGraphMap;
-use crate::gui::chat_windows::{ChatSystemPlugin, OpenWindows};
+use crate::gui::chat_windows::ChatSystemPlugin;
 use crate::gui::shared_info_plugin::{BackendBridgePlugin, SeenClients};
 use crate::gui::web_media_plugin::WebMediaPlugin;
 use crate::gui::advanced_logs_window::AdvancedLogsPlugin;
@@ -90,6 +90,7 @@ pub fn main() {
         .add_plugins(RouteHighlightPlugin {
             game_state: AppState::InGame,
         })
+        .init_resource::<ConfigurationState>()
         .init_resource::<OccupiedScreenSpace>()
         .init_resource::<UserConfig>()
         .init_resource::<NodesConfig>()
@@ -228,10 +229,15 @@ pub fn set_up_bundle(
         entity_vector.0.push(entity);
     }
 }
+#[derive(Resource, Default)]
+struct ConfigurationState {
+    selected: bool,
+}
 
 fn ui_settings(
     mut contexts: EguiContexts,
     mut occupied_screen_space: ResMut<OccupiedScreenSpace>,
+    mut config_state: ResMut<ConfigurationState>,
     nodes : ResMut<NodesConfig>,
     mut topology : ResMut<UserConfig>,
     sim_log: Res<DisplayableLog>,
@@ -246,26 +252,31 @@ fn ui_settings(
             .resizable(true)
             .show(ctx, |ui| {
                 menu::bar(ui, |ui| {
-                    ui.menu_button("Topologies", |ui| {
-                        if ui.button("Star").clicked() {
-                            topology.0="star".to_string();
-                            next_state.set(AppState::SetUp);
-                        }else if ui.button("Double chain").clicked(){
-                            topology.0="double_chain".to_string();
-                            next_state.set(AppState::SetUp);
-                        }else if ui.button("Butterfly").clicked(){
-                            topology.0="butterfly".to_string();
-                            next_state.set(AppState::SetUp);
-                        }
+                    ui.add_enabled_ui(!config_state.selected, |ui| {
+                        ui.menu_button("Configurations", |ui| {
+                            if ui.button("Star").clicked() {
+                                topology.0 = "star".to_string();
+                                next_state.set(AppState::SetUp);
+                                config_state.selected = true;
+                                ui.close_menu();
+                            } else if ui.button("Double chain").clicked() {
+                                topology.0 = "double_chain".to_string();
+                                next_state.set(AppState::SetUp);
+                                config_state.selected = true;
+                                ui.close_menu();
+                            } else if ui.button("Butterfly").clicked() {
+                                topology.0 = "butterfly".to_string();
+                                next_state.set(AppState::SetUp);
+                                config_state.selected = true;
+                                ui.close_menu();
+                            }
+                        });
                     });
+
                     if ui.button("Simulation Commands").clicked() {
                         sim_windows.simulation_commands = true;
                     }
                 });
-
-
-
-
             })
             .response
             .rect
