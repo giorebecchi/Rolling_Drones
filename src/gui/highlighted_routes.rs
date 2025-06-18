@@ -25,16 +25,11 @@ impl<S: States> Plugin for RouteHighlightPlugin<S> {
 }
 
 #[derive(Component)]
-struct Connection {
-    from: NodeId,
-    to: NodeId,
-}
+struct Connection {}
 
 #[derive(Component)]
 struct RouteHighlight {
-    timer: Timer,
-    original_color: Color,
-    route_key: (NodeId, u64),
+    timer: Timer
 }
 
 #[derive(Resource, Default)]
@@ -137,10 +132,7 @@ fn spawn_connection(
         },
         Transform::from_translation(Vec3::new(start.x, start.y, -1.0))
             .with_rotation(Quat::from_rotation_z(angle)),
-        Connection {
-            from: from_node.id,
-            to: to_node.id,
-        },
+        Connection{}
     )).id();
 
     connection_entities.connections.insert((from_node.id, to_node.id), entity);
@@ -295,9 +287,7 @@ fn update_route_highlights(
                                 sprite.color = color;
 
                                 commands.entity(entity).insert(RouteHighlight {
-                                    timer: Timer::from_seconds(5.0, TimerMode::Once),
-                                    original_color: Color::WHITE,
-                                    route_key: key,
+                                    timer: Timer::from_seconds(5.0, TimerMode::Once)
                                 });
                             }
                         }

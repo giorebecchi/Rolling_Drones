@@ -55,8 +55,8 @@ struct ErrorCloseButton;
 
 fn spawn_error_messages(
     mut commands: Commands,
-    mut error_queue: ResMut<ErrorQueue>,
-    mut error: Res<ErrorConfig>,
+    error_queue: Res<ErrorQueue>,
+    error: Res<ErrorConfig>,
     asset_server: Res<AssetServer>,
     time: Res<Time>,
 ) {
