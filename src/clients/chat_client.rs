@@ -109,14 +109,8 @@ impl ChatClient {
 
     pub fn handle_sim_command(&mut self, command: CommandChat) {
         match command {
-            CommandChat::ServerType(id_server) => {
-                self.ask_server_type(id_server);
-            }
             CommandChat::RegisterClient(id_server) => {
                 self.register_client(id_server);
-            }
-            CommandChat::GetListClients(id_server) => {
-                self.get_list_clients(id_server);
             }
             CommandChat::SendMessage(destination_id, id_server,  content) => {
                 let message_to_send = MessageChat::new(content, self.config.id.clone(), destination_id);

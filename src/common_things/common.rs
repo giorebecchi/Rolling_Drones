@@ -9,17 +9,13 @@ use crate::gui::login_window::NodeType as MyNodeType;
 //comandi sim_control
 #[derive(Clone)]
 pub enum CommandChat {
-    TopologyChanged,
-    ServerType(NodeId),//node id server
     SearchChatServers,
     RegisterClient(NodeId),//node id server
-    GetListClients(NodeId),//node id server
     SendMessage(NodeId, NodeId, String),//node id del client a cui mandare la string, node id server da cui passare
     EndChat(NodeId),//node id del server
     SendTopologyGraph,
     RemoveSender(NodeId),
     AddSender(NodeId, Sender<Packet>), //works the same as drones
-    Crash
 }
 ///The NodeId identifies the client that sent the ChatClientEvent
 #[derive(Debug)]
@@ -27,10 +23,8 @@ pub enum ChatClientEvent{
     ClientList((NodeId, NodeId) ,Vec<NodeId>), //NodeId Client, NodeId Server, Vec<ClientIds>
     IncomingMessage((NodeId,NodeId,NodeId),String), //NodeId Client a cui è arrivato msg, NodeId server, NodeId del client da cui il messaggio è arrivato msg
     RegisteredSuccess((NodeId,NodeId),Result<(), String>), //NodeId registered client and NodeId server { either Ok(()) or Err("something".to_string()) }
-    Error(NodeId),//Generic Error to send to SC
     ChatServers(NodeId, Vec<NodeId>),
     ClientType(ClientType,NodeId),
-    PacketInfo(NodeId, ChatEvent, u64),
     InfoRequest(NodeId, RequestEvent, u64),
     Graph(NodeId, UnGraphMap<NodeId, u32>)
 }

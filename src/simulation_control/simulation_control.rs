@@ -113,16 +113,12 @@ impl SimulationController {
             ChatClientEvent::ClientType(client_type, node_id) => {
                 self.handle_client_type(client_type, node_id);
             }
-            ChatClientEvent::PacketInfo(client, event, session) => {
-                self.handle_chat_packet_info(client, event, session);
-            }
             ChatClientEvent::Graph(id, graph) => {
                 self.handle_chat_graph(id, graph);
             }
             ChatClientEvent::InfoRequest(client, request_type, session) => {
                 self.handle_chat_info_request(client, request_type, session);
             }
-            _ => {}
         }
     }
 
@@ -294,7 +290,6 @@ impl SimulationController {
             WebBrowserEvents::InfoRequest(client, request_type, session_id) => {
                 self.handle_web_info_request(client, request_type, session_id);
             }
-            _ => {}
         }
     }
 

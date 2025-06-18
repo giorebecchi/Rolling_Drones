@@ -103,7 +103,6 @@ pub fn main() {
         .add_systems(Startup, setup_camera)
         .add_systems(OnEnter(AppState::SetUp), start_simulation)
         .add_systems(OnEnter(AppState::InGame), (setup_network,initiate_flood,set_up_bundle).chain())
-        .add_systems(OnExit(AppState::InGame), initiate_cleanup)
         .run();
 }
 
@@ -426,38 +425,5 @@ pub static SHARED_LOG: Lazy<Arc<RwLock<SimLog>>>=Lazy::new (||{
     Arc::new(RwLock::new(SimLog::default()))
 });
 
-#[derive(Resource, Default)]
-struct CleanupState {
-    cleanup_requested: bool,
-    cleanup_completed: bool,
-}
 
-fn initiate_cleanup(
-    mut cleanup_state: ResMut<CleanupState>,
-) {
-    cleanup_state.cleanup_requested = true;
-}
 
-fn perform_cleanup(
-    mut client_windows: ResMut<OpenWindows>,
-    mut sim_windows: ResMut<SimWindows>,
-    mut cleanup_state: ResMut<CleanupState>,
-) {
-    if cleanup_state.cleanup_requested && !cleanup_state.cleanup_completed {
-        sim_windows.advanced_logs = false;
-        sim_windows.simulation_commands = false;
-        client_windows.windows.clear();
-
-        cleanup_state.cleanup_completed = true;
-    }
-}
-
-fn check_exit_after_cleanup(
-    cleanup_state: Res<CleanupState>,
-    current_state: Res<State<AppState>>,
-    mut app_exit: EventWriter<AppExit>,
-) {
-    if cleanup_state.cleanup_completed && *current_state != AppState::InGame {
-        app_exit.send(AppExit::Success);
-    }
-}

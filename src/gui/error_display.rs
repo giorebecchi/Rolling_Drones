@@ -279,7 +279,7 @@ fn handle_close_button_interaction(
 }
 
 pub fn error_system(
-    mut error: Res<ErrorConfig>,
+    error: Res<ErrorConfig>,
     mut error_to_display: ResMut<ErrorQueue>,
 ) {
     error_to_display.message = format!("{}{}{}", error.error_connection, error.error_isolated, error.error_pdr);
