@@ -13,6 +13,11 @@ Welcome to a cutting-edge simulation environment with **clients**, **servers**, 
 cargo run --release
 ```
 
+Deploy a chat ecosystem:
+- 💬 **3 ChatClients** (individual threads)
+- 🗨️ **1 ChatServer** facilitating real-time communication
+- Perfect for testing concurrent message handling
+
 ## 🎯 Features & Topologies
 
 ### `--features max`
@@ -23,16 +28,6 @@ cargo run --release --features max
 High-performance servers:
 - 🔧 Default servers by **@X-baia**
 - 🚀 Optional servers by **@malchioman** to have TextServers combined with MediaServers!
-
-### `--features chat max`
-```bash
-# Run with max feature and chat topology
-cargo run --release --features "chat,max"
-```
-Deploy a chat ecosystem:
-- 💬 **3 ChatClients** (individual threads)
-- 🗨️ **1 ChatServer** facilitating real-time communication
-- Perfect for testing concurrent message handling
 
 ### `--features web`
 ```bash
