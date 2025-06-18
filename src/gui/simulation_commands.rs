@@ -291,23 +291,48 @@ fn simulation_commands_window(
                                     }
                                 });
 
-                            ui.label("PDR (0.0 - 0.99):");
+                            ui.label("PDR (0.0 - 1.00):");
                             ui.text_edit_singleline(&mut sim_commands.pdr_value);
 
                             if ui.button("Set PDR").clicked() {
                                 if let Some(id) = sim_commands.selected_pdr_drone {
                                     match sim_commands.pdr_value.parse::<f32>() {
                                         Ok(pdr) => {
-                                            if (0.0..=0.99).contains(&pdr) {
-                                                sim.pdr(id, pdr);
-                                                for drone in nodes.0.iter_mut().filter(|node| node.id == id) {
-                                                    drone.pdr = pdr;
+                                            if (0.0..=1.00).contains(&pdr) {
+                                                if pdr==1.00 {
+                                                    let simulated = simulate_network_change(&nodes.0, |nodes| {
+                                                        if let Some(index) = nodes.iter().position(|node| node.id == id) {
+                                                            nodes.remove(index);
+                                                        }
+                                                        for node in nodes.iter_mut() {
+                                                            node.connected_node_ids.retain(|&conn_id| conn_id != id);
+                                                        }
+                                                    });
+                                                    match would_break_connectivity(&simulated) {
+                                                        Ok(_) => {
+                                                            sim.pdr(id, pdr);
+                                                            for drone in nodes.0.iter_mut().filter(|node| node.id == id) {
+                                                                drone.pdr = pdr;
+                                                            }
+                                                            sim_commands.selected_pdr_drone = None;
+                                                            sim_commands.pdr_value.clear();
+                                                            sim_commands.pdr_error = None;
+                                                        }
+                                                        Err(_) => {
+                                                            sim_commands.pdr_error=Some("Failed to set PDR to 1.00, this would break the network".to_string());
+                                                        }
+                                                    }
+                                                }else{
+                                                    sim.pdr(id, pdr);
+                                                    for drone in nodes.0.iter_mut().filter(|node| node.id == id) {
+                                                        drone.pdr = pdr;
+                                                    }
+                                                    sim_commands.selected_pdr_drone = None;
+                                                    sim_commands.pdr_value.clear();
+                                                    sim_commands.pdr_error = None;
                                                 }
-                                                sim_commands.selected_pdr_drone = None;
-                                                sim_commands.pdr_value.clear();
-                                                sim_commands.pdr_error = None;
                                             } else {
-                                                sim_commands.pdr_error = Some("PDR must be between 0.0 and 0.99".to_string());
+                                                sim_commands.pdr_error = Some("PDR must be between 0.0 and 1.00".to_string());
                                             }
                                         }
                                         Err(_) => {
