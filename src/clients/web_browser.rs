@@ -9,13 +9,12 @@ use wg_2024::config::Client;
 use wg_2024::network::{NodeId, SourceRoutingHeader};
 use wg_2024::packet::{FloodRequest, FloodResponse, Fragment, NackType, NodeType, Packet, PacketType};
 use crate::clients::assembler::{Fragmentation, NodeData};
-use crate::common_things::common::{ChatRequest, ClientType, ContentCommands, FileMetaData, MediaId, MediaServer, ServerType, TextServer, WebBrowserCommands, WebBrowserEvents};
+use crate::common_things::common::{ChatRequest, ContentCommands, FileMetaData, MediaId, MediaServer, ServerType, TextServer, WebBrowserCommands, WebBrowserEvents};
 use base64::engine::general_purpose::STANDARD as BASE64;
 use petgraph::prelude::UnGraphMap;
 
 pub struct WebBrowser {
     pub config: Client,
-    pub client_type: ClientType,
     pub receiver_msg: Receiver<Packet>,
     pub receiver_commands: Receiver<ContentCommands>, //command received by the simulation control
     pub send_packets: HashMap<NodeId, Sender<Packet>>,
@@ -48,7 +47,6 @@ impl WebBrowser {
     ) -> Self {
         Self{
             config: Client{id, connected_drone_ids:Vec::new()},
-            client_type: ClientType::WebBrowser,
             receiver_msg,
             receiver_commands,
             send_packets,
@@ -71,7 +69,6 @@ impl WebBrowser {
         }
     }
     pub fn run(& mut self) {
-
         loop{
             select_biased! {
                  recv(self.receiver_msg) -> message =>{
@@ -120,15 +117,13 @@ impl WebBrowser {
             ContentCommands::RemoveSender(node_id) => {
                 self.remove_sender(node_id);
             }
-            
-            _ => {}
         }
     }
     fn send_topology_graph(&self){
         self.send_event.send(WebBrowserEvents::Graph(self.config.id, self.topology_graph.clone())).unwrap();
     }
     
-    pub fn add_sender(&mut self, node_id: NodeId, sender: Sender<Packet>) {
+    fn add_sender(&mut self, node_id: NodeId, sender: Sender<Packet>) {
         if !self.send_packets.contains_key(&node_id) {
             self.send_packets.insert(node_id, sender);
         }else { 
@@ -136,17 +131,12 @@ impl WebBrowser {
         }
     }
     
-    pub fn remove_sender(&mut self, node_id: NodeId) {
+    fn remove_sender(&mut self, node_id: NodeId) {
         if self.send_packets.contains_key(&node_id) {
             self.send_packets.remove(&node_id);
         }else { 
             return;
         }
-    }
-    
-    pub fn handle_topology(& mut self){
-        self.flood.clear();
-        self.flooding(); 
     }
 
     fn handle_messages(& mut self, message: Packet){
@@ -161,13 +151,13 @@ impl WebBrowser {
 
 
 
-    pub fn search_type_servers(& mut self) {
+    fn search_type_servers(& mut self) {
         for server in self.servers.clone() {
             self.ask_type(server);
         }
     }
 
-    pub fn ask_type(& mut self, id_server: NodeId) {
+    fn ask_type(& mut self, id_server: NodeId) {
         if !self.servers.contains(&id_server) {
             return;
         }
@@ -202,7 +192,7 @@ impl WebBrowser {
         }
     }
 
-    pub fn get_list(& mut self, id_server: NodeId) {
+    fn get_list(& mut self, id_server: NodeId) {
         if !self.servers.contains(&id_server) {
             return;
         }
@@ -237,7 +227,7 @@ impl WebBrowser {
         }
     }
 
-    pub fn get_position (& mut self, id_server: NodeId, media_id: MediaId){
+    fn get_position (& mut self, id_server: NodeId, media_id: MediaId){
         if !self.servers.contains(&id_server) {
             return;
         }
@@ -271,7 +261,7 @@ impl WebBrowser {
         }
     }
 
-    pub fn get_media(& mut self, id_media_server: NodeId, media_id: MediaId) {
+    fn get_media(& mut self, id_media_server: NodeId, media_id: MediaId) {
         if !self.servers.contains(&id_media_server) {
             return;
         }
@@ -305,7 +295,7 @@ impl WebBrowser {
         }
     }
 
-    pub fn get_text (& mut self, id_server: NodeId, text_id: String) {
+    fn get_text (& mut self, id_server: NodeId, text_id: String) {
         if !self.servers.contains(&id_server) {
             return;
         }
@@ -340,7 +330,7 @@ impl WebBrowser {
     }
 
     // incoming messages
-    pub fn handle_fragments(& mut self, packet: Packet){
+    fn handle_fragments(& mut self, packet: Packet){
         let src_id = packet.routing_header.hops.first().unwrap();
         let check = (packet.session_id, *src_id);
 
@@ -434,7 +424,7 @@ impl WebBrowser {
         }
     }
 
-    pub fn handle_nacks(& mut self, packet: Packet){
+    fn handle_nacks(& mut self, packet: Packet){
         if let PacketType::Nack(nack) = packet.pack_type.clone(){
             match nack.nack_type{
                 NackType::Dropped => {
@@ -462,7 +452,7 @@ impl WebBrowser {
         }
     }
 
-    pub fn resend_fragment(& mut self, packet: Packet){
+    fn resend_fragment(& mut self, packet: Packet){
         if let PacketType::Nack(nack) = packet.clone().pack_type{
             
             let session_fragments = if let Some(session_fragments) = self.fragments_sent.get(&packet.session_id){
@@ -505,7 +495,7 @@ impl WebBrowser {
         }
     }
 
-    pub fn handle_acks(& mut self, packet: Packet){
+    fn handle_acks(& mut self, packet: Packet){
         if let PacketType::Ack(ack) = packet.pack_type{
             self.problematic_nodes.clear(); //if successful clear the problematic nodes
 
@@ -516,7 +506,7 @@ impl WebBrowser {
     }
 
 
-    pub fn flooding(& mut self){
+    fn flooding(& mut self){
         let flood_id = self.unique_flood_id;
         self.unique_flood_id += 1;
 
@@ -537,7 +527,7 @@ impl WebBrowser {
         }
     }
 
-    pub fn handle_flood_response(& mut self, packet: Packet){
+    fn handle_flood_response(& mut self, packet: Packet){
         if let PacketType::FloodResponse(flood_response) = packet.clone().pack_type {
             if !flood_response.path_trace.is_empty(){
 
@@ -549,7 +539,7 @@ impl WebBrowser {
                     self.node_data.insert(src, NodeData::new());
                     self.node_data.insert(dst, NodeData::new());
 
-                    self.topology_graph.add_edge(src.clone(), dst.clone(), 1); // use 1 as weight (hop), could me modified for the nack
+                    self.topology_graph.add_edge(src.clone(), dst.clone(), 1); // use 1 as weight (hop), could be modified for the nack
                 }
                 
                 let dest = if let Some(dest) = flood_response.path_trace.get(0){
@@ -577,7 +567,7 @@ impl WebBrowser {
         }
     }
 
-    pub fn handle_flood_request(& mut self, packet: Packet){
+    fn handle_flood_request(& mut self, packet: Packet){
         if let PacketType::FloodRequest(mut flood_request) = packet.clone().pack_type {
             //check if the pair (flood_id, initiator id) has already been received -> self.visited_nodes
             if self.visited_nodes.contains(&(flood_request.flood_id, flood_request.initiator_id)){
@@ -603,7 +593,7 @@ impl WebBrowser {
             }
         }
     }
-    pub fn send_flooding_packet(& mut self, mut packet: Packet){
+    fn send_flooding_packet(& mut self, mut packet: Packet){
         if packet.routing_header.hop_index < packet.routing_header.hops.len() -1 {
             packet.routing_header.hop_index += 1;
             let next_hop = packet.routing_header.hops[packet.routing_header.hop_index];
@@ -615,7 +605,7 @@ impl WebBrowser {
         }
     }
 
-    pub fn find_route(& mut self, destination_id: &NodeId)-> Result<Vec<NodeId>, String>{
+    fn find_route(& mut self, destination_id: &NodeId)-> Result<Vec<NodeId>, String>{
         let source = self.config.id.clone();
 
         let result = dijkstra(&self.topology_graph, source.clone(), Some(destination_id.clone()), |edge|{
@@ -678,7 +668,7 @@ impl WebBrowser {
         }
     }
 
-    pub fn send_messages(& mut self, destination_id: &NodeId, mut packet: Packet)-> Result<(), ()>{
+    fn send_messages(& mut self, destination_id: &NodeId, mut packet: Packet)-> Result<(), ()>{
         packet.routing_header.hop_index+=1;
         if let Some(sender) = self.send_packets.get(&destination_id){
             if let Err(err) = sender.send(packet.clone()){
@@ -691,7 +681,7 @@ impl WebBrowser {
         } 
     }
 
-    pub fn create_ack(& mut self, packet: &Packet)-> Packet{
+    fn create_ack(& mut self, packet: &Packet)-> Packet{
         let mut fragment_index = 0;
         if let PacketType::MsgFragment(fragment) = packet.clone().pack_type {
             fragment_index = fragment.fragment_index;
