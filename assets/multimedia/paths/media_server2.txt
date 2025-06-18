@@ -1,1 +1,2 @@
-assets/multimedia/media/donut.png
+assets/multimedia/media/pluto.png
+assets/multimedia/media/moon.png

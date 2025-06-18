@@ -1,1 +1,2 @@
-assets/multimedia/media/dumbimage.png
+assets/multimedia/media/mars.png
+assets/multimedia/media/earth.png

@@ -1,2 +1,2 @@
-assets/multimedia/media/dumbimage.png
+assets/multimedia/media/mars.png
 assets/multimedia/text_files/divina_commedia.txt
