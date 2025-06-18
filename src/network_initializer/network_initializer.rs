@@ -1,4 +1,4 @@
-use std::collections::{HashMap, HashSet};
+use std::collections::HashMap;
 use std::{fs, thread};
 use bagel_bomber::BagelBomber;
 use bevy::prelude::{ResMut, Vec2};
@@ -284,7 +284,7 @@ fn create_drone(
     }
 }
 
-
+#[allow(dead_code)]
 fn spawn_servers_baia(
     config: &Config,
     packet_channels: &HashMap<NodeId, (Sender<Packet>, Receiver<Packet>)>,
@@ -374,6 +374,7 @@ fn spawn_servers_baia(
         }
     }
 }
+#[allow(dead_code)]
 fn spawn_chat_server(
     id: NodeId,
     rcv: Receiver<Packet>,
@@ -392,7 +393,7 @@ fn spawn_chat_server(
     chat_servers.insert(id, server_commands[&id].0.clone());
     set_node_types(NodeType::ChatServer, n_servers, id);
 }
-
+#[allow(dead_code)]
 fn spawn_text_server(
     id: NodeId,
     rcv: Receiver<Packet>,
@@ -412,7 +413,7 @@ fn spawn_text_server(
     text_servers.insert(id, server_commands[&id].0.clone());
     set_node_types(NodeType::TextServer, n_servers, id);
 }
-
+#[allow(dead_code)]
 fn spawn_media_server(
     id: NodeId,
     rcv: Receiver<Packet>,
@@ -490,6 +491,7 @@ fn spawn_clients(
         }
     }
 }
+#[allow(dead_code)]
 fn spawn_chat_client(
     id: NodeId,
     rcv_packet: Receiver<Packet>,
@@ -517,7 +519,7 @@ fn spawn_chat_client(
     });
     set_node_types(NodeType::ChatClient, n_clients, id);
 }
-
+#[allow(dead_code)]
 fn spawn_web_browser(
     id: NodeId,
     rcv_packet: Receiver<Packet>,
@@ -642,7 +644,7 @@ fn create_simulation_controller(
         rustafarian_ids
     }
 }
-
+#[allow(dead_code)]
 fn spawn_servers_max(
     config: &Config,
     packet_channels: &HashMap<NodeId, (Sender<Packet>, Receiver<Packet>)>,
@@ -727,6 +729,7 @@ fn spawn_servers_max(
         }
     }
 }
+#[allow(dead_code)]
 fn spawn_chat_server_max(
     id: NodeId,
     rcv: Receiver<Packet>,
@@ -745,6 +748,7 @@ fn spawn_chat_server_max(
     chat_servers.insert(id, server_commands[&id].0.clone());
     set_node_types(NodeType::ChatServer, n_servers, id);
 }
+#[allow(dead_code)]
 fn spawn_text_server_max(
     id: NodeId,
     rcv: Receiver<Packet>,

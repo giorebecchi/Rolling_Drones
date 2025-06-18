@@ -11,7 +11,7 @@ use petgraph::graphmap::UnGraphMap;
 use wg_2024::packet::PacketType::{FloodRequest, MsgFragment};
 use crate::gui::login_window::{NodeType, SHARED_LOG};
 use crate::gui::shared_info_plugin::SHARED_STATE;
-use crate::common_things::common::{BackGroundFlood, ChatClientEvent, ChatEvent, ChatServerEvent, ClientType, CommandChat, ContentCommands, ContentRequest, MediaServerEvent, RequestEvent, ServerCommands, TextServerEvent, WebBrowserEvents};
+use crate::common_things::common::{BackGroundFlood, ChatClientEvent, ChatServerEvent, ClientType, CommandChat, ContentCommands, ContentRequest, MediaServerEvent, RequestEvent, ServerCommands, TextServerEvent, WebBrowserEvents};
 
 
 #[derive(Clone,Resource)]
@@ -186,45 +186,7 @@ impl SimulationController {
         }
     }
 
-    fn handle_chat_packet_info(&self, client: NodeId, event: ChatEvent, session: u64) {
-        let message = match event {
-            ChatEvent::ChatServers(size) => {
-                format!(
-                    "Chat Client {}: received list of Chat Servers\nThe message was made of {} fragments\n",
-                    client, size
-                )
-            }
-            ChatEvent::ClientList(size) => {
-                format!(
-                    "Chat Client {}: received list of Chat Clients\nThe message was made of {} fragments\n",
-                    client, size
-                )
-            }
-            ChatEvent::IncomingMessage(size) => {
-                format!(
-                    "Chat Client {}: received a message\nThe message was made of {} fragments\n",
-                    client, size
-                )
-            }
-            ChatEvent::RegisteredSuccess(size) => {
-                format!(
-                    "Chat Client {}: registered successfully\nThe message was made of {} fragments\n",
-                    client, size
-                )
-            }
-            ChatEvent::ClientType(size) => {
-                format!(
-                    "Chat Client {}: revealed its type\nThe message was made of {} fragments\n",
-                    client, size
-                )
-            }
-        };
 
-        if let Ok(mut state) = SHARED_LOG.write() {
-            state.msg_log.insert((client, session), message);
-            state.is_updated = true;
-        }
-    }
 
     fn handle_chat_graph(&self, id: NodeId, graph: UnGraphMap<NodeId, u32>) {
         if let Ok(mut state) = SHARED_LOG.write() {
