@@ -298,7 +298,7 @@ fn log_window(
                                             ui.collapsing("Show node details", |ui| {
                                                 for &node_id in route.iter() {
                                                     if let Some(node_config) = nodes.0.iter().find(|n| n.id == node_id) {
-                                                        let pdr = get_node_pdr(node_config);
+                                                        let pdr = node_config.pdr;
                                                         let success_rate = 1.0 - pdr;
                                                         ui.horizontal(|ui| {
                                                             ui.label(format!("  Node {} ({:?}): ",
@@ -554,16 +554,12 @@ fn render_graph_visualization_with_errors(
 }
 
 
-fn get_node_pdr(node: &NodeConfig) -> f32 {
-    node.pdr
-}
-
 fn calculate_route_reliability(route: &[NodeId], nodes: &NodesConfig) -> f32 {
     let mut reliability = 1.0;
 
     for &node_id in route.iter().skip(1).take(route.len().saturating_sub(2)) {
         if let Some(node_config) = nodes.0.iter().find(|n| n.id == node_id) {
-            let pdr = get_node_pdr(node_config);
+            let pdr = node_config.pdr;
             let node_success_rate = 1.0 - pdr;
             reliability *= node_success_rate;
         }
