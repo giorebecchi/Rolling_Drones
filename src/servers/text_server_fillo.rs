@@ -1,3 +1,4 @@
+#![allow(dead_code)]
 use std::cmp::Ordering;
 use base64::engine::general_purpose::STANDARD as BASE64;
 use std::collections::{BinaryHeap, HashMap, HashSet};
@@ -19,7 +20,7 @@ use crate::servers::assembler::*;
 use crate::gui::login_window::NodeType as MyNodeType;
 
 #[derive(Serialize, Clone, Debug)]
-pub struct Drops{
+struct Drops{
     dropped : u64,
     forwarded : u64,
 }
@@ -60,7 +61,7 @@ impl Server{
             if let Ok(line) = line {
                 let parts: Vec<&str> = line.split('/').collect();
                 if let Some(last) = parts.last() {
-                    texts_ids.push(last.clone().to_string());
+                    texts_ids.push(last.to_string());
                     all_paths.insert(last.to_string(), line.clone().to_string());
                 }
 
@@ -153,7 +154,7 @@ impl Server{
             }
         }
     }
-    pub fn handle_packet(&mut self, p:Packet){
+    fn handle_packet(&mut self, p:Packet){
         match p.clone().pack_type {
             PacketType::MsgFragment(_) => {/*println!("received packet {p}");*/self.handle_msg_fragment(p)}
             PacketType::Ack(_) => {self.handle_ack(p)}
@@ -559,6 +560,11 @@ impl Server{
                             _ => {}
                         }
                     }
+                    for i in self.neigh_map.clone().node_weights(){
+                        if i.1 == NodeType::Server && i.0!=self.server_id{
+                            self.send_packet(TextServer::ServerTypeReq,i.0,NodeType::Server);
+                        }
+                    }
                 }else {
                     // println!("you received an outdated version of the flooding");
                 }
@@ -570,7 +576,7 @@ impl Server{
     }
 
 
-    pub(crate) fn flooding(&mut self){
+    fn flooding(&mut self){
         // println!("server {} is starting a flooding",self.server_id);
         let flood = Packet{
             routing_header: SourceRoutingHeader::empty_route(),
