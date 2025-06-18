@@ -163,6 +163,7 @@ fn window_format(
                 web_state.current_display_type.insert(window_id, MediaDisplayType::None);
             }
 
+
             if let Some(path) = web_state.actual_media_path.get(&window_id).cloned() {
                 let current_path = web_state.last_loaded_path.get(&window_id).cloned().unwrap_or_default();
 
@@ -245,6 +246,7 @@ fn window_format(
                         ui.push_id(button_id, |ui| {
                             if ui.button("Ask for Medias").clicked() {
                                 if let Some(selected_text_server) = web_state.selected_text_server.get(&window_id).cloned().flatten() {
+                                    web_state.server_for_current_media.insert(window_id, Some(selected_text_server));
                                     sim.get_media_list(window_id, selected_text_server);
                                 }
                             }
@@ -256,48 +258,65 @@ fn window_format(
 
                     let scroll_area_id = ui.make_persistent_id(format!("media_scroll_area_{}", window_id));
 
-                    if let Some(paths) = web_state.media_paths.get(&window_id).cloned() {
-                        let height = (paths.len() as f32 * 24.0).min(200.0);
-                        ui.push_id(scroll_area_id, |ui| {
-                            egui::ScrollArea::vertical().max_height(height).show(ui, |ui| {
-                                for (idx, media_path) in paths.iter().enumerate() {
-                                    let media_button_id = ui.make_persistent_id(format!("media_button_{}_{}", window_id, idx));
-                                    ui.push_id(media_button_id, |ui| {
-                                        if ui.button(format!("{}", media_path)).clicked() {
-                                            if let Some(selected_text_server) = web_state.selected_text_server.get(&window_id).cloned().flatten() {
-                                                if let Some(_) = state.handles.get(&window_id) {
-                                                    should_clear_image = true
-                                                }
+                    let current_selected_server = web_state.selected_text_server.get(&window_id).cloned();
+                    let server_used_for_media = web_state.server_for_current_media.get(&window_id).cloned();
 
-                                                web_state.actual_media_path.remove(&window_id);
-                                                web_state.actual_file_path.remove(&window_id);
-                                                web_state.received_medias.remove(&window_id);
-                                                web_state.media_servers.remove(&window_id);
-                                                web_state.target_media_server.remove(&window_id);
-                                                state.handles.insert(window_id, None);
-                                                state.egui_textures.insert(window_id, None);
-                                                web_state.current_display_type.insert(window_id, MediaDisplayType::None);
-                                                web_state.last_loaded_path.remove(&window_id);
-                                                text_cache.clear(window_id);
+                    let should_show_media = match (current_selected_server, server_used_for_media) {
+                        (Some(current), Some(used)) => current == used,
+                        _ => false,
+                    };
 
-                                                if media_path.ends_with(".txt") {
-                                                    web_state.current_display_type.insert(window_id, MediaDisplayType::TextFile);
-                                                    sim.get_text_file(window_id, selected_text_server, media_path.clone());
+                    if should_show_media {
+                        if let Some(paths) = web_state.media_paths.get(&window_id).cloned() {
+                            let height = (paths.len() as f32 * 24.0).min(200.0);
+                            ui.push_id(scroll_area_id, |ui| {
+                                egui::ScrollArea::vertical().max_height(height).show(ui, |ui| {
+                                    for (idx, media_path) in paths.iter().enumerate() {
+                                        let media_button_id = ui.make_persistent_id(format!("media_button_{}_{}", window_id, idx));
+                                        ui.push_id(media_button_id, |ui| {
+                                            if ui.button(format!("{}", media_path)).clicked() {
+                                                if let Some(selected_text_server) = web_state.selected_text_server.get(&window_id).cloned().flatten() {
+                                                    if let Some(_) = state.handles.get(&window_id) {
+                                                        should_clear_image = true
+                                                    }
+
+                                                    web_state.actual_media_path.remove(&window_id);
+                                                    web_state.media_paths.remove(&window_id);
+                                                    web_state.actual_file_path.remove(&window_id);
+                                                    web_state.received_medias.remove(&window_id);
+                                                    web_state.media_servers.remove(&window_id);
+                                                    web_state.target_media_server.remove(&window_id);
+                                                    state.handles.insert(window_id, None);
+                                                    state.egui_textures.insert(window_id, None);
+                                                    web_state.current_display_type.insert(window_id, MediaDisplayType::None);
+                                                    web_state.last_loaded_path.remove(&window_id);
+                                                    text_cache.clear(window_id);
+
+                                                    if media_path.ends_with(".txt") {
+                                                        web_state.current_display_type.insert(window_id, MediaDisplayType::TextFile);
+                                                        sim.get_text_file(window_id, selected_text_server, media_path.clone());
+                                                    } else {
+                                                        web_state.current_display_type.insert(window_id, MediaDisplayType::Image);
+                                                        web_state.received_medias.insert(window_id, media_path.clone());
+                                                        sim.get_media_position(window_id, selected_text_server, media_path.clone());
+                                                    }
                                                 } else {
-                                                    web_state.current_display_type.insert(window_id, MediaDisplayType::Image);
-                                                    web_state.received_medias.insert(window_id, media_path.clone());
-                                                    sim.get_media_position(window_id, selected_text_server, media_path.clone());
+                                                    ui.label("Search failed, text server unreachable");
                                                 }
-                                            } else {
-                                                ui.label("Search failed, text server unreachable");
-                                            }
-                                        }
-                                    });
-                                }
+                                            };
+                                        });
+                                    }
+                                });
                             });
-                        });
+                        } else {
+                            ui.label("No media files available. Click 'Ask for Medias' to refresh.");
+                        }
                     } else {
                         ui.label("No media files available. Click 'Ask for Medias' to refresh.");
+                        if current_selected_server != server_used_for_media {
+                            web_state.media_paths.remove(&window_id);
+                            web_state.server_for_current_media.remove(&window_id);
+                        }
                     }
 
                     ui.separator();
@@ -499,17 +518,17 @@ fn window_format(
                     contexts.remove_image(texture);
                 }
 
-
-
                 state.handles.insert(window_id, None);
                 state.egui_textures.insert(window_id, None);
                 web_state.actual_media_path.remove(&window_id);
+                web_state.media_paths.remove(&window_id);
                 web_state.actual_file_path.remove(&window_id);
                 web_state.selected_text_server.remove(&window_id);
                 web_state.selected_media_server.remove(&window_id);
                 web_state.received_medias.remove(&window_id);
                 web_state.current_display_type.remove(&window_id);
                 web_state.last_loaded_path.remove(&window_id);
+                web_state.server_for_current_media.remove(&window_id);
                 text_cache.clear(window_id);
             }
         }
@@ -536,4 +555,5 @@ pub struct WebState {
     received_medias: HashMap<NodeId, String>,
     current_display_type: HashMap<NodeId, MediaDisplayType>,
     last_loaded_path: HashMap<NodeId, String>,
+    server_for_current_media: HashMap<NodeId, Option<NodeId>>
 }
