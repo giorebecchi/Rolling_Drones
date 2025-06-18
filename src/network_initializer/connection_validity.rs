@@ -143,7 +143,6 @@ pub fn validate_drone_pdr(nodes: &[NodeConfig]) -> Result<(), String>{
     for node in nodes{
         if node.node_type==NodeType::Drone{
             if node.pdr > 1.00 || node.pdr < 0.00{
-                println!("yo");
                 return Err(format!("Drone {} was set with a pdr of {}", node.id, node.pdr));
             }
         }

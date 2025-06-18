@@ -100,14 +100,8 @@ impl ChatClient {
 
     pub fn handle_sim_command(&mut self, command: CommandChat) {
         match command {
-            CommandChat::ServerType(id_server) => {
-                self.ask_server_type(id_server);
-            }
             CommandChat::RegisterClient(id_server) => {
                 self.register_client(id_server);
-            }
-            CommandChat::GetListClients(id_server) => {
-                self.get_list_clients(id_server);
             }
             CommandChat::SendMessage(destination_id, id_server,  content) => {
                 let message_to_send = MessageChat::new(content, self.config.id.clone(), destination_id);
@@ -124,9 +118,6 @@ impl ChatClient {
             }
             CommandChat::RemoveSender(node_id) => {
                 self.remove_sender(node_id);
-            }
-            CommandChat::TopologyChanged => {
-                self.handle_topology();
             }
             
             _ => {}
@@ -162,11 +153,6 @@ impl ChatClient {
         }else {
             return;
         }
-    }
-    
-    pub fn handle_topology(& mut self){
-        self.flood.clear();
-        self.initiate_flooding();
     }
 
     pub fn search_chat_servers(&mut self) {

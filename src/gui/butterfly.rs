@@ -13,14 +13,11 @@ pub fn spawn_butterfly(
 
     let mut all_nodes = Vec::new();
 
-    // Add all drones from config
     for drone in config.drone {
         all_nodes.push((NodeType::Drone, drone.id, drone.connected_node_ids, drone.pdr));
     }
 
-    // Add all clients from SeenClients with their correct types
     for (client_type, client_id) in &clients.clients {
-        // Find the matching client in config to get its connected_drone_ids
         for client in &config.client {
             if client.id == *client_id {
                 all_nodes.push((client_type.clone(), client.id, client.connected_drone_ids.clone(), -1.00));
@@ -29,9 +26,7 @@ pub fn spawn_butterfly(
         }
     }
 
-    // Add all servers from SeenClients with their correct types
     for (server_type, server_id) in &clients.servers {
-        // Find the matching server in config to get its connected_drone_ids
         for server in &config.server {
             if server.id == *server_id {
                 all_nodes.push((server_type.clone(), server.id, server.connected_drone_ids.clone(), -1.00));

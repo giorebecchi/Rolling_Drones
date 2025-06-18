@@ -11,7 +11,7 @@ use petgraph::graphmap::UnGraphMap;
 use wg_2024::packet::PacketType::{FloodRequest, MsgFragment};
 use crate::gui::login_window::{NodeType, SHARED_LOG};
 use crate::gui::shared_info_plugin::SHARED_STATE;
-use crate::common_things::common::{BackGroundFlood, ChatClientEvent, ChatEvent, ChatServerEvent, ClientType, CommandChat, ContentCommands, ContentRequest, ContentType, MediaServerEvent, RequestEvent, ServerCommands, TextServerEvent, WebBrowserEvents};
+use crate::common_things::common::{BackGroundFlood, ChatClientEvent, ChatEvent, ChatServerEvent, ClientType, CommandChat, ContentCommands, ContentRequest, MediaServerEvent, RequestEvent, ServerCommands, TextServerEvent, WebBrowserEvents};
 
 
 #[derive(Clone,Resource)]
@@ -113,16 +113,12 @@ impl SimulationController {
             ChatClientEvent::ClientType(client_type, node_id) => {
                 self.handle_client_type(client_type, node_id);
             }
-            ChatClientEvent::PacketInfo(client, event, session) => {
-                self.handle_chat_packet_info(client, event, session);
-            }
             ChatClientEvent::Graph(id, graph) => {
                 self.handle_chat_graph(id, graph);
             }
             ChatClientEvent::InfoRequest(client, request_type, session) => {
                 self.handle_chat_info_request(client, request_type, session);
             }
-            _ => {}
         }
     }
 
@@ -288,16 +284,12 @@ impl SimulationController {
             WebBrowserEvents::SavedTextFile(client, actual_file) => {
                 self.handle_saved_text_file(client, actual_file);
             }
-            WebBrowserEvents::PacketInfo(client, packet_info, session_id) => {
-                self.handle_web_packet_info(client, packet_info, session_id);
-            }
             WebBrowserEvents::Graph(id, graph) => {
                 self.handle_web_graph(id, graph);
             }
             WebBrowserEvents::InfoRequest(client, request_type, session_id) => {
                 self.handle_web_info_request(client, request_type, session_id);
             }
-            _ => {}
         }
     }
 
@@ -367,51 +359,6 @@ impl SimulationController {
         }
     }
 
-    fn handle_web_packet_info(&self, client: NodeId, packet_info: ContentType, session_id: u64) {
-        let message = match packet_info {
-            ContentType::TextServerList(size) => {
-                format!(
-                    "Web browser: {} received list of Text Servers\n the message was made of {} fragments\n",
-                    client, size
-                )
-            }
-            ContentType::MediaServerList(size) => {
-                format!(
-                    "Web browser: {} received list of Media Servers\n the message was made of {} fragments\n",
-                    client, size
-                )
-            }
-            ContentType::FileList(size) => {
-                format!(
-                    "Web browser: {} received File List\n the message was made of {} fragments\n",
-                    client, size
-                )
-            }
-            ContentType::MediaPosition(size) => {
-                format!(
-                    "Web browser: {} received Media Position\n the message was made of {} fragments\n",
-                    client, size
-                )
-            }
-            ContentType::SavedText(size) => {
-                format!(
-                    "Web browser: {} received a  Text File\n the message was made of {} fragments\n",
-                    client, size
-                )
-            }
-            ContentType::SavedMedia(size) => {
-                format!(
-                    "Web browser: {} received a Media\n the message was made of {} fragments\n",
-                    client, size
-                )
-            }
-        };
-
-        if let Ok(mut state) = SHARED_LOG.write() {
-            state.msg_log.insert((client, session_id), message);
-            state.is_updated = true;
-        }
-    }
 
     fn handle_web_graph(&self, id: NodeId, graph: UnGraphMap<NodeId, u32>) {
         if let Ok(mut state) = SHARED_LOG.write() {
@@ -627,11 +574,9 @@ impl SimulationController {
     fn handle_drone_event(&mut self, drone_event: DroneEvent, flood_req_hash: &mut HashSet<(NodeId, u64)>) {
         match drone_event {
             DroneEvent::PacketSent(ref packet) => {
-                //println!("packet forwarded: {:?}, route: {}",packet.pack_type, packet.routing_header);
                 self.handle_packet_sent(packet, flood_req_hash);
             }
             DroneEvent::PacketDropped(ref packet) => {
-                //println!("nack packet: {:?}, route: {}",packet.pack_type, packet.routing_header);
                 self.handle_packet_dropped(packet);
             }
             DroneEvent::ControllerShortcut(ref controller_shortcut) => {
@@ -703,7 +648,6 @@ impl SimulationController {
 
         match packet.pack_type.clone() {
             MsgFragment(fragment) => {
-                println!("dropped packet:{:?} has route {}",packet.pack_type,packet.routing_header);
                 self.handle_dropped_msg_fragment(drone, packet.session_id, fragment);
             }
             PacketType::Ack(ack) => {

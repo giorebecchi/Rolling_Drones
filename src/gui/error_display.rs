@@ -19,13 +19,11 @@ impl Plugin for ErrorMessagePlugin {
     }
 }
 
-// Resource to queue error messages
 #[derive(Resource, Default)]
 pub struct ErrorQueue {
     message: String,
 }
 
-// Resource for animation timing
 #[derive(Resource)]
 struct ErrorAnimationTimer {
     entrance_timer: Timer,
@@ -43,22 +41,18 @@ impl Default for ErrorAnimationTimer {
     }
 }
 
-// Component to mark error messages
 #[derive(Component)]
 struct ErrorMessage {
     spawn_time: f32,
     animation_progress: f32,
 }
 
-// Component for the error icon
 #[derive(Component)]
 struct ErrorIcon;
 
-// Component for the close button
 #[derive(Component)]
 struct ErrorCloseButton;
 
-// Spawn error messages from queue
 fn spawn_error_messages(
     mut commands: Commands,
     mut error_queue: ResMut<ErrorQueue>,
@@ -67,7 +61,6 @@ fn spawn_error_messages(
     time: Res<Time>,
 ) {
     if error.detected {
-        // Main error container with rounded corners and shadow effect
         commands.spawn((
             Node {
                 width: Val::Px(450.0),
@@ -86,13 +79,12 @@ fn spawn_error_messages(
             BackgroundColor(Color::srgba(0.15, 0.12, 0.12, 0.95)),
             BorderColor(Color::srgba(0.8, 0.2, 0.2, 0.8)),
             BorderRadius::all(Val::Px(12.0)),
-            Transform::from_translation(Vec3::new(-225.0, 0.0, 100.0)), // Higher z-index
+            Transform::from_translation(Vec3::new(-225.0, 0.0, 100.0)),
             ErrorMessage {
                 spawn_time: time.elapsed_secs(),
                 animation_progress: 0.0,
             },
         )).with_children(|parent| {
-            // Header row with icon and close button
             parent.spawn((
                 Node {
                     width: Val::Percent(100.0),
@@ -105,7 +97,6 @@ fn spawn_error_messages(
                 },
                 BackgroundColor(Color::NONE),
             )).with_children(|header| {
-                // Error icon and title
                 header.spawn((
                     Node {
                         flex_direction: FlexDirection::Row,
@@ -114,7 +105,6 @@ fn spawn_error_messages(
                     },
                     BackgroundColor(Color::NONE),
                 )).with_children(|title_row| {
-                    // Animated error icon
                     title_row.spawn((
                         Node {
                             width: Val::Px(24.0),
@@ -139,7 +129,6 @@ fn spawn_error_messages(
                         ));
                     });
 
-                    // Error title
                     title_row.spawn((
                         Text::new("ERROR"),
                         TextFont {
@@ -151,7 +140,6 @@ fn spawn_error_messages(
                     ));
                 });
 
-                // Close button
                 header.spawn((
                     Button,
                     Node {
@@ -176,8 +164,6 @@ fn spawn_error_messages(
                     ));
                 });
             });
-
-            // Separator line
             parent.spawn((
                 Node {
                     width: Val::Percent(100.0),
@@ -188,7 +174,6 @@ fn spawn_error_messages(
                 BackgroundColor(Color::srgba(0.5, 0.2, 0.2, 0.3)),
             ));
 
-            // Error message text
             parent.spawn((
                 Text::new(error_queue.message.clone()),
                 TextFont {
@@ -206,7 +191,6 @@ fn spawn_error_messages(
     }
 }
 
-// Animate error message entrance
 fn animate_error_entrance(
     mut query: Query<(&mut Transform, &mut ErrorMessage, &mut BackgroundColor), With<ErrorMessage>>,
     time: Res<Time>,
@@ -218,17 +202,14 @@ fn animate_error_entrance(
         if error.animation_progress < 1.0 {
             error.animation_progress = (error.animation_progress + time.delta_secs() * 2.0).min(1.0);
 
-            // Slide in from top with bounce effect
             let progress = ease_out_back(error.animation_progress);
             transform.translation.y = -50.0 * (1.0 - progress);
 
-            // Fade in
             bg_color.0.set_alpha(0.95 * progress);
         }
     }
 }
 
-// Animate error icon pulse
 fn animate_error_pulse(
     mut icon_query: Query<&mut BackgroundColor, With<ErrorIcon>>,
     time: Res<Time>,
@@ -244,7 +225,6 @@ fn animate_error_pulse(
     }
 }
 
-// Auto-dismiss error after timeout
 fn auto_dismiss_error(
     mut commands: Commands,
     query: Query<(Entity, &ErrorMessage)>,
@@ -260,7 +240,6 @@ fn auto_dismiss_error(
     }
 }
 
-// Easing function for smooth animation
 fn ease_out_back(t: f32) -> f32 {
     let c1 = 1.70158;
     let c3 = c1 + 1.0;
@@ -268,7 +247,6 @@ fn ease_out_back(t: f32) -> f32 {
     1.0 + c3 * (t - 1.0).powi(3) + c1 * (t - 1.0).powi(2)
 }
 
-// Handle close button clicks
 fn handle_close_button_interaction(
     mut commands: Commands,
     mut interaction_query: Query<
@@ -281,7 +259,6 @@ fn handle_close_button_interaction(
     for (button_entity, interaction, mut bg_color) in interaction_query.iter_mut() {
         match *interaction {
             Interaction::Pressed => {
-                // Navigate up the hierarchy: Button -> Header -> ErrorMessage
                 if let Ok(button_parent) = parent_query.get(button_entity) {
                     if let Ok(header_parent) = parent_query.get(button_parent.get()) {
                         let error_entity = header_parent.get();
@@ -302,7 +279,7 @@ fn handle_close_button_interaction(
 }
 
 pub fn error_system(
-    mut error: Res<ErrorConfig>,
+    error: Res<ErrorConfig>,
     mut error_to_display: ResMut<ErrorQueue>,
 ) {
     error_to_display.message = format!("{}{}{}", error.error_connection, error.error_isolated, error.error_pdr);
