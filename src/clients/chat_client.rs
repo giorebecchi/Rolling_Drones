@@ -191,8 +191,6 @@ impl ChatClient {
                     }
                 }
 
-                println!("Sent request to get the server type to server {} by client: {}", id_server, self.config.id);
-
             }
             Err(_) => {println!("No route found for the destination server")}
         }
