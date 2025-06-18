@@ -76,7 +76,6 @@ impl WebBrowser {
             select_biased! {
                  recv(self.receiver_msg) -> message =>{
                     if let Ok(message) = message {
-                        //self.build_topology();
                         self.handle_messages(message)
                     }
                 }
@@ -87,9 +86,7 @@ impl WebBrowser {
                 }
                 recv(self.receiver_commands) -> command =>{
                     if let Ok(command) = command {
-                        //self.build_topology();
                         self.handle_commands(command);
-                        //println!("topology: {:?}", self.topology_graph);
                     }
                 }
                
@@ -103,11 +100,9 @@ impl WebBrowser {
                 self.get_list(id_server)
             },
             ContentCommands::GetMediaPosition(id_server, id_media) => {
-                println!("GETMEDIAPOSITION {}\nclient: {}, server id: {}", id_media,self.config.id,id_server);
                 self.get_position(id_server, id_media)
             },
             ContentCommands::GetMedia(id_media_server, id_media) => {
-                println!("GETMEDIA\nclient: {}, server id: {}", self.config.id,id_media);
                 self.get_media(id_media_server, id_media)
             },
             ContentCommands::GetText(id_server, text_id) => {
@@ -136,26 +131,22 @@ impl WebBrowser {
     pub fn add_sender(&mut self, node_id: NodeId, sender: Sender<Packet>) {
         if !self.send_packets.contains_key(&node_id) {
             self.send_packets.insert(node_id, sender);
-            println!("added sender for web browser");
         }else { 
-            println!(" node: {} is already a neighbor of the web browser", node_id)
+            return;
         }
     }
     
     pub fn remove_sender(&mut self, node_id: NodeId) {
-        //println!("before remove: {:?}", self.send_packets.keys());
-        
         if self.send_packets.contains_key(&node_id) {
             self.send_packets.remove(&node_id);
-            //println!("after remove: {:?}", self.send_packets.keys());
         }else { 
-            println!("not a neighbor of web browser")
+            return;
         }
-        
     }
     
     pub fn handle_topology(& mut self){
-        self.flooding(); //probably it's the problem
+        self.flood.clear();
+        self.flooding(); 
     }
 
     fn handle_messages(& mut self, message: Packet){
@@ -171,17 +162,13 @@ impl WebBrowser {
 
 
     pub fn search_type_servers(& mut self) {
-        println!("servers known to web browser: {:?}",self.servers);
-        println!("Asked server type");
         for server in self.servers.clone() {
-            println!("Asked server type to server{}",server);
             self.ask_type(server);
         }
     }
 
     pub fn ask_type(& mut self, id_server: NodeId) {
         if !self.servers.contains(&id_server) {
-            println!("server was not found");
             return;
         }
 
@@ -195,7 +182,6 @@ impl WebBrowser {
 
         match self.find_route(&id_server) {
             Ok(route) => {
-                //println!("initial route to ask type: {:?}", route);
                 let packets_to_send = ChatRequest::create_packet(&fragments, route.clone(), session_id);
                 self.packet_sent.insert(session_id, (id_server, packets_to_send.clone()));
                 
@@ -209,9 +195,8 @@ impl WebBrowser {
                         if let Err(_) = self.send_messages(next_hop, packet){
                             self.ask_type(id_server);
                         }
-                    } else { println!("No next hop found") }
+                    } else { return; }
                 }
-                println!("Sent request to get the server type to server {} by web browser {}", id_server, self.config.id);
             }
             Err(_) => { println!("No route found for the destination server") }
         }
@@ -219,7 +204,6 @@ impl WebBrowser {
 
     pub fn get_list(& mut self, id_server: NodeId) {
         if !self.servers.contains(&id_server) {
-            println!("server was not found");
             return;
         }
 
@@ -233,7 +217,6 @@ impl WebBrowser {
 
         match self.find_route(&id_server) {
             Ok(route) => {
-                //println!("route with sender {:?}, for client: {}, route: {:?}", self.send_packets.keys(), self.config.id, route);
                 let packets_to_send = ChatRequest::create_packet(&fragments, route.clone(), session_id);
                 self.packet_sent.insert(session_id, (id_server, packets_to_send.clone()));
                 
@@ -247,9 +230,8 @@ impl WebBrowser {
                         if let Err(_) = self.send_messages(next_hop, packet){
                             self.get_list(id_server);
                         }
-                    } else { println!("No next hop found") }
+                    } else { return; }
                 }
-                println!("Sent request to get the client list to server: {}", id_server);
             }
             Err(_) => { println!("No route found for the destination server") }
         }
@@ -257,7 +239,6 @@ impl WebBrowser {
 
     pub fn get_position (& mut self, id_server: NodeId, media_id: MediaId){
         if !self.servers.contains(&id_server) {
-            println!("server was not found");
             return;
         }
 
@@ -283,9 +264,8 @@ impl WebBrowser {
                         if let Err(_) = self.send_messages(next_hop, packet){
                             self.get_position(id_server, media_id.clone());
                         }
-                    } else { println!("No next hop found") }
+                    } else { return; }
                 }
-                println!("Sent request to get the position of the media to server: {}", id_server);
             }
             Err(_) => { println!("No route found for the destination server") }
         }
@@ -293,7 +273,6 @@ impl WebBrowser {
 
     pub fn get_media(& mut self, id_media_server: NodeId, media_id: MediaId) {
         if !self.servers.contains(&id_media_server) {
-            println!("server was not found");
             return;
         }
         let request = WebBrowserCommands::GetMedia(media_id.clone());
@@ -306,7 +285,6 @@ impl WebBrowser {
 
         match self.find_route(&id_media_server) {
             Ok(route) => {
-                println!("initial route to send request of media {:?}", route);
                 let packets_to_send = ChatRequest::create_packet(&fragments, route.clone(), session_id);
                 self.packet_sent.insert(session_id, (id_media_server, packets_to_send.clone()));
                 
@@ -320,9 +298,8 @@ impl WebBrowser {
                         if let Err(_) = self.send_messages(next_hop, packet){
                             self.get_media(id_media_server, media_id.clone());
                         }
-                    } else { println!("No next hop found") }
+                    } else { return; }
                 }
-                println!("Sent request to get retrieve the media from server: {}", id_media_server);
             }
             Err(_) => { println!("No route found for the destination server") }
         }
@@ -330,7 +307,6 @@ impl WebBrowser {
 
     pub fn get_text (& mut self, id_server: NodeId, text_id: String) {
         if !self.servers.contains(&id_server) {
-            println!("server was not found");
             return;
         }
         let request = WebBrowserCommands::GetText(text_id.clone());
@@ -355,9 +331,8 @@ impl WebBrowser {
                         if let Err(_) = self.send_messages(next_hop, packet){
                             self.get_text(id_server, text_id.clone());
                         }
-                    } else { println!("No next hop found") }
+                    } else { return; }
                 }
-                println!("Sent request to retrieve the the text from server: {}", id_server);
             }
             Err(_) => { println!("No route found for the destination server") }
         }
@@ -389,54 +364,34 @@ impl WebBrowser {
                     if let Ok(message) = TextServer::reassemble_msg(fragments) {
                         match message {
                             TextServer::ServerTypeText(server_type) => {
-
                                 if server_type == ServerType::TextServer && !self.text_servers.contains(&src_id) {
-                                    println!("client found: {} as the TextServer",src_id);
                                     self.text_servers.push(src_id.clone());
                                 }
-
+                                
                                 if let Err(_) = self.send_event.send(WebBrowserEvents::TextServers(self.config.id.clone(), self.text_servers.clone())) {
                                     println!("failed to send list of text servers to simulation control")
-                                } else {
-                                    println!("client {} sent text_servers {:?}", self.config.id, self.text_servers);
                                 }
-                                //if let Err(_) = self.send_event.send(WebBrowserEvents::PacketInfo(self.config.id, ContentType::TextServerList(fragment.total_n_fragments), packet.session_id)){
-                                  //  println!("client {} failed to notify SC about text server list",self.config.id);
-                                //}
                             }
 
                             TextServer::SendFileList(list) => {
-                                println!("list of files available: {:?}", list);
-
                                 if let Err(_) = self.send_event.send(WebBrowserEvents::ListFiles(self.config.id.clone(), list.clone())) {
                                     println!("failed to send list of files to simulation control")
                                 }
-                               // if let Err(_) = self.send_event.send(WebBrowserEvents::PacketInfo(self.config.id, ContentType::FileList(fragment.total_n_fragments), packet.session_id)){
-                                //    println!("client {} failed to notify SC about text server list",self.config.id);
-                               // }
                             }
 
                             TextServer::PositionMedia(media_server_id) => {
-                                println!("the wanted media is located at: {}", media_server_id);
                                 if let Err(_) = self.send_event.send(WebBrowserEvents::MediaPosition(self.config.id.clone(), media_server_id.clone())) {
                                     println!("failed to send media position to simulation control")
                                 }
-                                //if let Err(_) = self.send_event.send(WebBrowserEvents::PacketInfo(self.config.id, ContentType::MediaPosition(fragment.total_n_fragments), packet.session_id)){
-                                //    println!("client {} failed to notify SC about text server list",self.config.id);
-                                //}
                             }
 
                             TextServer::Text(text) => {
-                                println!("the text file was received by the web browser");
                                 let path_folder = "assets/multimedia/SC".to_string();
                                 match self.save_file(&path_folder, text) {
                                     Ok(path) => {
                                         if let Err(_) = self.send_event.send(WebBrowserEvents::SavedTextFile(self.config.id.clone(), path.clone())) {
                                             println!("failed to send path to text file to simulation control")
                                         }
-                                        //if let Err(_) = self.send_event.send(WebBrowserEvents::PacketInfo(self.config.id, ContentType::SavedText(fragment.total_n_fragments), packet.session_id)){
-                                        //  println!("client {} failed to notify SC about text server list",self.config.id);
-                                        //}
                                     }
                                     Err(str) => { println!("{}", str) }
                                 }
@@ -449,8 +404,6 @@ impl WebBrowser {
                     if let Ok(message) = MediaServer::reassemble_msg(fragments){
                         match message{
                             MediaServer::ServerTypeMedia(server_type) => {
-                                println!("client found: {} as the MediaServer",src_id);
-
                                 if server_type == ServerType::MediaServer && !self.media_servers.contains(&src_id){
                                     self.media_servers.push(src_id.clone());
                                 }
@@ -458,27 +411,18 @@ impl WebBrowser {
                                 if let Err(_) = self.send_event.send(WebBrowserEvents::MediaServers(self.config.id.clone(), self.media_servers.clone())){
                                     println!("failed to send list of text servers to simulation control")
                                 }
-                                //if let Err(_) = self.send_event.send(WebBrowserEvents::PacketInfo(self.config.id, ContentType::MediaServerList(fragment.total_n_fragments), packet.session_id)){
-                                //    println!("client {} failed to notify SC about text server list",self.config.id);
-                                //}
-
                             }
 
                             MediaServer::SendMedia(media) => {
-                                println!("the media was received by the web browser");
                                 let path_folder = "assets/multimedia/SC".to_string();
                                 match self.save_file(&path_folder, media){
                                     Ok(path) => {
                                         if let Err(_) = self.send_event.send(WebBrowserEvents::SavedMedia(self.config.id.clone(), path.clone())){
                                             println!("failed to send path to media to simulation control")
                                         }
-                                        //if let Err(_) = self.send_event.send(WebBrowserEvents::PacketInfo(self.config.id, ContentType::SavedMedia(fragment.total_n_fragments), packet.session_id)){
-                                        //    println!("client {} failed to notify SC about text server list",self.config.id);
-                                        //}
                                     }
                                     Err(str) => {println!("{}", str)}
                                 }
-
                             }
 
                             _ => {}
@@ -498,8 +442,6 @@ impl WebBrowser {
                     let data = self.node_data.get_mut(&failing_node).unwrap();
                     data.dropped += 1;
                     
-                    
-
                     self.resend_fragment(packet)
                 }
 
@@ -512,8 +454,7 @@ impl WebBrowser {
                     let src = packet.routing_header.hops[0];
                     self.topology_graph.remove_edge(src, dest);
                     
-
-                   self.resend_fragment(packet)
+                    self.resend_fragment(packet)
                 }
 
                 _ => {}
@@ -526,30 +467,26 @@ impl WebBrowser {
             
             let session_fragments = if let Some(session_fragments) = self.fragments_sent.get(&packet.session_id){
                 session_fragments
-            }else { 
-                println!("no fragments for this session");
+            }else {
                 return;
             };
             
             let fragment_lost = if let Some(fragment_lost) = session_fragments.get(&nack.fragment_index){
                 fragment_lost.clone()
-            }else { 
-                println!("couldn't find the fragment lost in case of {:?}, route of nack: {:?} ", nack.fragment_index, packet.routing_header.hops);
+            }else {
                 return;
             };
 
             let destination_id = match self.packet_sent.get(&packet.session_id){
                 Some((destination_id, _)) => destination_id.clone(),
                 None => {
-                    println!("no destination id found by web browser in case of {:?} ", nack.nack_type);
                     return;
                 }
             };
 
             match self.find_route(&destination_id){
                 Ok(route) => {
-                    //println!("route re-computed by web: {:?}", route);
-
+                    
                     let packet_to_send = Packet::new_fragment(
                         SourceRoutingHeader::new(route.clone(), 0),
                         packet.session_id,
@@ -560,7 +497,7 @@ impl WebBrowser {
                         if let Err(_) = self.send_messages(next_hop, packet_to_send){
                             self.resend_fragment(packet.clone());
                         }
-                    }else { println!("No next hop found") }
+                    }else { return; }
                 }
                 Err(_) => println!("failed to find the route after receiving nack")
             }
@@ -617,13 +554,11 @@ impl WebBrowser {
                 
                 let dest = if let Some(dest) = flood_response.path_trace.get(0){
                     dest.clone()
-                }else { 
-                    println!("no path trace");
+                }else {
                     return;
                 };
                 
                 if dest != (self.config.id, NodeType::Client) {
-                    //println!("web browser needs to forward the flood response to {:?} {}", dest.1, dest.0);
                     self.send_flooding_packet(packet);
                     return;
                 }
@@ -676,7 +611,6 @@ impl WebBrowser {
                 sender.send(packet.clone()).unwrap_or_default();
             }
         } else {
-            println!("destination reached!!");
             return;
         }
     }
@@ -748,15 +682,13 @@ impl WebBrowser {
         packet.routing_header.hop_index+=1;
         if let Some(sender) = self.send_packets.get(&destination_id){
             if let Err(err) = sender.send(packet.clone()){
-                println!("Error sending command: {}", err); //have to send back nack
+                println!("Error sending command: {}", err);
             }
             Ok(())
         }else {
-            //self.problematic_nodes.push(destination_id.clone());
             self.topology_graph.remove_edge(self.config.id, *destination_id);
-            //println!("topology after: {:?}", self.topology_graph);
             Err(())
-        } //have to send back nack
+        } 
     }
 
     pub fn create_ack(& mut self, packet: &Packet)-> Packet{
@@ -784,8 +716,7 @@ impl WebBrowser {
 
         fs::write(&full_path, decode)
             .map_err(|e| format!("Failed to save the file: {}", e))?;
-
-        println!("saved the file to {}", full_path);
+        
         Ok(full_path)
     }
 
