@@ -12,7 +12,6 @@ use crate::common_things::common::ChatClientEvent::{ClientList, ClientType as Ot
 
 pub struct ChatClient {
     pub config: Client,
-    pub client_type: ClientType,
     pub receiver_msg: Receiver<Packet>,
     pub receiver_commands: Receiver<CommandChat>, //command received by the simulation control
     pub send_packets: HashMap<NodeId, Sender<Packet>>,
@@ -42,7 +41,6 @@ impl ChatClient {
     ) -> Self {
         Self {
             config: Client { id, connected_drone_ids: Vec::new() },
-            client_type: ClientType::ChatClient,
             receiver_msg,
             receiver_commands,
             send_packets,
@@ -91,14 +89,14 @@ impl ChatClient {
 
     }
 
-    pub fn send_type_client(& mut self){
-        if let Err(_) = self.event_send.send(OtherClientType(self.client_type.clone(),self.config.id.clone())){
+    fn send_type_client(& mut self){
+        if let Err(_) = self.event_send.send(OtherClientType(ClientType::ChatClient,self.config.id.clone())){
             println!("Error sending client type");
         }
 
     }
 
-    pub fn handle_sim_command(&mut self, command: CommandChat) {
+    fn handle_sim_command(&mut self, command: CommandChat) {
         match command {
             CommandChat::RegisterClient(id_server) => {
                 self.register_client(id_server);
@@ -127,7 +125,7 @@ impl ChatClient {
         self.event_send.send(ChatClientEvent::Graph(self.config.id, self.topology.clone())).unwrap();
     }
     
-    pub fn handle_incoming(&mut self, message: Packet) {
+    fn handle_incoming(&mut self, message: Packet) {
         match message.pack_type {
             PacketType::MsgFragment(_) => {
                 self.handle_fragments(message);
@@ -139,7 +137,7 @@ impl ChatClient {
         }
     }
     
-    pub fn add_sender(&mut self, node_to_add: NodeId, sender: Sender<Packet>) {
+    fn add_sender(&mut self, node_to_add: NodeId, sender: Sender<Packet>) {
         if !self.send_packets.contains_key(&node_to_add){
             self.send_packets.insert(node_to_add, sender);
         }else {
@@ -147,7 +145,7 @@ impl ChatClient {
         }
     }
     
-    pub fn remove_sender(&mut self, node: NodeId) {
+    fn remove_sender(&mut self, node: NodeId) {
         if self.send_packets.contains_key(&node){
             self.send_packets.remove(&node);
         }else {
@@ -155,13 +153,13 @@ impl ChatClient {
         }
     }
 
-    pub fn search_chat_servers(&mut self) {
+    fn search_chat_servers(&mut self) {
         for server in self.servers.clone(){
             self.ask_server_type(server);
         }
     }
 
-    pub fn ask_server_type(&mut self, id_server: NodeId) {
+    fn ask_server_type(&mut self, id_server: NodeId) {
         if !self.servers.contains(&id_server){
             return;
         }
@@ -199,7 +197,7 @@ impl ChatClient {
             Err(_) => {println!("No route found for the destination server")}
         }
     }
-    pub fn register_client(&mut self, id_server: NodeId) {
+    fn register_client(&mut self, id_server: NodeId) {
         if !self.servers.contains(&id_server){
             return;
         }
@@ -233,40 +231,7 @@ impl ChatClient {
         }
 
     }
-    pub fn get_list_clients(&mut self, id_server: NodeId) {
-        if !self.servers.contains(&id_server){
-            return;
-        }
-        let request = ChatRequest::GetListClients;
-
-        let session_id = self.session_id_packet;
-        self.session_id_packet += 1;
-
-        let fragments = ChatRequest::fragment_message(&request);
-        self.fragments_sent.insert(session_id, fragments.clone());
-
-        match self.find_best_route(&id_server){
-            Ok(route) => {
-                let packets_to_send = ChatRequest::create_packet(&fragments, route.clone(), session_id);
-                self.packet_sent.insert(session_id, (id_server, packets_to_send.clone()));
-                for packet in packets_to_send {
-                    if let PacketType::MsgFragment(fragment) = packet.pack_type.clone(){
-                        if let Err(_) = self.event_send.send(ChatClientEvent::InfoRequest(self.config.id, RequestEvent::GetList(fragment.total_n_fragments), packet.session_id )){
-                            println!("chat client failed to notify SC about get list request")
-                        }
-                    }
-                    if let Some(next_hop) = route.get(1){
-                        if let Err(()) = self.send_packet(next_hop, packet){
-                            self.register_client(id_server);
-                        }
-                    }else { return;}
-                }
-
-            }
-            Err(_) => {println!("No route found for the destination client")}
-        }
-    }
-    pub fn send_message(&mut self, message: MessageChat, id_server: NodeId) {
+    fn send_message(&mut self, message: MessageChat, id_server: NodeId) {
         if !self.servers.contains(&id_server) {
             return;
         }
@@ -301,7 +266,7 @@ impl ChatClient {
     }
     
     //incoming messages
-    pub fn handle_fragments(& mut self, packet: Packet){ 
+    fn handle_fragments(& mut self, packet: Packet){ 
         let src_id = packet.routing_header.hops.first().unwrap();
         let check = (packet.session_id, *src_id);
 
@@ -373,7 +338,7 @@ impl ChatClient {
         }
     }
 
-    pub fn handle_nacks(& mut self, packet: Packet){
+    fn handle_nacks(& mut self, packet: Packet){
         if let PacketType::Nack(nack) = packet.clone().pack_type{
             match nack.nack_type{
                 NackType::ErrorInRouting(id) => {
@@ -400,7 +365,8 @@ impl ChatClient {
         }
     }
     
-    pub fn resend_fragment_lost(& mut self, packet: Packet){
+   
+    fn resend_fragment_lost(& mut self, packet: Packet){
         if let PacketType::Nack(nack) = packet.clone().pack_type{
             let fragments_session = if let Some(fragments_session) = self.fragments_sent.get(&packet.session_id){
                 fragments_session
@@ -445,7 +411,7 @@ impl ChatClient {
         }
     }
 
-    pub fn handle_ack(& mut self, packet: Packet){
+    fn handle_ack(& mut self, packet: Packet){
         if let PacketType::Ack(ack) = packet.pack_type{
             self.problematic_nodes.clear();
             
@@ -456,7 +422,7 @@ impl ChatClient {
         }
     }
 
-    pub fn initiate_flooding(&mut self) { //this sends a flood request to its immediate neighbors
+    fn initiate_flooding(&mut self) { //this sends a flood request to its immediate neighbors
         let flood_id = self.unique_flood_id;
         self.unique_flood_id += 1;
 
@@ -478,7 +444,7 @@ impl ChatClient {
 
     }
 
-    pub fn handle_flood_req(& mut self, packet: Packet) {
+    fn handle_flood_req(& mut self, packet: Packet) {
         if let PacketType::FloodRequest(mut flood_request) = packet.clone().pack_type {
             //check if the pair (flood_id, initiator id) has already been received -> self.visited_nodes
             if self.visited_nodes.contains(&(flood_request.flood_id, flood_request.initiator_id)){
@@ -505,7 +471,7 @@ impl ChatClient {
         }
     }
 
-    pub fn handle_flood_response(& mut self, packet: Packet){
+    fn handle_flood_response(& mut self, packet: Packet){
         if let PacketType::FloodResponse(flood_response) = packet.clone().pack_type {
 
             let path = &flood_response.path_trace;
@@ -548,7 +514,7 @@ impl ChatClient {
         }
     }
 
-    pub fn find_best_route(& mut self, destination_id: &NodeId)-> Result<Vec<NodeId>, String>{
+    fn find_best_route(& mut self, destination_id: &NodeId)-> Result<Vec<NodeId>, String>{
         let source = self.config.id.clone();
 
         let result = dijkstra(&self.topology, source.clone(), Some(destination_id.clone()), |edge|{
@@ -612,7 +578,7 @@ impl ChatClient {
         }
     }
 
-    pub fn send_packet(& mut self, destination_id: &NodeId, mut packet: Packet) -> Result<(), ()>{
+    fn send_packet(& mut self, destination_id: &NodeId, mut packet: Packet) -> Result<(), ()>{
         packet.routing_header.hop_index+=1;
         if let Some(sender) = self.send_packets.get(&destination_id){
             if let Err(err) = sender.send(packet.clone()){
@@ -625,7 +591,7 @@ impl ChatClient {
         }
     }
 
-    pub fn send_flooding_packet(& mut self, mut packet: Packet){
+    fn send_flooding_packet(& mut self, mut packet: Packet){
         if packet.routing_header.hop_index < packet.routing_header.hops.len() -1 {
             packet.routing_header.hop_index += 1;
             let next_hop = packet.routing_header.hops[packet.routing_header.hop_index];
@@ -637,7 +603,7 @@ impl ChatClient {
         }
     }
 
-    pub fn ack(& mut self, packet: &Packet)-> Packet{
+    fn ack(& mut self, packet: &Packet)-> Packet{
         let mut fragment_index = 0;
         if let PacketType::MsgFragment(fragment) = packet.clone().pack_type {
             fragment_index = fragment.fragment_index;
