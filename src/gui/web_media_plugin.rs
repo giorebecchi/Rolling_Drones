@@ -168,7 +168,7 @@ fn window_format(
 
                 if current_path != *path {
                     if let Some(Some(texture)) = state.handles.get(&window_id) {
-                            images_to_remove.push(texture.clone());
+                        images_to_remove.push(texture.clone());
                     }
                     state.egui_textures.insert(window_id, None);
                     state.handles.insert(window_id, None);
@@ -280,13 +280,12 @@ fn window_format(
                                                 web_state.last_loaded_path.remove(&window_id);
                                                 text_cache.clear(window_id);
 
-                                                web_state.received_medias.insert(window_id, media_path.clone());
-
                                                 if media_path.ends_with(".txt") {
                                                     web_state.current_display_type.insert(window_id, MediaDisplayType::TextFile);
                                                     sim.get_text_file(window_id, selected_text_server, media_path.clone());
                                                 } else {
                                                     web_state.current_display_type.insert(window_id, MediaDisplayType::Image);
+                                                    web_state.received_medias.insert(window_id, media_path.clone());
                                                     sim.get_media_position(window_id, selected_text_server, media_path.clone());
                                                 }
                                             } else {
@@ -303,9 +302,11 @@ fn window_format(
 
                     ui.separator();
 
-                    if let Some(media_server) = web_state.target_media_server.get(&window_id).cloned() {
-                        if let Some(media_path) = web_state.received_medias.remove(&window_id) {
-                            sim.get_media_from(window_id, media_server, media_path.clone());
+                    if let Some(MediaDisplayType::Image) = web_state.current_display_type.get(&window_id) {
+                        if let Some(media_server) = web_state.target_media_server.get(&window_id).cloned() {
+                            if let Some(media_path) = web_state.received_medias.remove(&window_id) {
+                                sim.get_media_from(window_id, media_server, media_path.clone());
+                            }
                         }
                     }
 
