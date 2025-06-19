@@ -48,6 +48,7 @@ pub fn parse_config() -> Config {
 
 /// Sets up all communication channels, spawns drones, servers, and clients
 /// and initializes the simulation controller
+#[allow(unused_mut)]
 pub fn start_simulation(
     mut simulation_controller: ResMut<SimulationController>
 ) {
