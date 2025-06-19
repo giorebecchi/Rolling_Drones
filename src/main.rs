@@ -4,7 +4,7 @@ mod gui;
 mod clients;
 mod network_initializer;
 mod servers;
-mod common_things;
+mod common_data;
 
 pub fn main(){
     // gui::test_try::main();

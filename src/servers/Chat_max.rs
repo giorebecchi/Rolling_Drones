@@ -1,7 +1,7 @@
 use crossbeam_channel::select_biased;
 use crate::servers::utilities_max::*;
-use crate::common_things::common::*;
-use crate::common_things::common::ServerType;
+use crate::common_data::common::*;
+use crate::common_data::common::ServerType;
 use crossbeam_channel::{select, Receiver, Sender};
 use std::collections::{BinaryHeap, HashMap};
 use std::time::Instant;

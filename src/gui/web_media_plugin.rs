@@ -5,7 +5,7 @@ use bevy::prelude::*;
 use bevy_egui::{egui, EguiContexts};
 use crate::simulation_control::simulation_control::SimulationController;
 use wg_2024::network::NodeId;
-use crate::common_things::common::ClientType;
+use crate::common_data::common::ClientType;
 use crate::gui::chat_windows::{handle_clicks, OpenWindows};
 use crate::gui::login_window::AppState;
 
