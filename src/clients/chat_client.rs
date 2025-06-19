@@ -117,6 +117,20 @@ impl ChatClient {
             CommandChat::RemoveSender(node_id) => {
                 self.remove_sender(node_id);
             }
+            CommandChat::PdrChanged(node_id) => {
+                self.reset_data(node_id)
+            }
+        }
+    }
+    
+    fn reset_data(&mut self, node_id: NodeId) {
+        if let Some(data) = self.node_data.get_mut(&node_id) {
+            data.reset(); //reset the data of the node id
+        }
+
+        let neighbors: Vec<NodeId> = self.topology.neighbors(node_id).collect(); //get neighbors of the node
+        for neighbor in neighbors {
+            self.topology.add_edge(node_id, neighbor, 1);
         }
     }
     fn send_topology_graph(&self){
