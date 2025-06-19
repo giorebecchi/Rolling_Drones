@@ -135,6 +135,13 @@ fn validate_web_media_connectivity(nodes: &[NodeConfig]) -> Result<(), String> {
                 return Err(format!("TextServer {} cannot reach MediaServer {} ", text.id, media.id));
             }
         }
+        for check_server in &text_servers {
+            if text.id != check_server.id {
+                if !has_path(&graph, nodes, text.id, check_server.id) {
+                    return Err(format!("TextServer {} cannot reach Text/MediaServer {}", text.id, check_server.id));
+                }
+            }
+        }
     }
 
     Ok(())
