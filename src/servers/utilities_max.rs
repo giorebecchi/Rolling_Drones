@@ -1,13 +1,5 @@
-use std::cmp::Ordering;
-use std::fs;
-use std::path::Path;
 use wg_2024::network::{NodeId, SourceRoutingHeader};
 use wg_2024::packet::{Ack, Packet, PacketType};
-use std::time::{Duration, Instant};
-
-
-
-
 use serde::{Deserialize, Serialize};
 use crate::common_data::common::{ChatRequest, ChatResponse, MediaServer, TextServer, WebBrowserCommands};
 
@@ -70,12 +62,12 @@ pub fn deserialize_comando_text(input: Box<[([u8; 128], u8)]>) -> ComandoText {
     }
 
 
-    if let Ok(client) = serde_json::from_str::<WebBrowserCommands>(&serialized_string) {
-        return ComandoText::Client(client);
+    if let Ok(web_browser_commands) = serde_json::from_str::<WebBrowserCommands>(&serialized_string) {
+        return ComandoText::Client(web_browser_commands);
     }
 
-    if let Ok(req) = serde_json::from_str::<ChatRequest>(&serialized_string) {
-        return ComandoText::ChatClient(req);
+    if let Ok(chat_request) = serde_json::from_str::<ChatRequest>(&serialized_string) {
+        return ComandoText::ChatClient(chat_request);
     }
 
     panic!("Errore: Nessuna delle deserializzazioni ha avuto successo per ComandoText.");
@@ -123,7 +115,7 @@ pub fn deserialize_comando_chat(input: Box<[([u8; 128], u8)]>) -> ComandoChat {
 
 
 //----------------------------------------------------------------------------------------------------
-
+#[allow(dead_code)]
 #[derive(Deserialize)]
 pub enum ComandoChat{
     Client(ChatRequest),
@@ -137,6 +129,7 @@ pub enum Risposta{
     Media(MediaServer),
     Chat(ChatResponse)
 }
+#[allow(dead_code)]
 #[derive(Deserialize)]
 pub enum ComandoText{
     Media(MediaServer),
@@ -145,31 +138,6 @@ pub enum ComandoText{
     Client(WebBrowserCommands),
     ChatClient(ChatRequest)
 }
-#[derive(Debug, Copy, Clone)]
-pub struct State {
-    pub node: NodeId,
-    pub cost: f64,
-}
-impl Eq for State {}
-impl PartialEq for State {
-    fn eq(&self, other: &Self) -> bool {
-        self.cost == other.cost
-    }
-}
-// nel max-heap di Rust invertiamo l’ordinamento
-impl Ord for State {
-    fn cmp(&self, other: &Self) -> Ordering {
-        other.cost.partial_cmp(&self.cost)
-            .unwrap_or(Ordering::Equal)
-    }
-}
-impl PartialOrd for State {
-    fn partial_cmp(&self, other: &Self) -> Option<Ordering> {
-        Some(self.cmp(other))
-    }
-}
-
-
 
 // —— 1️⃣ Costanti di protocollo ——
 pub const MAX_RETRIES:  usize    = 100000;
@@ -211,10 +179,6 @@ impl Data {
         }
     }
 }
-pub(crate) fn get_file(file_name: String) -> Option<String> {
-    let file_path = Path::new(r"C:\Users\Massimo\RustroverProjects\Rolling_Drone\src\servers\Files").join(file_name);
-    fs::read_to_string(file_path).ok()
-}
 pub(crate) fn create_ack(packet: Packet) ->Packet {
     let mut vec = Vec::new();
     for node_id in (0..=packet.routing_header.hop_index).rev() {
@@ -236,19 +200,4 @@ pub(crate) fn create_ack(packet: Packet) ->Packet {
         session_id: packet.session_id,
     };
     pack
-}
-
-
-pub struct NodeStats {
-    pub packets_sent: u64,
-    pub packets_dropped: u64,
-}
-
-impl Default for NodeStats {
-    fn default() -> Self {
-        NodeStats {
-            packets_sent: 0,
-            packets_dropped: 0,
-        }
-    }
 }
