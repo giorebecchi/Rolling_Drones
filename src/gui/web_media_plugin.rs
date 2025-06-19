@@ -240,39 +240,40 @@ fn window_format(
                                     for text_server in text_servers {
                                         let selectable_id = ui.make_persistent_id(format!("text_server_{}_{}", window_id, text_server));
                                         ui.push_id(selectable_id, |ui| {
-                                            let was_selected =
+                                            let is_selected =
                                                 web_state.selected_text_server.get(&window_id) == Some(&Some(text_server));
 
-                                            /* ⇢⇢ NEW: will this click switch us to a **different** server? */
-                                            let new_selection = if was_selected { None } else { Some(text_server) };
-                                            let switching_server =
-                                                web_state.selected_text_server.get(&window_id) != Some(&new_selection);
-                                            let selected = web_state.selected_text_server.get(&window_id) == Some(&Some(text_server));
-                                            if switching_server {
-                                                should_clear_image=true;
+                                            if ui.selectable_label(is_selected, format!("Text_Server: {}", text_server)).clicked() {
+                                                /* what the new value should be */
+                                                let new_sel = if is_selected { None } else { Some(text_server) };
 
-                                                state.handles.insert(window_id, None);
-                                                state.egui_textures.insert(window_id, None);
+                                                /* will this actually switch servers? */
+                                                let switching =
+                                                    web_state.selected_text_server.get(&window_id) != Some(&new_sel);
 
-                                                web_state.loading_image.remove(&window_id);
-                                                web_state.currently_selected_media.remove(&window_id);
-                                                web_state.actual_media_path.remove(&window_id);
-                                                web_state.media_paths.remove(&window_id);
-                                                web_state.actual_file_path.remove(&window_id);
-                                                web_state.received_medias.remove(&window_id);
-                                                web_state.current_display_type.insert(window_id, MediaDisplayType::None);
-                                                web_state.last_loaded_path.remove(&window_id);
-                                                web_state.server_for_current_media.remove(&window_id);
+                                                if switching {
+                                                    /* ─── cleanup exactly once ─── */
+                                                    if let Some(Some(tex)) = state.handles.get(&window_id) {
+                                                        images_to_remove.push(tex.clone());   // defer removal
+                                                    }
+                                                    state.handles.insert(window_id, None);
+                                                    state.egui_textures.insert(window_id, None);
 
-                                                text_cache.clear(window_id);
-                                            }
-                                            web_state.selected_text_server.insert(window_id, new_selection);
-                                            if ui.selectable_label(selected, format!("Text_Server: {}", text_server)).clicked() {
-                                                if web_state.selected_text_server.get(&window_id) == Some(&Some(text_server)) {
-                                                    web_state.selected_text_server.insert(window_id, None);
-                                                } else {
-                                                    web_state.selected_text_server.insert(window_id, Some(text_server));
+                                                    web_state.loading_image.remove(&window_id);
+                                                    web_state.currently_selected_media.remove(&window_id);
+                                                    web_state.actual_media_path.remove(&window_id);
+                                                    web_state.media_paths.remove(&window_id);
+                                                    web_state.actual_file_path.remove(&window_id);
+                                                    web_state.received_medias.remove(&window_id);
+                                                    web_state.current_display_type.insert(window_id, MediaDisplayType::None);
+                                                    web_state.last_loaded_path.remove(&window_id);
+                                                    web_state.server_for_current_media.remove(&window_id);
+
+                                                    text_cache.clear(window_id);
                                                 }
+
+                                                /* finally commit the new (or cleared) selection */
+                                                web_state.selected_text_server.insert(window_id, new_sel);
                                             }
                                         });
                                     }
