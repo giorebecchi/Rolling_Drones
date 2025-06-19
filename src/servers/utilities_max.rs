@@ -145,14 +145,22 @@ pub enum ComandoText{
     Client(WebBrowserCommands),
     ChatClient(ChatRequest)
 }
-#[derive(Eq, PartialEq)]
-pub(crate) struct State {
+#[derive(Debug, Copy, Clone)]
+pub struct State {
     pub node: NodeId,
-    pub cost: i64,
+    pub cost: f64,
 }
+impl Eq for State {}
+impl PartialEq for State {
+    fn eq(&self, other: &Self) -> bool {
+        self.cost == other.cost
+    }
+}
+// nel max-heap di Rust invertiamo l’ordinamento
 impl Ord for State {
     fn cmp(&self, other: &Self) -> Ordering {
-        other.cost.cmp(&self.cost) // Ordine inverso per ottenere un min-heap
+        other.cost.partial_cmp(&self.cost)
+            .unwrap_or(Ordering::Equal)
     }
 }
 impl PartialOrd for State {
@@ -161,8 +169,10 @@ impl PartialOrd for State {
     }
 }
 
+
+
 // —— 1️⃣ Costanti di protocollo ——
-pub const MAX_RETRIES:  usize    = 100;
+pub const MAX_RETRIES:  usize    = 100000;
 pub const WINDOW_SIZE:  usize    = 100;
 
 // —— 2️⃣ Data struct estesa ——
@@ -226,4 +236,19 @@ pub(crate) fn create_ack(packet: Packet) ->Packet {
         session_id: packet.session_id,
     };
     pack
+}
+
+
+pub struct NodeStats {
+    pub packets_sent: u64,
+    pub packets_dropped: u64,
+}
+
+impl Default for NodeStats {
+    fn default() -> Self {
+        NodeStats {
+            packets_sent: 0,
+            packets_dropped: 0,
+        }
+    }
 }
