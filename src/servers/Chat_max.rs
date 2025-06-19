@@ -87,7 +87,14 @@ impl Server {
                             ServerCommands::RemoveSender(id) => {
                                 self.remove_drone(id);
                             }
-                            _=>{}
+                            ServerCommands::PdrChanged(_) => {
+                                self.statistics.clear();
+                                for (&peer, _) in &self.packet_send {
+                                    if peer != self.server_id {
+                                        self.statistics.insert(peer, 0.5);
+                                    }
+                                }
+                            }
                         }
                     }
                 }

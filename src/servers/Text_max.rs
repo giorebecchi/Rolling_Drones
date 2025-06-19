@@ -112,8 +112,16 @@ impl Server {
                             }
                             ServerCommands::RemoveSender(id) => {
                                 self.remove_drone(id);
+                            },
+                            ServerCommands::PdrChanged(_) => {
+                                self.statistics.clear();
+                                for (&peer, _) in &self.packet_send {
+                                    if peer != self.server_id {
+                                        self.statistics.insert(peer, 0.5);
+                                    }
+                                }
                             }
-                            _=>{}
+
                         }
                     }
                 },
@@ -661,13 +669,6 @@ impl Server {
         }
     }
     fn send_response(&mut self, id: NodeId, response: Risposta) {
-
-        self.statistics.clear();
-        for (&peer, _) in &self.packet_send {
-            if peer != self.server_id {
-                self.statistics.insert(peer, 0.5);
-            }
-        }
         let session = self.get_session();
         match response {
             Risposta::Text(text) => {
