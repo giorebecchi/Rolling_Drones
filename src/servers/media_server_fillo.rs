@@ -1,22 +1,22 @@
 #![allow(dead_code)]
-use crate::common_things::common::*;
-use crate::gui::login_window::NodeType as MyNodeType;
-use crate::servers::assembler::*;
 use base64::engine::general_purpose::STANDARD as BASE64;
-use base64::Engine;
-use crossbeam_channel::{select_biased, Receiver, Sender};
-use petgraph::graph::{Graph, NodeIndex};
-use petgraph::prelude::EdgeRef;
-use petgraph::Incoming;
-use serde::Serialize;
 use std::collections::{BinaryHeap, HashMap, HashSet};
 use std::fmt::Debug;
 use std::fs;
+use petgraph::graph::{Graph, NodeIndex};
 use std::fs::File;
 use std::io::{self, BufRead};
 use std::path::Path;
+use base64::Engine;
+use crossbeam_channel::{select_biased, Receiver, Sender};
+use petgraph::Incoming;
+use petgraph::prelude::EdgeRef;
+use serde::Serialize;
 use wg_2024::network::{NodeId, SourceRoutingHeader};
 use wg_2024::packet::{Ack, FloodRequest, FloodResponse, Fragment, NackType, NodeType, Packet, PacketType};
+use crate::common_data::common::*;
+use crate::servers::assembler::*;
+use crate::gui::login_window::NodeType as MyNodeType;
 
 #[derive(Serialize, Clone, Debug)]
 struct Drops{
@@ -152,7 +152,7 @@ impl Server{
             }
         }
     }
-    
+
     fn reset_drone_stats(&mut self, id: NodeId){
         if let Some(index) = self.find_node(id, NodeType::Drone){
             if self.stats.contains_key(&index){
@@ -171,7 +171,7 @@ impl Server{
         // println!("graph del media {:?} dopo il reset stats del drone {:?} :  {:?}", self.server_id,id,self.neigh_map);
         // println!("stats resetted successfully");
     }
-    
+
     fn handle_packet(&mut self, p:Packet){
         match p.clone().pack_type {
             PacketType::MsgFragment(_) => {/*println!("received packet {p}");*/self.handle_msg_fragment(p)}

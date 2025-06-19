@@ -35,18 +35,27 @@ fn has_path(
                     return true;
                 }
 
-                let is_drone = nodes.iter()
-                    .find(|n| n.id == neighbor)
-                    .map(|n| n.node_type == NodeType::Drone)
-                    .unwrap_or(false);
+                // Find the neighbor node to check its type and PDR
+                let neighbor_node = nodes.iter().find(|n| n.id == neighbor);
 
-                let is_source = neighbor == source;
-                let is_target = neighbor == target;
+                if let Some(node) = neighbor_node {
+                    let is_drone = node.node_type == NodeType::Drone;
+                    let is_source = neighbor == source;
+                    let is_target = neighbor == target;
 
+                    // Check if the node has PDR >= 1.0 (effectively disconnected)
+                    let is_effectively_disconnected = node.pdr >= 1.0;
 
-                if (is_drone || is_source || is_target) && !visited.contains(&neighbor) {
-                    visited.insert(neighbor);
-                    queue.push_back(neighbor);
+                    // Only traverse through this neighbor if:
+                    // 1. It's not visited yet
+                    // 2. It's either a drone, source, or target
+                    // 3. It's not effectively disconnected (PDR < 1.0)
+                    if (is_drone || is_source || is_target)
+                        && !visited.contains(&neighbor)
+                        && !is_effectively_disconnected {
+                        visited.insert(neighbor);
+                        queue.push_back(neighbor);
+                    }
                 }
             }
         }
@@ -135,6 +144,13 @@ fn validate_web_media_connectivity(nodes: &[NodeConfig]) -> Result<(), String> {
                 return Err(format!("TextServer {} cannot reach MediaServer {} ", text.id, media.id));
             }
         }
+        for check_server in &text_servers {
+            if text.id != check_server.id {
+                if !has_path(&graph, nodes, text.id, check_server.id) {
+                    return Err(format!("TextServer {} cannot reach Text/MediaServer {}", text.id, check_server.id));
+                }
+            }
+        }
     }
 
     Ok(())
@@ -167,6 +183,31 @@ pub fn validate_duplex_connections(nodes: &[NodeConfig]) -> Result<(), String>{
                 }
             } else {
                 return Err(format!("Missing connection between {}-{}",node.id,neighbor_id));
+            }
+        }
+    }
+    Ok(())
+}
+pub fn validate_generic_configuration(nodes: &[NodeConfig]) -> Result<(), String>{
+    let drones: Vec<NodeId>=nodes
+        .iter()
+        .filter(|node| matches!(node.node_type, NodeType::Drone))
+        .map(|node| node.id)
+        .collect();
+    for i in 0..nodes.len() {
+        for j in (i + 1)..nodes.len() {
+            if nodes[i].id == nodes[j].id {
+                return Err(format!("Duplicated node ids found, please check again the toml for {:?} {}", nodes[i].node_type, nodes[i].id));
+            }
+        }
+        if nodes[i].connected_node_ids.contains(&nodes[i].id) {
+            return Err(format!("{:?} {} cannot have itself as neighbor", nodes[i].node_type, nodes[i].id));
+        }
+        if nodes[i].node_type != NodeType::Drone {
+            for neighbor in nodes[i].connected_node_ids.clone(){
+                if !drones.contains(&neighbor){
+                    return Err(format!("{:?} {} cannot be connected to {} directly",nodes[i].node_type, nodes[i].id, neighbor));
+                }
             }
         }
     }

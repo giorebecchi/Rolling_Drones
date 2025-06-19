@@ -4,8 +4,8 @@ use serde::Serialize;
 use serde::de::DeserializeOwned;
 use wg_2024::network::{NodeId, SourceRoutingHeader};
 use wg_2024::packet::{Fragment, Packet, FRAGMENT_DSIZE};
-use crate::common_things::common::{ChatRequest, ChatResponse, MediaServer, ServerType, TextServer, WebBrowserCommands};
-use crate::common_things::common::MessageChat;
+use crate::common_data::common::{ChatRequest, ChatResponse, MediaServer, ServerType, TextServer, WebBrowserCommands};
+use crate::common_data::common::MessageChat;
 
 pub trait Serialization{
     fn stringify(&self) -> String where Self: Serialize{ //to serialize
@@ -17,17 +17,17 @@ pub trait Serialization{
 }
 pub trait Fragmentation: Serialization{
     fn fragment_message(&self)-> HashMap<u64, Fragment> where Self: Serialize{
-        let serialized_message = self.stringify();
+        let serialized_message = self.stringify(); //serialize message in a string
         let tot_size = serialized_message.len();
-        let tot_fragment = ((tot_size + FRAGMENT_DSIZE - 1 ) / FRAGMENT_DSIZE )as u64;
+        let tot_fragment = ((tot_size + FRAGMENT_DSIZE - 1 ) / FRAGMENT_DSIZE )as u64; //amount of fragments needed
         let mut fragments = HashMap::new();
 
-        for f in 0..tot_fragment{
-            let start = (f as usize) * FRAGMENT_DSIZE;
-            let end = usize::min(start + FRAGMENT_DSIZE, tot_size);
-            let fragment_data = &serialized_message[start..end];
-            let fragment = Fragment::from_string(f, tot_fragment, fragment_data.to_string());
-            fragments.insert(fragment.fragment_index, fragment);
+        for f in 0..tot_fragment{ //f is the fragment index
+            let start = (f as usize) * FRAGMENT_DSIZE; //starting index for the fragment, multiply because we're skipping all data already assigned
+            let end = usize::min(start + FRAGMENT_DSIZE, tot_size); //end index, ensuring that maximum size of fragment is respected
+            let fragment_data = &serialized_message[start..end]; //the fragmented data using indexes
+            let fragment = Fragment::from_string(f, tot_fragment, fragment_data.to_string()); //function from wgc
+            fragments.insert(fragment.fragment_index, fragment); //hashmap with key: fragment index and the corresponding fragment
         }
         fragments
     }
@@ -49,7 +49,7 @@ pub trait Fragmentation: Serialization{
         for (_, fragment) in fragments{
             let packet = Packet::new_fragment(
                 SourceRoutingHeader::new(path.clone(), 0),
-                session_id, //to increment every time you have to send a new message, so every time you call this function
+                session_id,
                 fragment.clone()
             );
             res.push(packet);

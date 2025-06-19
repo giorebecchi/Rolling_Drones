@@ -1,4 +1,4 @@
-use crate::common_things::common::ServerEvent;
+use crate::common_data::common::ServerEvent;
 use crossbeam_channel::{select_biased, unbounded, Receiver, Sender};
 use std::collections::{HashMap, HashSet};
 use bevy::prelude::Resource;
@@ -11,7 +11,7 @@ use petgraph::graphmap::UnGraphMap;
 use wg_2024::packet::PacketType::{FloodRequest, MsgFragment};
 use crate::gui::login_window::{NodeType, SHARED_LOG};
 use crate::gui::shared_info_plugin::SHARED_STATE;
-use crate::common_things::common::{BackGroundFlood, ChatClientEvent, ChatServerEvent, ClientType, CommandChat, ContentCommands, ContentRequest, MediaServerEvent, RequestEvent, ServerCommands, TextServerEvent, WebBrowserEvents};
+use crate::common_data::common::{BackGroundFlood, ChatClientEvent, ChatServerEvent, ClientType, CommandChat, ContentCommands, ContentRequest, MediaServerEvent, RequestEvent, ServerCommands, TextServerEvent, WebBrowserEvents};
 
 
 #[derive(Clone,Resource)]
@@ -205,12 +205,6 @@ impl SimulationController {
             RequestEvent::Register(size) => {
                 format!(
                     "Chat Client {}: made an attempt to register\nThe message was made of {} fragments\n",
-                    client, size
-                )
-            }
-            RequestEvent::GetList(size) => {
-                format!(
-                    "Chat Client {}: asked list of registered clients\nThe message was made of {} fragments\n",
                     client, size
                 )
             }

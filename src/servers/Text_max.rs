@@ -1,8 +1,8 @@
 use base64::engine::general_purpose::STANDARD as BASE64;
 use base64::Engine;
 use crate::servers::utilities_max::*;
-use crate::common_things::common::*;
-use crate::common_things::common::ServerType;
+use crate::common_data::common::*;
+use crate::common_data::common::ServerType;
 use crossbeam_channel::{select, select_biased, Receiver, Sender};
 use std::collections::{BinaryHeap, HashMap};
 use std::{fs, io};
@@ -14,6 +14,7 @@ use wg_2024::packet::{Ack, FloodRequest, Fragment, Nack, NackType, NodeType, Pac
 use bevy::utils::HashSet;
 use std::io::{Read};
 use crate::gui::login_window::NodeType as MyNodeType;
+use std::cmp::Reverse;
 
 
 pub struct Server{
@@ -36,6 +37,7 @@ pub struct Server{
     rcv_command: Receiver<ServerCommands>,
     send_event: Sender<ServerEvent>,
     requested_peers: HashSet<NodeId>,
+    statistics : HashMap<NodeId, f64>,
 }
 
 
@@ -66,6 +68,7 @@ impl Server {
             rcv_command,
             send_event,
             requested_peers: HashSet::new(),
+            statistics: HashMap::new(),
         }
     }
     pub fn run(&mut self) {
@@ -76,7 +79,7 @@ impl Server {
         if let Err(e) = self.load_text_paths_from_file() {
             log::error!("Errore load_text_paths: {}", e);
         }
-
+        self.flooding();
 
         loop {
             select_biased! {
@@ -91,7 +94,7 @@ impl Server {
                 // 4.2 Ricevo un segnale di flood
                 recv(self.rcv_flood) -> flood => {
                     if flood.is_ok() {
-                        self.floading();
+                        self.flooding();
                     }
                 },
 
@@ -105,7 +108,7 @@ impl Server {
                             }
                             ServerCommands::AddSender(id, sender) => {
                                 self.packet_send.insert(id, sender);
-                                self.floading();
+                                self.flooding();
                             }
                             ServerCommands::RemoveSender(id) => {
                                 self.remove_drone(id);
@@ -126,8 +129,11 @@ impl Server {
             }
             PacketType::Ack(ack) => {
                 let session = packet.session_id;
-                self.handle_ack(ack, session)
+                // ricava il path dal routing_header (hops contiene già il vettore completo)
+                let path: Vec<NodeId> = packet.routing_header.hops.clone();
+                self.handle_ack(ack, session, &path);
             }
+
             PacketType::FloodRequest(_) => {
                 self.handle_flood_request(packet)
             }
@@ -202,37 +208,42 @@ impl Server {
         }
     }
     fn send_single_fragment(&mut self, session: u64, idx: usize) {
-        let data = &self.fragment_send[&session];
-        let (chunk, _) = data.dati[idx];
-        if let Some(path) = self.routing(data.who_ask) {
-            let hdr  = SourceRoutingHeader::new(path, 1);
-            let frag = Fragment::new(idx as u64, data.total_expected as u64, chunk);
-            let pkt  = Packet::new_fragment(hdr, session, frag);
-            self.send_packet(pkt);
+        if let Some(data) = self.fragment_send.get(&session) {
+            let who = data.who_ask;
+            if let Some(path) = self.routing(who) {
+                // Costruisci frammento e packet
+                let chunk = data.dati[idx].0;
+                let frag = Fragment::new(idx as u64, data.total_expected as u64, chunk);
+                let pkt = Packet::new_fragment(SourceRoutingHeader::new(path.clone(), 1), session, frag);
+                self.send_packet(pkt);
+            } else {
+                log::warn!("send_single_fragment: nessun percorso a {} (session {})", who, session);
+            }
         }
     }
-    fn handle_ack(&mut self, ack: Ack, session: u64) {
+    fn handle_ack(&mut self, ack: Ack, session: u64, path: &[NodeId]) {
+        let alpha = 0.2;
+        for &hop in &path[1..] {
+            let entry = self.statistics.entry(hop).or_insert(0.5);
+            *entry = (1.0 - alpha) * (*entry) + alpha * 1.0;
+        }
+
+        // Sliding-window e cleanup classici
         let mut next_idx = None;
         if let Some(d) = self.fragment_send.get_mut(&session) {
             let idx = ack.fragment_index as usize;
             if idx < d.total_expected && !d.acked[idx] {
                 d.acked[idx]    = true;
-                d.counter        = d.counter.saturating_sub(1);
-
-                // se c’è un “posto libero” nella finestra, lo preparo
+                d.counter       = d.counter.saturating_sub(1);
                 if d.next_to_send < d.total_expected {
                     next_idx = Some(d.next_to_send);
                     d.next_to_send += 1;
                 }
             }
         }
-
-        // Fuori dal borrow, mando il frammento successivo (se c’è)
         if let Some(i) = next_idx {
             self.send_single_fragment(session, i);
         }
-
-        // Rimuovo la sessione se tutti i frammenti sono stati acked
         if let Some(d) = self.fragment_send.get(&session) {
             if d.counter == 0 {
                 self.fragment_send.remove(&session);
@@ -240,40 +251,49 @@ impl Server {
         }
     }
     fn handle_nack(&mut self, fragment: Nack, _pos: &u64, session: &u64, packet: Packet) {
-        let sess = *session;
-        if !self.fragment_send.contains_key(&sess) { return; }
 
-        // Se c’è stato un errore di routing, aggiorna la topologia
-        if let NackType::ErrorInRouting(bad) = fragment.nack_type {
+        if let NackType::ErrorInRouting(bad) = fragment.nack_type{
             let bad_next = packet.routing_header.hops[0];
             self.remove_link(bad, bad_next);
-            self.floading();
+            self.flooding()
         }
 
-        // Raccolgo tutti i dati in un singolo mutable borrow
-        let (retry, who, chunk, cnt, total, idx) = {
-            let data = self.fragment_send.get_mut(&sess).unwrap();
+        if let NackType::Dropped = fragment.nack_type {
+            let bad_hop = packet.routing_header.hops[0];
+            // Aggiorna p_success verso 0
+            let alpha = 0.2;
+            let entry = self.statistics.entry(bad_hop).or_insert(0.5);
+            *entry = (1.0 - alpha) * (*entry) + alpha * 0.0;
+        }
+        // Logica standard di retry
+        let mut retries = 0;
+        {
+            let data = match self.fragment_send.get_mut(session) {
+                Some(d) => d,
+                None    => return,
+            };
             let idx = fragment.fragment_index as usize;
-            if idx >= data.total_expected || data.acked[idx] {
-                return;
-            }
-            if data.retry_count[idx] < MAX_RETRIES.try_into().unwrap() {
+            if idx >= data.total_expected || data.acked[idx] { return; }
+            if data.retry_count[idx] < (MAX_RETRIES as usize).try_into().unwrap() {
                 data.retry_count[idx] += 1;
-                (true, data.who_ask, data.dati[idx].0, data.retry_count[idx], data.total_expected, idx)
-            } else {
-                // superati i retry massimi: abbandono
-                return;
-            }
-        };
+                retries = data.retry_count[idx];
+            } else { return; }
+        }
 
-        // Fuori dal borrow, invio un solo retry
-        if retry {
-            if let Some(path) = self.routing(who) {
-                let hdr  = SourceRoutingHeader::new(path, 1);
-                let frag = Fragment::new(idx as u64, total as u64, chunk);
-                let pkt  = Packet::new_fragment(hdr, sess, frag);
-                self.send_packet(pkt);
-            }
+        // Riprova su nuovo percorso
+        let data = &self.fragment_send[session];
+        let who   = data.who_ask;
+        let chunk = data.dati[fragment.fragment_index as usize].0;
+        let total = data.total_expected as u64;
+        if let Some(path) = self.routing(who) {
+            log::debug!("handle_nack: retry #{} frag {} sess {} via {:?}",
+                         retries, fragment.fragment_index, session, path);
+            let frag2 = Fragment::new(fragment.fragment_index, total, chunk);
+            let pkt2  = Packet::new_fragment(SourceRoutingHeader::new(path, 1), *session, frag2);
+            self.send_packet(pkt2);
+        } else {
+            log::warn!("handle_nack: nessun percorso a {} per retry frag {} sess {}",
+                       who, fragment.fragment_index, session);
         }
     }
     fn handle_flood_request(&mut self, packet: Packet) {
@@ -325,38 +345,32 @@ impl Server {
     fn handle_flood_response(&mut self, packet: Packet) {
         if let PacketType::FloodResponse(ref flood_response) = packet.pack_type {
             let path = &flood_response.path_trace;
-            // Se il path è vuoto, non facciamo nulla
-            if path.is_empty() {
-                return;
-            }
+            if path.is_empty() { return; }
 
-            // L'iniziatore è il primo elemento del path
+            // L'iniziatore è il primo elemento
             let initiator_id = path[0].0;
 
-            // 1) Aggiorno la topologia
+            // 1) Aggiorno topologia: per ogni segmento del path
             for i in 0..path.len() {
                 let (node_id, node_type) = path[i];
+                // Assicuro inizializzazione EWMA a 0.5 se nuovo
+                self.statistics.entry(node_id).or_insert(0.5);
+
                 let prev = if i > 0 { Some(path[i - 1].0) } else { None };
                 let next = if i + 1 < path.len() { Some(path[i + 1].0) } else { None };
 
                 if let Some(entry) = self.nodes_map.iter_mut().find(|(id, _, _)| *id == node_id) {
-                    // Aggiorna tipo se necessario
-                    if entry.1 != node_type {
-                        entry.1 = node_type;
-                    }
-                    // Aggiunge prev e next se mancanti
+                    // aggiorno tipo
+                    if entry.1 != node_type { entry.1 = node_type; }
+                    // aggiungo prev/next se mancanti
                     if let Some(p) = prev {
-                        if !entry.2.contains(&p) {
-                            entry.2.push(p);
-                        }
+                        if !entry.2.contains(&p) { entry.2.push(p); }
                     }
                     if let Some(n) = next {
-                        if !entry.2.contains(&n) {
-                            entry.2.push(n);
-                        }
+                        if !entry.2.contains(&n) { entry.2.push(n); }
                     }
                 } else {
-                    // Nodo nuovo: crea una voce
+                    // nuovo nodo
                     let mut conns = Vec::new();
                     if let Some(p) = prev { conns.push(p); }
                     if let Some(n) = next { conns.push(n); }
@@ -364,33 +378,27 @@ impl Server {
                 }
             }
 
-            // 2) Se sono io l'iniziator, invio richieste solo ai nuovi server
+            // 2) Se sono iniziator, invio solo ai nuovi server
             if initiator_id == self.server_id {
-                let new_peers: Vec<NodeId> = self.nodes_map
-                    .iter()
+                let new_peers: Vec<NodeId> = self.nodes_map.iter()
                     .filter_map(|(peer_id, node_type, _)| {
                         if *peer_id != self.server_id && *node_type == NodeType::Server {
                             Some(*peer_id)
-                        } else {
-                            None
-                        }
+                        } else { None }
                     })
                     .filter(|peer_id| !self.requested_peers.contains(peer_id))
                     .collect();
 
                 for peer_id in new_peers {
-                    // Segna il peer come già interrogato
                     self.requested_peers.insert(peer_id);
-                    // Invia la richiesta di path resolution
                     let req = Risposta::Text(TextServer::ServerTypeReq);
                     self.send_response(peer_id, req);
                 }
             }
 
-            // 3) Forward del flood-response agli altri se non sono l'iniziator
+            // 3) Forward flood-response se non sono iniziator
             if initiator_id != self.server_id {
-                let previous_node = packet.routing_header
-                    .hops
+                let previous_node = packet.routing_header.hops
                     .get(packet.routing_header.hop_index as usize - 1)
                     .cloned();
 
@@ -402,8 +410,6 @@ impl Server {
             }
         }
     }
-
-
     fn remove_drone(&mut self, node_id: NodeId) {
         // 1) rimuovo dalla topologia
         self.nodes_map.retain(|(id, _, _)| *id != node_id);
@@ -433,50 +439,80 @@ impl Server {
         }
     }
     fn routing(&self, destination: NodeId) -> Option<Vec<NodeId>> {
-        let mut table: HashMap<NodeId, (i64, Option<NodeId>)> = HashMap::new();
-        let mut queue: BinaryHeap<State> = BinaryHeap::new();
-        for (node_id, _, _) in &self.nodes_map {
-            table.insert(*node_id, (i64::MAX, None));
+        let scale = 10_000.0;
+        let mut dist: HashMap<NodeId, i64> = HashMap::new();
+        let mut prev: HashMap<NodeId, NodeId> = HashMap::new();
+        // Inizializzo distanze
+        for (id, _, _) in &self.nodes_map {
+            dist.insert(*id, i64::MAX);
         }
-        table.insert(self.server_id, (0, None));
-        queue.push(State { node: self.server_id, cost: 0 });
+        dist.insert(self.server_id, 0);
+        let mut heap = BinaryHeap::new();
+        heap.push(Reverse((0, self.server_id)));
 
-
-        while let Some(State { node, cost }) = queue.pop() {
+        while let Some(Reverse((cost, node))) = heap.pop() {
+            // Se questo percorso non è più ottimo, salto
+            if cost > *dist.get(&node).unwrap_or(&i64::MAX) {
+                continue;
+            }
+            // Se ho raggiunto la destinazione, ricostruisco il path
             if node == destination {
                 let mut path = Vec::new();
-                let mut current = destination;
-                while let Some(prev) = table.get(&current).and_then(|&(_, prev)| prev) {
-                    path.push(current);
-                    current = prev;
+                let mut cur = destination;
+                while cur != self.server_id {
+                    path.push(cur);
+                    // Controllo esplicito: se non trovo un prev, abortisco
+                    cur = match prev.get(&cur) {
+                        Some(&p) => p,
+                        None => return None,
+                    };
                 }
                 path.push(self.server_id);
                 path.reverse();
                 return Some(path);
             }
-            if cost > table.get(&node)?.0 {
-                continue;
-            }
-            if let Some((_, _, neighbors)) = self.nodes_map.iter().find(|(id, _, _)| *id == node) {
-                for &neighbor in neighbors {
-                    if neighbor != destination && neighbor != self.server_id {
-                        if let Some((_, neighbor_type, _)) = self.nodes_map.iter().find(|(id, _, _)| *id == neighbor) {
-                            if *neighbor_type != NodeType::Drone {
-                                continue;
-                            }
-                        }
+
+            // Prendo i vicini: se non trovo alcun nodo corrispondente, salto
+            let neighbors = match self.nodes_map.iter()
+                .find(|(id, _, _)| *id == node)
+            {
+                Some((_, _, neigh)) => neigh,
+                None => continue,
+            };
+
+            for &nei in neighbors {
+                // Filtro: solo droni su quelli non estremi
+                if nei != destination && nei != self.server_id {
+                    let ty = match self.nodes_map.iter()
+                        .find(|(id, _, _)| *id == nei)
+                    {
+                        Some((_, ty, _)) => ty,
+                        None => continue,
+                    };
+                    if *ty != NodeType::Drone {
+                        continue;
                     }
-                    let new_cost = cost + 1;
-                    if new_cost < table.get(&neighbor).unwrap_or(&(i64::MAX, None)).0 {
-                        table.insert(neighbor, (new_cost, Some(node)));
-                        queue.push(State { node: neighbor, cost: new_cost });
-                    }
+                }
+                // Prendo p_success con default 0.5
+                let p = *self.statistics.get(&nei).unwrap_or(&0.5);
+                let success = p.max(1e-6).min(1.0 - 1e-6);
+                let pena = (-success.ln() * scale) as i64;
+                let next_cost = cost.saturating_add(pena);
+
+                if next_cost < *dist.get(&nei).unwrap_or(&i64::MAX) {
+                    dist.insert(nei, next_cost);
+                    prev.insert(nei, node);
+                    heap.push(Reverse((next_cost, nei)));
                 }
             }
         }
+
+        // Nessun percorso trovato
         None
     }
-    fn floading(&mut self) {
+    fn flooding(&mut self) {
+
+        // Genera nuovo flood packet
         let flood_id = self.get_session();
         let flood = Packet {
             routing_header: SourceRoutingHeader { hop_index: 1, hops: Vec::new() },
@@ -488,13 +524,13 @@ impl Server {
             }),
         };
 
+        // Invia a tutti i peer tranne me
         for (id, mut neighbour) in self.packet_send.clone() {
             if id == self.server_id {
                 continue;
             }
             if let Err(e) = neighbour.send(flood.clone()) {
-                log::warn!("floading: invio flood a {} fallito: {:?}", id, e);
-                // rimuovo il sender ormai chiuso
+                log::warn!("flooding: invio flood a {} fallito: {:?}", id, e);
                 self.packet_send.remove(&id);
             }
         }
@@ -625,6 +661,13 @@ impl Server {
         }
     }
     fn send_response(&mut self, id: NodeId, response: Risposta) {
+
+        self.statistics.clear();
+        for (&peer, _) in &self.packet_send {
+            if peer != self.server_id {
+                self.statistics.insert(peer, 0.5);
+            }
+        }
         let session = self.get_session();
         match response {
             Risposta::Text(text) => {

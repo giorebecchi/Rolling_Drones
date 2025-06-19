@@ -282,5 +282,5 @@ pub fn error_system(
     error: Res<ErrorConfig>,
     mut error_to_display: ResMut<ErrorQueue>,
 ) {
-    error_to_display.message = format!("{}{}{}", error.error_connection, error.error_isolated, error.error_pdr);
+    error_to_display.message = format!("{}{}{}{}", error.error_connection, error.error_isolated, error.error_pdr,error.error_generic);
 }
