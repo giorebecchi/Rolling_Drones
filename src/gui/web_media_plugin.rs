@@ -23,7 +23,7 @@ impl Plugin for WebMediaPlugin {
 
 #[derive(PartialEq, Eq, Clone, Debug)]
 enum MediaDisplayType {
-    Image,
+    Image (String),
     TextFile,
     None,
 }
@@ -165,6 +165,16 @@ fn window_format(
 
 
             if let Some(path) = web_state.actual_media_path.get(&window_id).cloned() {
+                let still_relevant = web_state
+                    .currently_selected_media
+                    .get(&window_id)
+                    .and_then(|p| p.as_ref())
+                    .map_or(false, |wanted| trim_into_file_name(&path) == wanted.clone());
+
+                if still_relevant && !path.ends_with(".txt") {
+                    web_state.current_display_type
+                        .insert(window_id, MediaDisplayType::Image(path.clone()));
+                }
                 let current_path = web_state.last_loaded_path.get(&window_id).cloned().unwrap_or_default();
 
                 if current_path != *path {
@@ -173,7 +183,6 @@ fn window_format(
                     }
                     state.egui_textures.insert(window_id, None);
                     state.handles.insert(window_id, None);
-                    web_state.new_image_arrived.insert(window_id, true);
 
                     web_state.last_loaded_path.insert(window_id, path.clone());
 
@@ -181,7 +190,6 @@ fn window_format(
                     let handle: Handle<Image> = asset_server.load(bevy_path);
                     state.handles.insert(window_id, Some(handle));
                 } else if state.handles.get(&window_id).unwrap_or(&None).is_none() {
-                    web_state.new_image_arrived.insert(window_id, true);
                     let bevy_path = path.strip_prefix("assets/").unwrap_or(&path).to_string();
                     let handle: Handle<Image> = asset_server.load(bevy_path);
                     state.handles.insert(window_id, Some(handle));
@@ -306,6 +314,7 @@ fn window_format(
                                                     text_cache.clear(window_id);
 
                                                     if media_path.ends_with(".txt") {
+                                                        web_state.loading_image.insert(window_id, String::new());
                                                         web_state.current_display_type.insert(window_id, MediaDisplayType::TextFile);
                                                         sim.get_text_file(window_id, selected_text_server, media_path.clone());
                                                     } else {
@@ -333,13 +342,12 @@ fn window_format(
 
                     ui.separator();
 
-                        if let Some(media_server) = web_state.target_media_server.get(&window_id).cloned() {
-                            if let Some(media_path) = web_state.received_medias.remove(&window_id) {
-                                web_state.current_display_type.insert(window_id, MediaDisplayType::Image);
-                                web_state.new_image_arrived.insert(window_id, false);
-                                sim.get_media_from(window_id, media_server, media_path.clone());
-                            }
+                    if let Some(media_server) = web_state.target_media_server.get(&window_id).cloned() {
+                        if let Some(media_path) = web_state.received_medias.remove(&window_id) {
+                            web_state.loading_image.insert(window_id, media_path.clone());
+                            sim.get_media_from(window_id, media_server, media_path.clone());
                         }
+                    }
 
                     ui.separator();
                     ui.heading("Media View");
@@ -347,11 +355,11 @@ fn window_format(
                     let media_view_id = ui.make_persistent_id(format!("media_view_area_{}", window_id));
                     ui.push_id(media_view_id, |ui| {
                         match web_state.current_display_type.get(&window_id).unwrap_or(&MediaDisplayType::None) {
-                            MediaDisplayType::Image => {
+                            MediaDisplayType::Image(media_path) => {
                                 if let Some(Some((texture_id, original_size))) = state.egui_textures.get(&window_id) {
                                     if let Some(Some(_)) = state.handles.get(&window_id) {
-                                        if let Some(arrived)=web_state.new_image_arrived.get(&window_id){
-                                            if *arrived {
+                                        if let Some(arrived)=web_state.loading_image.get(&window_id){
+                                            if trim_into_file_name(media_path)==*arrived{
                                                 let image_scroll_id = ui.make_persistent_id(format!("image_scroll_{}", window_id));
                                                 ui.push_id(image_scroll_id, |ui| {
                                                     egui::ScrollArea::both().show(ui, |ui| {
@@ -536,6 +544,8 @@ fn window_format(
 
                 state.handles.insert(window_id, None);
                 state.egui_textures.insert(window_id, None);
+                web_state.loading_image.remove(&window_id);
+                web_state.currently_selected_media.remove(&window_id);
                 web_state.actual_media_path.remove(&window_id);
                 web_state.media_paths.remove(&window_id);
                 web_state.actual_file_path.remove(&window_id);
@@ -572,6 +582,10 @@ pub struct WebState {
     current_display_type: HashMap<NodeId, MediaDisplayType>,
     last_loaded_path: HashMap<NodeId, String>,
     server_for_current_media: HashMap<NodeId, Option<NodeId>>,
-    new_image_arrived: HashMap<NodeId, bool>,
-    currently_selected_media: HashMap<NodeId, Option<String>>
+    currently_selected_media: HashMap<NodeId, Option<String>>,
+    loading_image: HashMap<NodeId, String>,
+}
+fn trim_into_file_name(actual_path: &String)->String{
+    let retval=actual_path.split('/').last().unwrap_or("").to_string();
+    retval
 }

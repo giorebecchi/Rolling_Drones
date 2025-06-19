@@ -15,6 +15,7 @@ pub enum CommandChat {
     SendTopologyGraph,
     RemoveSender(NodeId),
     AddSender(NodeId, Sender<Packet>), //works the same as drones
+    PdrChanged(NodeId)
 }
 ///The NodeId identifies the client that sent the ChatClientEvent
 #[derive(Debug)]
@@ -160,7 +161,8 @@ pub enum ContentCommands{
     SearchTypeServers,
     SendTopologyGraph,
     AddSender(NodeId, Sender<Packet>),
-    RemoveSender(NodeId)
+    RemoveSender(NodeId),
+    PdrChanged(NodeId)
 }
 pub enum BackGroundFlood{
     Start

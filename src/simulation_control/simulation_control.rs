@@ -770,6 +770,12 @@ impl SimulationController {
         for (_,sender) in self.chat_server.clone(){
             sender.send(ServerCommands::PdrChanged(id)).unwrap();
         }
+        for (_,sender) in self.web_client.clone(){
+            sender.send(ContentCommands::PdrChanged(id)).unwrap()
+        }
+        for (_, sender) in self.client.clone(){
+            sender.send(CommandChat::PdrChanged(id)).unwrap()
+        }
     }
     fn find_sender(&self, id: NodeId) -> Option<AnySender> {
         if let Some(drone_sender) = self.drones.get(&id) {

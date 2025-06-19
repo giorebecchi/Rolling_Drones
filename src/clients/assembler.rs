@@ -98,6 +98,10 @@ impl NodeData{
             dropped: 0
         }
     }
+    pub fn reset(&mut self){
+        self.forwarded = 0;
+        self.dropped = 0;
+    }
 
     pub fn reliability(&self)-> f32{
         if (self.dropped + self.forwarded) == 0{
