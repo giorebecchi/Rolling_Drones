@@ -43,7 +43,7 @@ pub enum NodeType{
 
 
 
-#[derive(Default,Debug,Clone)]
+#[derive(Default,Debug,Clone,PartialEq)]
 pub struct NodeConfig{
     pub node_type: NodeType,
     pub id: NodeId,
