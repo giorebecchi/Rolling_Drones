@@ -4,7 +4,7 @@ use std::error::Error;
 use serde::de::DeserializeOwned;
 use wg_2024::network::SourceRoutingHeader;
 use wg_2024::packet::PacketType::MsgFragment;
-use crate::common_things::common::{ChatRequest, ChatResponse, MediaServer, MessageChat, ServerType, TextServer, WebBrowserCommands};
+use crate::common_data::common::{ChatRequest, ChatResponse, MediaServer, MessageChat, ServerType, TextServer, WebBrowserCommands};
 
 pub trait Fragmentation{
     fn serialize_data(&self, routing_header:SourceRoutingHeader, session_id : u64)->Result<Vec<Packet>, Box<dyn Error>> where Self:Serialize{

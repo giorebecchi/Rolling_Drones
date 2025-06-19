@@ -1,8 +1,8 @@
 use base64::engine::general_purpose::STANDARD as BASE64;
 use base64::Engine;
 use crate::servers::utilities_max::*;
-use crate::common_things::common::*;
-use crate::common_things::common::ServerType;
+use crate::common_data::common::*;
+use crate::common_data::common::ServerType;
 use crossbeam_channel::{select, select_biased, Receiver, Sender};
 use std::collections::{BinaryHeap, HashMap};
 use std::{fs, io};

@@ -1,4 +1,4 @@
-use crate::common_things::common::{BackGroundFlood, ContentRequest};
+use crate::common_data::common::{BackGroundFlood, ContentRequest};
 use std::collections::{HashMap, HashSet};
 use std::fs;
 use base64::Engine;
@@ -9,31 +9,31 @@ use wg_2024::config::Client;
 use wg_2024::network::{NodeId, SourceRoutingHeader};
 use wg_2024::packet::{FloodRequest, FloodResponse, Fragment, NackType, NodeType, Packet, PacketType};
 use crate::clients::assembler::{Fragmentation, NodeData};
-use crate::common_things::common::{ChatRequest, ContentCommands, FileMetaData, MediaId, MediaServer, ServerType, TextServer, WebBrowserCommands, WebBrowserEvents};
+use crate::common_data::common::{ChatRequest, ContentCommands, FileMetaData, MediaId, MediaServer, ServerType, TextServer, WebBrowserCommands, WebBrowserEvents};
 use base64::engine::general_purpose::STANDARD as BASE64;
 use petgraph::prelude::UnGraphMap;
 
 pub struct WebBrowser {
-    pub config: Client,
-    pub receiver_msg: Receiver<Packet>,
-    pub receiver_commands: Receiver<ContentCommands>, //command received by the simulation control
-    pub send_packets: HashMap<NodeId, Sender<Packet>>,
+    pub config: Client, //id and direct neighbours
+    pub receiver_msg: Receiver<Packet>, 
+    pub receiver_commands: Receiver<ContentCommands>, //commands received by the simulation control
+    pub send_packets: HashMap<NodeId, Sender<Packet>>, //hashmap of the direct neighbors with their senders
     pub servers: Vec<NodeId>,//to store id server once the flood is done
-    pub visited_nodes: HashSet<(u64, NodeId)>,
+    pub visited_nodes: HashSet<(u64, NodeId)>, //save node already visited during the flooding
     pub flood: Vec<FloodResponse> ,//to store all the flood responses found
-    pub unique_flood_id: u64,
+    pub unique_flood_id: u64, 
     pub session_id_packet: u64,
-    pub incoming_fragments: HashMap<(u64, NodeId ), HashMap<u64, Fragment>>,
-    pub fragments_sent: HashMap<u64, HashMap<u64, Fragment>> ,//used for sending the correct fragment if was lost in the process, key session id packet, key 2 fragment index
-    pub problematic_nodes: Vec<NodeId>,
-    pub send_event: Sender<WebBrowserEvents>,
+    pub incoming_fragments: HashMap<(u64, NodeId ), HashMap<u64, Fragment>>, //used to save all the fragments from same sender with same session id, used in handle fragments (session id, source id), fragment index + fragment
+    pub fragments_sent: HashMap<u64, HashMap<u64, Fragment>>, //used for re-sending the correct fragment if one was lost in the process, key session id packet, key 2 fragment index
+    pub problematic_nodes: Vec<NodeId>, //used when receiving an error in routing, to avoid the node in a next path
+    pub send_event: Sender<WebBrowserEvents>, //to send information to the simulation control
     pub media_servers: Vec<NodeId>,
     pub text_servers: Vec<NodeId>,
-    pub clients: Vec<NodeId>,
-    pub packet_sent: HashMap<u64, (NodeId, Vec<Packet>)>,
-    pub topology_graph: UnGraphMap<NodeId, u32>,
-    pub node_data: HashMap<NodeId, NodeData>,
-    pub rcv_flood: Receiver<BackGroundFlood>
+    pub clients: Vec<NodeId>, //saved during flooding, to avoid them in finding a path
+    pub packet_sent: HashMap<u64, (NodeId, Vec<Packet>)>, //the key will be the session id of the packets sent, node id of the destination and all the packets to send
+    pub topology_graph: UnGraphMap<NodeId, u32>, //save graph
+    pub node_data: HashMap<NodeId, NodeData>, //used in the case of the Dropped error, for every node appearing in the graph
+    pub rcv_flood: Receiver<BackGroundFlood> 
 }
 
 impl WebBrowser {
@@ -73,7 +73,7 @@ impl WebBrowser {
             select_biased! {
                  recv(self.receiver_msg) -> message =>{
                     if let Ok(message) = message {
-                        self.handle_messages(message)
+                        self.handle_messages(message);
                     }
                 }
                 recv(self.rcv_flood) -> flood => {
@@ -139,7 +139,7 @@ impl WebBrowser {
         }
     }
 
-    fn handle_messages(& mut self, message: Packet){
+    fn handle_messages(& mut self, message: Packet){ //handle incoming messages from server
         match message.pack_type{
             PacketType::MsgFragment(_) => {self.handle_fragments(message)},
             PacketType::Ack(_) => {self.handle_acks(message)},
@@ -148,10 +148,8 @@ impl WebBrowser {
             PacketType::FloodRequest(_) => {self.handle_flood_request(message)},
         }
     }
-
-
-
-    fn search_type_servers(& mut self) {
+    
+    fn search_type_servers(& mut self) { //needed to find the different types of servers and send them to simulation control
         for server in self.servers.clone() {
             self.ask_type(server);
         }
@@ -172,14 +170,15 @@ impl WebBrowser {
 
         match self.find_route(&id_server) {
             Ok(route) => {
-                let packets_to_send = ChatRequest::create_packet(&fragments, route.clone(), session_id);
-                self.packet_sent.insert(session_id, (id_server, packets_to_send.clone()));
+                let packets_to_send = ChatRequest::create_packet(&fragments, route.clone(), session_id); //create packet knowing what path they need to take
+                self.packet_sent.insert(session_id, (id_server, packets_to_send.clone())); //saving packets with their session id and their destination,
+                // useful if we need to resend a packet lost, in this way we can find the destination id (id_server) based on the session id of the packets
                 
                 for packet in packets_to_send {
                     if let PacketType::MsgFragment(fragment) = packet.pack_type.clone(){
                         if let Err(_) = self.send_event.send(WebBrowserEvents::InfoRequest(self.config.id, ContentRequest::AskTypes(fragment.total_n_fragments), packet.session_id )){
                             println!("web browser failed to notify SC about ask types request")
-                        }
+                        } //notify SC of the request
                     }
                     if let Some(next_hop) = route.get(1) {
                         if let Err(_) = self.send_messages(next_hop, packet){
@@ -193,7 +192,7 @@ impl WebBrowser {
     }
 
     fn get_list(& mut self, id_server: NodeId) {
-        if !self.servers.contains(&id_server) {
+        if !self.servers.contains(&id_server) { //check if the server was actually found
             return;
         }
 
@@ -329,25 +328,25 @@ impl WebBrowser {
 
     }
 
-    // incoming messages
+    // incoming messages from servers
     fn handle_fragments(& mut self, packet: Packet){
         let src_id = packet.routing_header.hops.first().unwrap();
-        let check = (packet.session_id, *src_id);
+        let check = (packet.session_id, *src_id); //check to find all the fragments coming from the same source id (sender) with same session id
 
         let ack = self.create_ack(&packet);
         let prev = packet.routing_header.hops[packet.routing_header.hop_index-1];
-        if let Err(_) = self.send_messages(&prev, ack){
+        if let Err(_) = self.send_messages(&prev, ack){ //send an ack whenever a fragment was correctly received
             self.handle_fragments(packet.clone());
         }
 
         if let PacketType::MsgFragment(fragment) = packet.pack_type{
-            if !self.incoming_fragments.contains_key(&check){
+            if !self.incoming_fragments.contains_key(&check){ //if a fragment with the pair check was not yet received, save them as a new element in incoming_fragments
                 self.incoming_fragments.insert(check, HashMap::new());
             }
             self.incoming_fragments
                 .get_mut(&check)
                 .unwrap()
-                .insert(fragment.fragment_index, fragment.clone());
+                .insert(fragment.fragment_index, fragment.clone()); //if it was received, update the hashmap
 
             if let Some(fragments) = self.incoming_fragments.get(&check){
                 if fragments.len() as u64 == fragment.total_n_fragments{
@@ -429,20 +428,20 @@ impl WebBrowser {
             match nack.nack_type{
                 NackType::Dropped => {
                     let failing_node = packet.routing_header.hops[0];
-                    let data = self.node_data.get_mut(&failing_node).unwrap();
-                    data.dropped += 1;
+                    let data = self.node_data.get_mut(&failing_node).unwrap(); //finding node in the graph to modify the struct data
+                    data.dropped += 1; //used to compute reliability of the path
                     
                     self.resend_fragment(packet)
                 }
 
                 NackType::ErrorInRouting(id) => {
                     if !self.problematic_nodes.contains(&id){
-                        self.problematic_nodes.push(id);
+                        self.problematic_nodes.push(id); //field to save nodes sending error in routing so that we can avoid them during the decision of the best path
                     }
 
                     let dest= id;
                     let src = packet.routing_header.hops[0];
-                    self.topology_graph.remove_edge(src, dest);
+                    self.topology_graph.remove_edge(src, dest); //remove the edge between the drones so that the graph can be updated
                     
                     self.resend_fragment(packet)
                 }
@@ -459,20 +458,20 @@ impl WebBrowser {
                 session_fragments
             }else {
                 return;
-            };
+            }; //get fragments from the same session id
             
             let fragment_lost = if let Some(fragment_lost) = session_fragments.get(&nack.fragment_index){
                 fragment_lost.clone()
             }else {
                 return;
-            };
+            }; //find fragment lost based on the fragment index
 
             let destination_id = match self.packet_sent.get(&packet.session_id){
                 Some((destination_id, _)) => destination_id.clone(),
                 None => {
                     return;
                 }
-            };
+            }; //find the destination of the lost packet
 
             match self.find_route(&destination_id){
                 Ok(route) => {
@@ -481,7 +480,7 @@ impl WebBrowser {
                         SourceRoutingHeader::new(route.clone(), 0),
                         packet.session_id,
                         fragment_lost
-                    );
+                    ); //create a new packet with the new route, but same content and session id
 
                     if let Some(next_hop) = route.get(1){
                         if let Err(_) = self.send_messages(next_hop, packet_to_send){
@@ -499,9 +498,9 @@ impl WebBrowser {
         if let PacketType::Ack(ack) = packet.pack_type{
             self.problematic_nodes.clear(); //if successful clear the problematic nodes
 
-            self.fragments_sent.retain(|index, _| *index != ack.fragment_index); //this filters the hashmap, removing the ones with that index
+            self.fragments_sent.retain(|index, _| *index != ack.fragment_index); //this filters the hashmap, removing the ones with that index that were received
             let data = self.node_data.get_mut(&packet.routing_header.hops.iter().rev().nth(1).unwrap()).unwrap();
-            data.forwarded += 1;
+            data.forwarded += 1; //update the forwarded field to then compute reliability
         }
     }
 
@@ -520,7 +519,7 @@ impl WebBrowser {
             }
         );
 
-        for (_, sender) in &self.send_packets { //directly using the sender in the loop
+        for (_, sender) in &self.send_packets { //send the flood request to all the direct neighbors
             if let Err(_) = sender.send(flood_request.clone()) {
                 println!("Error sending the flood request")
             }
@@ -532,14 +531,14 @@ impl WebBrowser {
             if !flood_response.path_trace.is_empty(){
 
                 let path = &flood_response.path_trace;
-                for pair in path.windows(2) {
+                for pair in path.windows(2) { //for each pair in the flood responses create an edge
                     let (src, _) = pair[0];
                     let (dst, _) = pair[1];
 
-                    self.node_data.insert(src, NodeData::new());
+                    self.node_data.insert(src, NodeData::new()); //initialize "data" used for computation of reliability
                     self.node_data.insert(dst, NodeData::new());
 
-                    self.topology_graph.add_edge(src.clone(), dst.clone(), 1); // use 1 as weight (hop), could be modified for the nack
+                    self.topology_graph.add_edge(src.clone(), dst.clone(), 1); //initially all edges weight 1
                 }
                 
                 let dest = if let Some(dest) = flood_response.path_trace.get(0){
@@ -548,14 +547,14 @@ impl WebBrowser {
                     return;
                 };
                 
-                if dest != (self.config.id, NodeType::Client) {
+                if dest != (self.config.id, NodeType::Client) { //if the flood response's destination is not the client it forwards it 
                     self.send_flooding_packet(packet);
                     return;
                 }
                 
                 for (node_id, node_type) in &flood_response.path_trace{
                     if *node_type == NodeType::Server && !self.servers.contains(&node_id){
-                        self.servers.push(*node_id); //no duplicates
+                        self.servers.push(*node_id);
                     }
                     if *node_type == NodeType::Client && !self.clients.contains(&node_id){
                         self.clients.push(*node_id);
@@ -571,22 +570,23 @@ impl WebBrowser {
         if let PacketType::FloodRequest(mut flood_request) = packet.clone().pack_type {
             //check if the pair (flood_id, initiator id) has already been received -> self.visited_nodes
             if self.visited_nodes.contains(&(flood_request.flood_id, flood_request.initiator_id)){
-                flood_request.path_trace.push((self.config.id.clone(), NodeType::Client));
-                self.send_flooding_packet( flood_request.generate_response(packet.session_id) );
+                flood_request.path_trace.push((self.config.id.clone(), NodeType::Client)); //if flood request received, push client into path trace
+                self.send_flooding_packet( flood_request.generate_response(packet.session_id) ); //and send back a flood response
             }else {
-                flood_request.path_trace.push((self.config.id.clone(), NodeType::Client));
-                self.visited_nodes.insert((flood_request.flood_id, flood_request.initiator_id));
+                flood_request.path_trace.push((self.config.id.clone(), NodeType::Client)); //push client into path trace
+                self.visited_nodes.insert((flood_request.flood_id, flood_request.initiator_id)); //insert it into the visited nodes
 
-                if self.send_packets.len() == 1{
-                    self.send_flooding_packet( flood_request.generate_response(packet.session_id) );
+                if self.send_packets.len() == 1{ //if the client has only one neighbor
+                    self.send_flooding_packet( flood_request.generate_response(packet.session_id)); //send back a flood response
                 }else {
+                    //if more than one neighbor, create a new flood request and sends it to all the neighbors, expect the one sending the initial flood request
                     let new_packet = Packet::new_flood_request(packet.routing_header, packet.session_id, flood_request.clone()); //create the packet of the flood request that needs to be forwarded
+                    
                     for (neighbour, sender) in &self.send_packets {
-                        if let Some(sender_flood_req) = flood_request.path_trace.iter().rev().nth(1) {
+                        if let Some(sender_flood_req) = flood_request.path_trace.iter().rev().nth(1) { //previous sender
                             if *neighbour != sender_flood_req.0 {
                                 sender.send(new_packet.clone()).unwrap()
                             }
-
                         }
                     }
                 }
@@ -612,18 +612,18 @@ impl WebBrowser {
             let dest = edge.1;
             if self.problematic_nodes.contains(&dest) 
                 || self.clients.contains(&dest)
-                || (self.servers.contains(&dest) && &dest != destination_id){
+                || (self.servers.contains(&dest) && &dest != destination_id){ //completely avoid clients, problematic nodes from error in routing and servers (not the destination one)
                 1_000
             }else { 
-                let reliability = self.node_data.get(&dest).map(|data| data.reliability()).unwrap_or(1.0);
+                let reliability = self.node_data.get(&dest).map(|data| data.reliability()).unwrap_or(1.0); //gets the reliability to arrive to destination
                 if reliability <= 0.0 {
                     1_000
                 } else {
-                    ((1.0 / reliability).ceil() as u32).min(1_000)
+                    ((1.0 / reliability).ceil() as u32).min(1_000) //cap to 1000
                 } 
             }
             //ceil returns integer closest to result
-            //this transforms the reliability into a weight. when we have higher reliability, we need a smaller cost
+            //this transforms the reliability into a weight. when we have higher reliability, we need a smaller cost (1.0/reliability)
         });
 
         if let Some(_) = result.get(destination_id) {
@@ -632,7 +632,7 @@ impl WebBrowser {
 
             while current != source {
                 let mut found = false;
-                for edge in self.topology_graph.edges_directed(current.clone(), Direction::Incoming) {
+                for edge in self.topology_graph.edges_directed(current.clone(), Direction::Incoming) { //go backwords in path to check incoming edges
                     let prev = edge.0;
 
                     if let (Some(&prev_cost), Some(&curr_cost)) = (result.get(&prev), result.get(&current)) {
@@ -648,7 +648,7 @@ impl WebBrowser {
                             }
                         };
 
-                        if prev_cost + weight == curr_cost {
+                        if prev_cost + weight == curr_cost { //this condition ensures that the edge was used in algorithm, to see if the edge was the one used or not
                             path.push(prev.clone());
                             current = prev;
                             found = true;
@@ -676,7 +676,7 @@ impl WebBrowser {
             }
             Ok(())
         }else {
-            self.topology_graph.remove_edge(self.config.id, *destination_id);
+            self.topology_graph.remove_edge(self.config.id, *destination_id); //if the sender was not found (remove direct neighbor) we erase the edge.
             Err(())
         } 
     }
@@ -699,12 +699,12 @@ impl WebBrowser {
     fn save_file(& self, path_folder: &str, fmd: FileMetaData)-> Result<String, String>{
         let full_path = format!("{}/{}.{}", path_folder, fmd.title, fmd.extension);
 
-        let decode = match BASE64.decode(fmd.content){
+        let decode = match BASE64.decode(fmd.content){ //decode the content of the file
             Ok(decode) => decode,
             Err(_) => return Err("Failed to decode the file".to_string()),
         };
 
-        fs::write(&full_path, decode)
+        fs::write(&full_path, decode) //write the decoded file to the path (into SC folder)
             .map_err(|e| format!("Failed to save the file: {}", e))?;
         
         Ok(full_path)

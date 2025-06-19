@@ -9,7 +9,7 @@ use std::time::{Duration, Instant};
 
 
 use serde::{Deserialize, Serialize};
-use crate::common_things::common::{ChatRequest, ChatResponse, MediaServer, TextServer, WebBrowserCommands};
+use crate::common_data::common::{ChatRequest, ChatResponse, MediaServer, TextServer, WebBrowserCommands};
 
 
 pub fn serialize<T>(response: &T) -> Box<[([u8; 128], u8)]>

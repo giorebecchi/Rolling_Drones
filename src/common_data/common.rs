@@ -12,7 +12,6 @@ pub enum CommandChat {
     SearchChatServers,
     RegisterClient(NodeId),//node id server
     SendMessage(NodeId, NodeId, String),//node id del client a cui mandare la string, node id server da cui passare
-    EndChat(NodeId),//node id del server
     SendTopologyGraph,
     RemoveSender(NodeId),
     AddSender(NodeId, Sender<Packet>), //works the same as drones
@@ -28,20 +27,11 @@ pub enum ChatClientEvent{
     InfoRequest(NodeId, RequestEvent, u64),
     Graph(NodeId, UnGraphMap<NodeId, u32>)
 }
-#[derive(Debug,Clone)]
-pub enum ChatEvent{
-    ClientList(u64),
-    IncomingMessage(u64),
-    RegisteredSuccess(u64),
-    ChatServers(u64),
-    ClientType(u64)
-}
 
 #[derive(Debug)]
 pub enum RequestEvent{
     AskType(u64),
     Register(u64),
-    GetList(u64),
     SendMessage(u64),
 }
 
@@ -50,12 +40,6 @@ pub enum ServerCommands{
     AddSender(NodeId, Sender<Packet>),
     RemoveSender(NodeId)
 }
-
-//pub enum ServerEvent{
-//    Graph(NodeId, Graph<(NodeId, wg_2024::packet::NodeType), f64, petgraph::Directed>),
-//    WebPacketInfo(NodeId, MyNodeType, ContentType, u64), //(id server, server_type (ChatServer, TextServer,...), type of message, session_id)
-//    ChatPacketInfo(NodeId, MyNodeType, ChatEvent, u64)  //(id server, server_type (ChatServer, TextServer,...), type of message, session_id)
-//}
 
 #[derive(Debug)]
 pub enum ServerEvent{
@@ -166,8 +150,6 @@ pub enum MediaServer{
     SendMedia(FileMetaData) //send correct media to the client who asked
 }
 
-//need to add the simulation control commands
-//possibility:
 #[derive(Debug)]
 pub enum ContentCommands{
     GetTextList(NodeId), //sent to client, client needs to ask text server, node id text server? probably better if automated

@@ -19,7 +19,7 @@ use wg_2024::packet::Packet;
 use wg_2024_rust::drone::RustDrone;
 use crate::clients::chat_client::ChatClient;
 use crate::clients::web_browser::WebBrowser;
-use crate::common_things::common::{BackGroundFlood, ChatClientEvent, CommandChat, ContentCommands, ServerCommands, ServerEvent, WebBrowserEvents};
+use crate::common_data::common::{BackGroundFlood, ChatClientEvent, CommandChat, ContentCommands, ServerCommands, ServerEvent, WebBrowserEvents};
 use crate::gui::login_window::{NodeConfig, NodeType};
 use crate::simulation_control::simulation_control::SimulationController;
 use crate::gui::shared_info_plugin::{NodeCategory, ERROR_VERIFY, SHARED_STATE};

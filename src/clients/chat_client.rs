@@ -7,8 +7,8 @@ use wg_2024::config::{Client};
 use wg_2024::network::{NodeId, SourceRoutingHeader};
 use wg_2024::packet::{FloodRequest, FloodResponse, Fragment, NackType, NodeType, Packet, PacketType};
 use crate::clients::assembler::{Fragmentation, NodeData};
-use crate::common_things::common::{ChatRequest, MessageChat, CommandChat, ChatResponse, ServerType, ChatClientEvent, ClientType, BackGroundFlood, RequestEvent};
-use crate::common_things::common::ChatClientEvent::{ClientList, ClientType as OtherClientType, IncomingMessage, RegisteredSuccess};
+use crate::common_data::common::{ChatRequest, MessageChat, CommandChat, ChatResponse, ServerType, ChatClientEvent, ClientType, BackGroundFlood, RequestEvent};
+use crate::common_data::common::ChatClientEvent::{ClientList, ClientType as OtherClientType, IncomingMessage, RegisteredSuccess};
 
 pub struct ChatClient {
     pub config: Client,
@@ -117,8 +117,6 @@ impl ChatClient {
             CommandChat::RemoveSender(node_id) => {
                 self.remove_sender(node_id);
             }
-            
-            _ => {}
         }
     }
     fn send_topology_graph(&self){
@@ -416,7 +414,6 @@ impl ChatClient {
             self.fragments_sent.retain(|index, _| *index != ack.fragment_index); //this filters the hashmap, removing the ones with that index
             let data = self.node_data.get_mut(&packet.routing_header.hops.iter().rev().nth(1).unwrap()).unwrap();
             data.forwarded += 1;
-
         }
     }
 

@@ -11,7 +11,7 @@ use crate::gui::double_chain::spawn_double_chain;
 use crate::gui::butterfly::spawn_butterfly;
 use crate::simulation_control::simulation_control::*;
 use wg_2024::packet::{Ack, FloodRequest, FloodResponse, Fragment, Nack};
-use crate::common_things::common::ClientType;
+use crate::common_data::common::ClientType;
 use bevy_framepace::{FramepacePlugin, FramepaceSettings, Limiter};
 use std::sync::{Arc};
 use egui::{Color32, RichText};
