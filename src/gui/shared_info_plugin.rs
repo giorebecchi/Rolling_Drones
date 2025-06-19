@@ -77,6 +77,7 @@ pub struct TopologyError{
     pub connection_error: (bool, Result<(),String>),
     pub isolated_node: (bool, Result<(),String>),
     pub wrong_pdr: (bool, Result<(),String>),
+    pub generic_misconfiguration: (bool, Result<(), String>),
     pub is_updated: bool,
 
 }
@@ -86,6 +87,7 @@ impl Default for TopologyError{
             connection_error: (false, Ok(())),
             isolated_node: (false, Ok(())),
             wrong_pdr: (false, Ok(())),
+            generic_misconfiguration: (false, Ok(())),
             is_updated: false
         }
     }
@@ -95,6 +97,7 @@ pub struct ErrorConfig{
     pub error_pdr: String,
     pub error_isolated: String,
     pub error_connection: String,
+    pub error_generic: String,
     updated: bool,
     pub detected: bool,
 }
@@ -106,6 +109,7 @@ fn sync_topology_error(
             let mut update1=false;
             let mut update2=false;
             let mut update3=false;
+            let mut update4 = false;
             let mut error=false;
             possible_error.error_connection=match state.connection_error.clone().1{
                 Ok(())=>{
@@ -137,7 +141,17 @@ fn sync_topology_error(
                     err
                 },
             };
-            possible_error.updated=update1&&update2&&update3;
+            possible_error.error_generic=match state.generic_misconfiguration.clone().1{
+                Ok(())=>{
+                    update4=true;
+                    String::new()
+                },
+                Err(err)=>{
+                    error=true;
+                    err
+                }
+            };
+            possible_error.updated=update1&&update2&&update3&&update4;
             possible_error.detected=error;
 
 

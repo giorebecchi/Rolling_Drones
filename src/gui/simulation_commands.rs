@@ -320,10 +320,7 @@ fn simulation_commands_window(
                                                 if pdr==1.00 {
                                                     let simulated = simulate_network_change(&nodes.0, |nodes| {
                                                         if let Some(index) = nodes.iter().position(|node| node.id == id) {
-                                                            nodes.remove(index);
-                                                        }
-                                                        for node in nodes.iter_mut() {
-                                                            node.connected_node_ids.retain(|&conn_id| conn_id != id);
+                                                            nodes[index].pdr=1.00;
                                                         }
                                                     });
                                                     match would_break_connectivity(&simulated) {
