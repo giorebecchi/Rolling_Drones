@@ -276,12 +276,23 @@ fn window_format(
                                     for (idx, media_path) in paths.iter().enumerate() {
                                         let media_button_id = ui.make_persistent_id(format!("media_button_{}_{}", window_id, idx));
                                         ui.push_id(media_button_id, |ui| {
-                                            if ui.button(format!("{}", media_path)).clicked() {
+                                            let is_currently_selected = web_state.currently_selected_media
+                                                .get(&window_id)
+                                                .and_then(|selected| selected.as_ref())
+                                                == Some(media_path);
+                                            let button = egui::Button::new(format!("{}",media_path));
+                                            let response = if is_currently_selected {
+                                                ui.add_enabled(false, button)
+                                            }else{
+                                                ui.add(button)
+                                            };
+                                            if response.clicked(){
                                                 if let Some(selected_text_server) = web_state.selected_text_server.get(&window_id).cloned().flatten() {
                                                     if let Some(_) = state.handles.get(&window_id) {
                                                         should_clear_image = true
                                                     }
 
+                                                    web_state.currently_selected_media.insert(window_id, Some(media_path.clone()));
                                                     web_state.actual_media_path.remove(&window_id);
                                                     web_state.media_paths.remove(&window_id);
                                                     web_state.actual_file_path.remove(&window_id);
@@ -562,4 +573,5 @@ pub struct WebState {
     last_loaded_path: HashMap<NodeId, String>,
     server_for_current_media: HashMap<NodeId, Option<NodeId>>,
     new_image_arrived: HashMap<NodeId, bool>,
+    currently_selected_media: HashMap<NodeId, Option<String>>
 }

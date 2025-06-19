@@ -20,8 +20,8 @@ impl Plugin for SimulationCommandsPlugin {
 #[derive(Resource, Default)]
 struct SimulationCommandsState {
     selected_crash_drone: Option<NodeId>,
-    selected_add_target: Option<NodeId>,
-    selected_add_neighbor: Option<NodeId>,
+    selected_add_target: Option<NodeConfig>,
+    selected_add_neighbor: Option<NodeConfig>,
     selected_remove_target: Option<NodeId>,
     selected_remove_neighbor: Option<NodeId>,
     selected_pdr_drone: Option<NodeId>,
@@ -116,7 +116,7 @@ fn simulation_commands_window(
                         ui.label("➕ Add Connection");
                         ui.horizontal(|ui| {
                             let current_selected_add_node = match sim_commands.selected_add_neighbor.clone() {
-                                Some(id) => format!("{}", id),
+                                Some(add_neigh_node) => format!("{}", add_neigh_node.id),
                                 None => "Select Node".to_string()
                             };
                             egui::ComboBox::from_id_salt("node_add_select")
@@ -125,17 +125,26 @@ fn simulation_commands_window(
                                     let nodes = nodes.0.clone();
 
                                     for node in nodes {
-                                        if let Some(id) = sim_commands.selected_add_target {
-                                            if id != node.id {
-                                                let selected = sim_commands.selected_add_neighbor == Some(node.id);
-                                                if ui.selectable_label(selected, format!("{:?} {}", node.node_type, node.id)).clicked() {
-                                                    sim_commands.selected_add_neighbor = Some(node.id);
+                                        if let Some(add_target_node) = sim_commands.selected_add_target.clone() {
+                                            if add_target_node.id != node.id {
+                                                if add_target_node.node_type != NodeType::Drone {
+                                                    if node.node_type == NodeType::Drone {
+                                                        let selected = sim_commands.selected_add_neighbor == Some(node.clone());
+                                                        if ui.selectable_label(selected, format!("{:?} {}", node.node_type, node.id)).clicked() {
+                                                            sim_commands.selected_add_neighbor = Some(node);
+                                                        }
+                                                    }
+                                                }else{
+                                                    let selected = sim_commands.selected_add_neighbor == Some(node.clone());
+                                                    if ui.selectable_label(selected, format!("{:?} {}", node.node_type, node.id)).clicked() {
+                                                        sim_commands.selected_add_neighbor = Some(node);
+                                                    }
                                                 }
                                             }
                                         } else {
-                                            let selected = sim_commands.selected_add_neighbor == Some(node.id);
+                                            let selected = sim_commands.selected_add_neighbor == Some(node.clone());
                                             if ui.selectable_label(selected, format!("{:?} {}", node.node_type, node.id)).clicked() {
-                                                sim_commands.selected_add_neighbor = Some(node.id);
+                                                sim_commands.selected_add_neighbor = Some(node);
                                             }
                                         }
                                     }
@@ -144,7 +153,7 @@ fn simulation_commands_window(
 
                         ui.horizontal(|ui| {
                             let current_selected_add_node2 = match sim_commands.selected_add_target.clone() {
-                                Some(id) => format!("{}", id),
+                                Some(add_target_node) => format!("{}", add_target_node.id),
                                 None => "Select Node".to_string()
                             };
                             egui::ComboBox::from_id_salt("node_add_2_select")
@@ -153,29 +162,38 @@ fn simulation_commands_window(
                                     let nodes = nodes.0.clone();
 
                                     for node in nodes {
-                                        if let Some(id) = sim_commands.selected_add_neighbor {
-                                            if id != node.id {
-                                                let selected = sim_commands.selected_add_target == Some(node.id);
-                                                if ui.selectable_label(selected, format!("{:?} {}", node.node_type, node.id)).clicked() {
-                                                    sim_commands.selected_add_target = Some(node.id);
+                                        if let Some(add_neigh_node) = sim_commands.selected_add_neighbor.clone() {
+                                            if add_neigh_node.id != node.id {
+                                                if add_neigh_node.node_type != NodeType::Drone {
+                                                    if node.node_type == NodeType::Drone {
+                                                        let selected = sim_commands.selected_add_target == Some(node.clone());
+                                                        if ui.selectable_label(selected, format!("{:?} {}", node.node_type, node.id)).clicked() {
+                                                            sim_commands.selected_add_target = Some(node);
+                                                        }
+                                                    }
+                                                }else{
+                                                    let selected = sim_commands.selected_add_target == Some(node.clone());
+                                                    if ui.selectable_label(selected, format!("{:?} {}", node.node_type, node.id)).clicked() {
+                                                        sim_commands.selected_add_target = Some(node);
+                                                    }
                                                 }
                                             }
                                         } else {
-                                            let selected = sim_commands.selected_add_target == Some(node.id);
+                                            let selected = sim_commands.selected_add_target == Some(node.clone());
                                             if ui.selectable_label(selected, format!("{:?} {}", node.node_type, node.id)).clicked() {
-                                                sim_commands.selected_add_target = Some(node.id);
+                                                sim_commands.selected_add_target = Some(node);
                                             }
                                         }
                                     }
                                 });
 
                             if ui.button("Add Connection").clicked() {
-                                if let (Some(from_id), Some(to_id)) =
-                                    (sim_commands.selected_add_neighbor, sim_commands.selected_add_target) {
-                                    sim.add_sender(to_id, from_id);
+                                if let (Some(from_node), Some(to_node)) =
+                                    (sim_commands.selected_add_neighbor.clone(), sim_commands.selected_add_target.clone()) {
+                                    sim.add_sender(to_node.id, from_node.id);
                                     sim.initiate_flood();
 
-                                    connections.add_connection(from_id, to_id);
+                                    connections.add_connection(from_node.id, to_node.id);
 
                                     sim_commands.selected_add_target = None;
                                     sim_commands.selected_add_neighbor = None;
