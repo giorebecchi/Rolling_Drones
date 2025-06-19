@@ -234,18 +234,43 @@ fn window_format(
                         egui::ComboBox::from_id_salt(combo_id)
                             .selected_text(current_server_text)
                             .show_ui(ui, |ui| {
+
                                 let servers = web_state.text_servers.get(&window_id).cloned();
                                 if let Some(text_servers) = servers {
                                     for text_server in text_servers {
                                         let selectable_id = ui.make_persistent_id(format!("text_server_{}_{}", window_id, text_server));
                                         ui.push_id(selectable_id, |ui| {
-                                            let selected = web_state.selected_text_server.get(&window_id) == Some(&Some(text_server));
-                                            if ui.selectable_label(selected, format!("Text_Server: {}", text_server)).clicked() {
-                                                if web_state.selected_text_server.get(&window_id) == Some(&Some(text_server)) {
-                                                    web_state.selected_text_server.insert(window_id, None);
-                                                } else {
-                                                    web_state.selected_text_server.insert(window_id, Some(text_server));
+                                            let is_selected =
+                                                web_state.selected_text_server.get(&window_id) == Some(&Some(text_server));
+
+                                            if ui.selectable_label(is_selected, format!("Text_Server: {}", text_server)).clicked() {
+
+                                                let new_sel = if is_selected { None } else { Some(text_server) };
+
+                                                let switching =
+                                                    web_state.selected_text_server.get(&window_id) != Some(&new_sel);
+
+                                                if switching {
+                                                    if let Some(Some(tex)) = state.handles.get(&window_id) {
+                                                        images_to_remove.push(tex.clone());
+                                                    }
+                                                    state.handles.insert(window_id, None);
+                                                    state.egui_textures.insert(window_id, None);
+
+                                                    web_state.loading_image.remove(&window_id);
+                                                    web_state.currently_selected_media.remove(&window_id);
+                                                    web_state.actual_media_path.remove(&window_id);
+                                                    web_state.media_paths.remove(&window_id);
+                                                    web_state.actual_file_path.remove(&window_id);
+                                                    web_state.received_medias.remove(&window_id);
+                                                    web_state.current_display_type.insert(window_id, MediaDisplayType::None);
+                                                    web_state.last_loaded_path.remove(&window_id);
+                                                    web_state.server_for_current_media.remove(&window_id);
+
+                                                    text_cache.clear(window_id);
                                                 }
+
+                                                web_state.selected_text_server.insert(window_id, new_sel);
                                             }
                                         });
                                     }
