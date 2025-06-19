@@ -23,7 +23,7 @@ use crate::common_things::common::{BackGroundFlood, ChatClientEvent, CommandChat
 use crate::gui::login_window::{NodeConfig, NodeType};
 use crate::simulation_control::simulation_control::SimulationController;
 use crate::gui::shared_info_plugin::{NodeCategory, ERROR_VERIFY, SHARED_STATE};
-use crate::network_initializer::connection_validity::{validate_drone_pdr, validate_duplex_connections, would_break_connectivity};
+use crate::network_initializer::connection_validity::{validate_drone_pdr, validate_duplex_connections, validate_generic_configuration, would_break_connectivity};
 use crate::servers::chat_server_fillo::Server;
 use crate::servers::text_server_fillo::Server as TextServerBaia;
 use crate::servers::media_server_fillo::Server as MediaServerBaia;
@@ -164,11 +164,13 @@ pub fn start_simulation(
     }
     let isolated_node=would_break_connectivity(&convert_to_config(config.clone(), nodes.clone()));
     let wrong_pdr=validate_drone_pdr(&convert_to_config(config.clone(), nodes.clone()));
-    let connection_error=validate_duplex_connections(&convert_to_config(config, nodes.clone()));
+    let connection_error=validate_duplex_connections(&convert_to_config(config.clone(), nodes.clone()));
+    let generic_misconfiguration= validate_generic_configuration(&convert_to_config(config, nodes.clone()));
     if let Ok(mut state) = ERROR_VERIFY.write(){
         state.connection_error=(false,connection_error.clone());
         state.wrong_pdr=(false, wrong_pdr.clone());
         state.isolated_node=(false, isolated_node.clone());
+        state.generic_misconfiguration=(false, generic_misconfiguration);
         state.is_updated=true;
     }
 
