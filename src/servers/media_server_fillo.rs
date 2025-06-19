@@ -1,5 +1,4 @@
 #![allow(dead_code)]
-use std::cmp::Ordering;
 use base64::engine::general_purpose::STANDARD as BASE64;
 use std::collections::{BinaryHeap, HashMap, HashSet};
 use std::fmt::Debug;
@@ -111,6 +110,9 @@ impl Server{
                             ServerCommands::RemoveSender(id)=>{
                                 self.remove_sender(id);
                             }
+                            ServerCommands::PdrChanged(id)=>{
+                                self.reset_drone_stats(id);
+                            }
                         }
                     }
                 }
@@ -150,6 +152,26 @@ impl Server{
             }
         }
     }
+
+    fn reset_drone_stats(&mut self, id: NodeId){
+        if let Some(index) = self.find_node(id, NodeType::Drone){
+            if self.stats.contains_key(&index){
+                self.stats.insert(index,Drops{dropped: 0, forwarded: 1});
+            }
+            let mut edges = Vec::new();
+            for edge_idx in self.neigh_map.edges_directed(index, Incoming).map(|e| e.id()){
+                edges.push(edge_idx);
+            }
+            for e in edges{
+                if let Some(weight) = self.neigh_map.edge_weight_mut(e) {
+                    *weight=0.0;
+                }
+            }
+        }
+        // println!("graph del media {:?} dopo il reset stats del drone {:?} :  {:?}", self.server_id,id,self.neigh_map);
+        // println!("stats resetted successfully");
+    }
+
     fn handle_packet(&mut self, p:Packet){
         match p.clone().pack_type {
             PacketType::MsgFragment(_) => {/*println!("received packet {p}");*/self.handle_msg_fragment(p)}
@@ -175,7 +197,7 @@ impl Server{
 
 
     fn send_packet(&mut self, p:MediaServer, id:NodeId, nt:NodeType){
-        // println!("flooding : {:?}", self.flooding); //fa vedere tutte le flood response salvaate nel server
+        //println!("flooding : {:?}", self.flooding); //fa vedere tutte le flood response salvate nel server
         //println!("graph del media {:?} : {:?}",self.server_id , self.neigh_map); //fa vedere il grafo (tutti i nodi e tutti gli edges)
         if let Some(srh) = self.best_path_custom_cost(id,nt){
             // println!("srh : {:?}",srh);
@@ -223,6 +245,7 @@ impl Server{
                     }
                     self.forward_packet(i.clone());
                 }
+                // println!("finito di mandare l'immagine richiesta");
                 self.fragments_send.insert(self.session_id.clone(), (id,nt,fragments_send));
                 self.send_event.send(ServerEvent::MediaPacketInfo(self.server_id, MyNodeType::MediaServer, MediaServerEvent::SendingMedia(vec.len() as u64),self.session_id)).unwrap();
                 self.session_id+=1;
@@ -561,16 +584,18 @@ impl Server{
         let mut best_cost: HashMap<NodeIndex, f64> = HashMap::new();
         let mut predecessors: HashMap<NodeIndex, NodeIndex> = HashMap::new();
 
-        heap.push((PathCost(0.0), start, vec![start]));
+        heap.push((PathCostandlen(0.0, 0), start, vec![start]));
         best_cost.insert(start, 0.0);
 
-        while let Some((PathCost(cost), node, path)) = heap.pop() {
+        while let Some((PathCostandlen(cost,_), node, path)) = heap.pop() {
             if node == end {
                 let hops = path.into_iter().map(|idx| self.neigh_map[idx].0).collect();
                 let src =  SourceRoutingHeader{
                     hops,
                     hop_index:0,
                 };
+                // println!("the graph of the media {:?}, in this moment is {:?}", self.server_id, self.neigh_map);
+                // println!("best src found {:?}, with cost of {:?}", src, cost);
                 return Some(src);
             }
 
@@ -593,7 +618,14 @@ impl Server{
                     let mut new_path = path.clone();
                     new_path.push(neighbor);
                     predecessors.insert(neighbor, node);
-                    heap.push((PathCost(new_cost), neighbor, new_path));
+                    // println!(
+                    //     "Pushing path: {:?} → {:?}, cost: {:.4}, length: {}",
+                    //     path.iter().map(|idx| self.neigh_map[*idx].0).collect::<Vec<_>>(),
+                    //     self.neigh_map[neighbor].0,
+                    //     new_cost,
+                    //     path.len() + 1
+                    // );
+                    heap.push((PathCostandlen(new_cost, new_path.len()), neighbor, new_path));
                 }
             }
         }
@@ -632,19 +664,23 @@ fn create_ack(packet: Packet)->Packet{
 }
 
 #[derive(Debug,PartialEq,Clone,Copy)]
-pub struct PathCost(f64);
+pub struct PathCostandlen(f64, usize);
 
-impl Eq for PathCost {}
+impl Eq for PathCostandlen {}
 
-impl PartialOrd for PathCost {
-    fn partial_cmp(&self, other: &Self) -> Option<Ordering> {
-        // Reverse order because BinaryHeap is a max-heap and we want the smallest cost
-        other.0.partial_cmp(&self.0)
+
+impl Ord for PathCostandlen {
+    fn cmp(&self, other: &Self) -> std::cmp::Ordering {
+        // Reverse for min-heap behavior
+        match self.0.partial_cmp(&other.0).unwrap() {
+            std::cmp::Ordering::Equal => other.1.cmp(&self.1), // Shorter path wins
+            ord => ord.reverse(),
+        }
     }
 }
 
-impl Ord for PathCost {
-    fn cmp(&self, other: &Self) -> Ordering {
-        self.partial_cmp(other).unwrap()
+impl PartialOrd for PathCostandlen {
+    fn partial_cmp(&self, other: &Self) -> Option<std::cmp::Ordering> {
+        Some(self.cmp(other))
     }
 }

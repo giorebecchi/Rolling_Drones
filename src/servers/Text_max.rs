@@ -113,6 +113,7 @@ impl Server {
                             ServerCommands::RemoveSender(id) => {
                                 self.remove_drone(id);
                             }
+                            _=>{}
                         }
                     }
                 },

@@ -761,6 +761,15 @@ impl SimulationController {
                 sender.send(DroneCommand::SetPacketDropRate(pdr)).unwrap()
             }
         }
+        for (_,sender) in self.text_server.clone(){
+            sender.send(ServerCommands::PdrChanged(id)).unwrap();
+        }
+        for (_,sender) in self.media_server.clone(){
+            sender.send(ServerCommands::PdrChanged(id)).unwrap();
+        }
+        for (_,sender) in self.chat_server.clone(){
+            sender.send(ServerCommands::PdrChanged(id)).unwrap();
+        }
     }
     fn find_sender(&self, id: NodeId) -> Option<AnySender> {
         if let Some(drone_sender) = self.drones.get(&id) {
