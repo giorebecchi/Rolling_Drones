@@ -544,6 +544,8 @@ fn window_format(
 
                 state.handles.insert(window_id, None);
                 state.egui_textures.insert(window_id, None);
+                web_state.loading_image.remove(&window_id);
+                web_state.currently_selected_media.remove(&window_id);
                 web_state.actual_media_path.remove(&window_id);
                 web_state.media_paths.remove(&window_id);
                 web_state.actual_file_path.remove(&window_id);
