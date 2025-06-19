@@ -27,8 +27,8 @@ use crate::network_initializer::connection_validity::{validate_drone_pdr, valida
 use crate::servers::chat_server_fillo::Server;
 use crate::servers::text_server_fillo::Server as TextServerBaia;
 use crate::servers::media_server_fillo::Server as MediaServerBaia;
-use crate::servers::Chat_max::Server as ChatMax;
-use crate::servers::Text_max::Server as TextMax;
+use crate::servers::chat_max::Server as ChatMax;
+use crate::servers::text_max::Server as TextMax;
 
 /// Parses the configuration file based on the active feature flags
 /// Returns a Config struct containing the network topology

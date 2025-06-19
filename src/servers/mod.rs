@@ -2,8 +2,8 @@ pub(crate) mod assembler;
 
 pub mod chat_server_fillo;
 
-pub(crate) mod Text_max;
-pub(crate) mod Chat_max;
+pub mod text_max;
+pub mod chat_max;
 
 mod utilities_max;
 pub mod text_server_fillo;
