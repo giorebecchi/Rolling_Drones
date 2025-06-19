@@ -11,7 +11,6 @@ use base64::Engine;
 use crossbeam_channel::{select_biased, Receiver, Sender};
 use petgraph::Incoming;
 use petgraph::prelude::EdgeRef;
-use petgraph::visit::IntoEdgesDirected;
 use serde::Serialize;
 use wg_2024::network::{NodeId, SourceRoutingHeader};
 use wg_2024::packet::{Ack, FloodRequest, FloodResponse, Fragment, NackType, NodeType, Packet, PacketType};
