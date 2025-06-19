@@ -244,17 +244,15 @@ fn window_format(
                                                 web_state.selected_text_server.get(&window_id) == Some(&Some(text_server));
 
                                             if ui.selectable_label(is_selected, format!("Text_Server: {}", text_server)).clicked() {
-                                                /* what the new value should be */
+
                                                 let new_sel = if is_selected { None } else { Some(text_server) };
 
-                                                /* will this actually switch servers? */
                                                 let switching =
                                                     web_state.selected_text_server.get(&window_id) != Some(&new_sel);
 
                                                 if switching {
-                                                    /* ─── cleanup exactly once ─── */
                                                     if let Some(Some(tex)) = state.handles.get(&window_id) {
-                                                        images_to_remove.push(tex.clone());   // defer removal
+                                                        images_to_remove.push(tex.clone());
                                                     }
                                                     state.handles.insert(window_id, None);
                                                     state.egui_textures.insert(window_id, None);
@@ -272,7 +270,6 @@ fn window_format(
                                                     text_cache.clear(window_id);
                                                 }
 
-                                                /* finally commit the new (or cleared) selection */
                                                 web_state.selected_text_server.insert(window_id, new_sel);
                                             }
                                         });
