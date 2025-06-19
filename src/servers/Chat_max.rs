@@ -56,6 +56,8 @@ impl Server {
             statistics: HashMap::new(),
         }
     }
+
+
     pub fn run(&mut self) {
         self.flooding();
 
