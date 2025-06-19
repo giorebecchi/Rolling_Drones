@@ -30,30 +30,44 @@ use crate::servers::media_server_fillo::Server as MediaServerBaia;
 use crate::servers::Chat_max::Server as ChatMax;
 use crate::servers::Text_max::Server as TextMax;
 
+/// Parses the configuration file based on the active feature flags
+/// Returns a Config struct containing the network topology
 pub fn parse_config() -> Config {
     let file_str = if cfg!(feature = "web") {
+        // Web topology for web-based simulations
         fs::read_to_string("assets/configurations/web_topology.toml").unwrap()
     } else if cfg!(feature = "full") {
+        // Full topology for complete simulations
         fs::read_to_string("assets/configurations/full_topology.toml").unwrap()
     } else {
+        // Default chat topology
         fs::read_to_string("assets/configurations/chat_topology.toml").unwrap()
     };
     toml::from_str(&file_str).unwrap()
 }
+
+/// Sets up all communication channels, spawns drones, servers, and clients
+/// and initializes the simulation controller
 pub fn start_simulation(
     mut simulation_controller: ResMut<SimulationController>
 ) {
+    // Parse configuration from TOML file
     let config = parse_config();
 
+    // Set up all communication channels between nodes
     let (packet_channels, command_chat_channel,
         command_web_channel, background_flooding, server_commands) =
         setup_communication_channels(&config);
+
+    // Create event channels for different node types
     let (chat_event_send, chat_event_recv) = unbounded();
     let (web_event_send, web_event_recv) = unbounded();
     let (server_event_send, server_event_recv) = unbounded();
 
+    // Create a map of node neighbors for routing
     let neighbours = create_neighbours_map(&config);
 
+    // Initialize storage for different node types (some of it probably useless)
     let mut controller_drones = HashMap::new();
     let mut packet_drones = HashMap::new();
     let node_event_send = simulation_controller.node_event_send.clone();
@@ -65,6 +79,7 @@ pub fn start_simulation(
     let mut chat_servers = simulation_controller.chat_server.clone();
     let mut background_flood = simulation_controller.background_flooding.clone();
 
+    // Spawn all drone instances and get IDs of Rustafarian drones (since they decided to use non protocol based hop_indexes)
     let rustafarian_ids=spawn_drones(
         &config,
         &mut controller_drones,
@@ -72,6 +87,8 @@ pub fn start_simulation(
         &packet_channels,
         node_event_send.clone()
     );
+
+    // Spawn servers based on feature flags
     #[cfg(feature = "max")]
     {
         spawn_servers_max(
@@ -99,8 +116,11 @@ pub fn start_simulation(
             server_event_send.clone(),
         );
     }
+
+    // Calculate total number of servers
     let n_servers=text_servers.len()+chat_servers.len()+media_servers.len();
 
+    // Spawn client instances (chat clients and web browsers)
     spawn_clients(
         &config,
         &packet_channels,
@@ -115,6 +135,7 @@ pub fn start_simulation(
         n_servers
     );
 
+    // Update the simulation controller with all initialized components
     update_simulation_controller(
         &mut simulation_controller,
         node_event_send.clone(),
@@ -129,9 +150,12 @@ pub fn start_simulation(
         chat_servers.clone(),
         background_flood
     );
+
+    // Check which client types are active (since it's needed to close one of the communication channel)
     let web_active=!web_client.is_empty();
     let chat_active=!client.is_empty();
 
+    // Create the main simulation controller
     let mut controller = create_simulation_controller(
         node_event_send,
         simulation_controller,
@@ -143,9 +167,12 @@ pub fn start_simulation(
         rustafarian_ids
     );
 
+    // Run the controller in a separate thread
     thread::spawn(move || {
         controller.run();
     });
+
+    // Build a map of all nodes with their categories (used to differentiate between types in GUI)
     let mut nodes=HashMap::new();
     for client in client.keys(){
         nodes.insert(*client, NodeCategory::Client(NodeType::ChatClient));
@@ -162,10 +189,20 @@ pub fn start_simulation(
     for chat in chat_servers.keys(){
         nodes.insert(*chat, NodeCategory::Server(NodeType::ChatServer));
     }
+
+    // Validate the network configuration - checks for
+    // 1. Client/Server without neighbors
+    // 2. Drone PDR higher than 1.00 or lower than 0.00
+    // 3. All connections in full duplex
+    // 4. Duplicated IDs, nodes with themselves as neighbors, Client/Servers connected between each other without drones in between
     let isolated_node=would_break_connectivity(&convert_to_config(config.clone(), nodes.clone()));
     let wrong_pdr=validate_drone_pdr(&convert_to_config(config.clone(), nodes.clone()));
     let connection_error=validate_duplex_connections(&convert_to_config(config.clone(), nodes.clone()));
     let generic_misconfiguration= validate_generic_configuration(&convert_to_config(config, nodes.clone()));
+
+    // Tells GUI output of the checks, GUI will decide
+    // whether to change the AppState to InGame (if no errors)
+    // or stay in AppState::SetUp if errors occurred, in this last case a message will also be displayed
     if let Ok(mut state) = ERROR_VERIFY.write(){
         state.connection_error=(false,connection_error.clone());
         state.wrong_pdr=(false, wrong_pdr.clone());
@@ -174,12 +211,15 @@ pub fn start_simulation(
         state.is_updated=true;
     }
 
+    // Update shared state with node information (probably useless, was useful when checks weren't implemented)
     if let Ok(mut state)=SHARED_STATE.write(){
         state.nodes=nodes;
         state.is_updated=true;
     }
 }
 
+/// Sets up all communication channels needed for the simulation
+/// Returns channels for packets, chat commands, web commands, background flooding, and server commands
 fn setup_communication_channels(config: &Config) -> (
     HashMap<NodeId, (Sender<Packet>, Receiver<Packet>)>,
     HashMap<NodeId, (Sender<CommandChat>, Receiver<CommandChat>)>,
@@ -193,17 +233,29 @@ fn setup_communication_channels(config: &Config) -> (
     let mut background_flood=HashMap::new();
     let mut server_commands = HashMap::new();
 
+    // Create *packet_channels* for all nodes (drones, clients, servers)
+    // *packet_channels* is the main communication channel, where Packets are exchanged between nodes
     for node_id in config.drone.iter().map(|d| d.id)
         .chain(config.client.iter().map(|c| c.id))
         .chain(config.server.iter().map(|s| s.id)) {
         packet_channels.insert(node_id, unbounded());
     }
 
+    // Create command and background flood channels for clients
+    // command_chat_channel => SC sends CommandChat to chat_clients
+    // command_web_channel => SC sends ContentCommands to web_browser
+    // Note how this channels appear for all types of clients not only chat_clients and web_browser **
     for client in &config.client {
         command_chat_channel.insert(client.id, unbounded());
         command_web_channel.insert(client.id, unbounded());
         background_flood.insert(client.id, unbounded());
     }
+
+    // Create command and background flood channels for servers
+    // server_commands should be used only to request
+    // -Connection Graph to servers
+    // -RemoveSender to servers
+    // -AddSender to servers
     for server in &config.server{
         server_commands.insert(server.id, unbounded());
         background_flood.insert(server.id, unbounded());
@@ -212,6 +264,8 @@ fn setup_communication_channels(config: &Config) -> (
     (packet_channels, command_chat_channel, command_web_channel, background_flood, server_commands)
 }
 
+/// Creates a map of node neighbors from the configuration
+/// Used for routing decisions in the drone network
 fn create_neighbours_map(config: &Config) -> HashMap<NodeId, Vec<NodeId>> {
     let mut neighbours = HashMap::new();
     for drone in &config.drone {
@@ -220,6 +274,8 @@ fn create_neighbours_map(config: &Config) -> HashMap<NodeId, Vec<NodeId>> {
     neighbours
 }
 
+/// Spawns all drone instances based on configuration
+/// Returns a list of Rustafarian drone IDs (useful since Rustafarian doesn't follow protocol when sending hop_index of nacks)
 fn spawn_drones(
     config: &Config,
     controller_drones: &mut HashMap<NodeId, Sender<DroneCommand>>,
@@ -229,21 +285,28 @@ fn spawn_drones(
 )->Vec<NodeId> {
     let mut rustafarian_drone_ids = Vec::new();
 
+    // Iterate through all drones in config and spawn them
     for (i,cfg_drone) in config.drone.iter().cloned().enumerate() {
+        // Create control channel for this drone (used by SC to send commands to drone, e.g. RemoveSender)
         let (controller_drone_send, controller_drone_recv) = unbounded();
         controller_drones.insert(cfg_drone.id, controller_drone_send);
         packet_drones.insert(cfg_drone.id, packet_channels[&cfg_drone.id].0.clone());
 
+        // Every 10th drone starting at index 3 is a Rustafarian drone (problematic drone)
         if i % 10 == 3{
             rustafarian_drone_ids.push(cfg_drone.id);
         }
 
+        // Retrieving Sender and Receiver for DroneEvent, how SC can listen to actions made by Drones
         let node_event_send_clone = node_event_send.clone();
         let packet_recv = packet_channels[&cfg_drone.id].1.clone();
+
+        // Create packet send channels for all connected nodes
         let packet_send = cfg_drone.connected_node_ids.iter()
             .map(|nid| (*nid, packet_channels[nid].0.clone()))
             .collect::<HashMap<_, _>>();
 
+        // Spawn drone in a new thread
         thread::spawn(move || {
             let drone = create_drone(
                 cfg_drone.id,
@@ -262,6 +325,8 @@ fn spawn_drones(
     }
     rustafarian_drone_ids
 }
+
+/// Creates a drone instance based on the index
 fn create_drone(
     id: NodeId,
     node_event_send: Sender<DroneEvent>,
@@ -271,6 +336,7 @@ fn create_drone(
     pdr: f32,
     i: usize
 ) -> Option<Box<dyn Drone>> {
+    // Select drone type based on index modulo 10
     match i % 10 {
         0 => Some(Box::new(BagelBomber::new(id, node_event_send, controller_drone_recv, packet_recv, packet_send, pdr))),
         1 => Some(Box::new(SkyLinkDrone::new(id, node_event_send, controller_drone_recv, packet_recv, packet_send, pdr))),
@@ -286,6 +352,8 @@ fn create_drone(
     }
 }
 
+/// Spawns servers for the "baia" configuration
+/// Server types are determined based on the number of clients and servers
 #[allow(dead_code)]
 fn spawn_servers_baia(
     config: &Config,
@@ -302,7 +370,7 @@ fn spawn_servers_baia(
     let n_servers = config.server.len();
 
     for (i, cfg_server) in config.server.iter().cloned().enumerate() {
-
+        // Set up channels for this server
         let rcv = packet_channels[&cfg_server.id].1.clone();
         let packet_send = cfg_server.connected_drone_ids.iter()
             .map(|nid| (*nid, packet_channels[nid].0.clone()))
@@ -311,25 +379,31 @@ fn spawn_servers_baia(
         flooding.insert(cfg_server.id, background_flood[&cfg_server.id].0.clone());
         let rcv_command = server_commands[&cfg_server.id].1.clone();
 
+        // Spawn different server types based on client/server configuration
         match (n_clients, n_servers) {
             (1, 1) => {
+                // Single client, single server: text server
                 spawn_text_server(cfg_server.id, rcv, packet_send, rcv_flood, rcv_command,
                                   server_event_send.clone(), text_servers, server_commands,
                                   "assets/multimedia/paths/text_server1.txt", n_servers);
             },
             (2, 1) => {
+                // Two clients, one server: chat server
                 spawn_chat_server(cfg_server.id, rcv, packet_send, rcv_flood, rcv_command,
                                   server_event_send.clone(), chat_servers, server_commands, n_servers);
             },
             (2, 2) => {
+                // Two clients, two servers: both chat servers
                 spawn_chat_server(cfg_server.id, rcv, packet_send, rcv_flood, rcv_command,
                                   server_event_send.clone(), chat_servers, server_commands, n_servers);
             },
             (3, 1) => {
+                // Three clients, one server: chat server
                 spawn_chat_server(cfg_server.id, rcv, packet_send, rcv_flood, rcv_command,
                                   server_event_send.clone(), chat_servers, server_commands, n_servers);
             },
             (3, 2) => {
+                // Three clients, two servers: chat and text
                 match i {
                     0 => spawn_chat_server(cfg_server.id, rcv, packet_send, rcv_flood, rcv_command,
                                            server_event_send.clone(), chat_servers, server_commands, n_servers),
@@ -340,9 +414,10 @@ fn spawn_servers_baia(
                 }
             },
             (1, 3) => {
+                // One client, three servers: mixed media, text, and media
                 match i {
                     0 => spawn_media_server(cfg_server.id, rcv, packet_send, rcv_flood, rcv_command,
-                                           server_event_send.clone(), media_servers, server_commands,"assets/multimedia/paths/media_server2.txt", n_servers),
+                                            server_event_send.clone(), media_servers, server_commands,"assets/multimedia/paths/media_server2.txt", n_servers),
                     1 => spawn_text_server(cfg_server.id, rcv, packet_send, rcv_flood, rcv_command,
                                            server_event_send.clone(), text_servers, server_commands,
                                            "assets/multimedia/paths/text_server1.txt", n_servers),
@@ -353,6 +428,7 @@ fn spawn_servers_baia(
                 }
             },
             _ => {
+                // Default configuration for 3+ servers
                 if n_servers >= 3 {
                     match i  {
                         0 => spawn_chat_server(cfg_server.id, rcv, packet_send, rcv_flood, rcv_command,
@@ -369,6 +445,7 @@ fn spawn_servers_baia(
 
                     }
                 } else {
+                    // Fallback to chat server
                     spawn_chat_server(cfg_server.id, rcv, packet_send, rcv_flood, rcv_command,
                                       server_event_send.clone(), chat_servers, server_commands, n_servers);
                 }
@@ -376,6 +453,8 @@ fn spawn_servers_baia(
         }
     }
 }
+
+/// Spawns a chat server instance
 #[allow(dead_code)]
 fn spawn_chat_server(
     id: NodeId,
@@ -395,6 +474,8 @@ fn spawn_chat_server(
     chat_servers.insert(id, server_commands[&id].0.clone());
     set_node_types(NodeType::ChatServer, n_servers, id);
 }
+
+/// Spawns a text server instance
 #[allow(dead_code)]
 fn spawn_text_server(
     id: NodeId,
@@ -415,6 +496,8 @@ fn spawn_text_server(
     text_servers.insert(id, server_commands[&id].0.clone());
     set_node_types(NodeType::TextServer, n_servers, id);
 }
+
+/// Spawns a media server instance
 #[allow(dead_code)]
 fn spawn_media_server(
     id: NodeId,
@@ -435,6 +518,9 @@ fn spawn_media_server(
     media_servers.insert(id, server_commands[&id].0.clone());
     set_node_types(NodeType::MediaServer, n_servers, id);
 }
+
+/// Spawns client instances (chat clients and web browsers)
+/// Client types are determined based on the number of clients and servers
 fn spawn_clients(
     config: &Config,
     packet_channels: &HashMap<NodeId, (Sender<Packet>, Receiver<Packet>)>,
@@ -451,7 +537,7 @@ fn spawn_clients(
     let n_clients = config.client.len();
 
     for (i, cfg_client) in config.client.iter().cloned().enumerate() {
-
+        // Set up channels for this client
         let packet_send: HashMap<NodeId, Sender<Packet>> = cfg_client.connected_drone_ids.iter()
             .map(|nid| (*nid, packet_channels[nid].0.clone()))
             .collect();
@@ -459,20 +545,25 @@ fn spawn_clients(
         let rcv_flood = background_flood[&cfg_client.id].1.clone();
         flooding.insert(cfg_client.id, background_flood[&cfg_client.id].0.clone());
 
+        // Spawn different client types based on configuration
         match (n_clients, n_servers) {
             (1, _) => {
+                // Single client: web browser
                 spawn_web_browser(cfg_client.id, rcv_packet, packet_send, rcv_flood,
                                   command_web_channel, web_client, web_event_send.clone(), n_clients);
             },
             (2, _) => {
+                // Two clients: both chat clients
                 spawn_chat_client(cfg_client.id, rcv_packet, packet_send, rcv_flood,
                                   command_chat_channel, client, chat_event_send.clone(), n_clients);
             },
             (3, 1) => {
+                // Three clients, one server: all chat clients
                 spawn_chat_client(cfg_client.id, rcv_packet, packet_send, rcv_flood,
                                   command_chat_channel, client, chat_event_send.clone(), n_clients);
             },
             (3, 2) | (3,3) => {
+                // Three clients, 2-3 servers: 2 chat, 1 web
                 match i {
                     0 | 1 => spawn_chat_client(cfg_client.id, rcv_packet, packet_send, rcv_flood,
                                                command_chat_channel, client, chat_event_send.clone(), n_clients),
@@ -482,6 +573,7 @@ fn spawn_clients(
                 }
             },
             _ => {
+                // Default: first 2 are chat clients, rest are web browsers
                 if i <  2 {
                     spawn_chat_client(cfg_client.id, rcv_packet, packet_send, rcv_flood,
                                       command_chat_channel, client, chat_event_send.clone(), n_clients);
@@ -493,6 +585,8 @@ fn spawn_clients(
         }
     }
 }
+
+/// Spawns a chat client instance
 #[allow(dead_code)]
 fn spawn_chat_client(
     id: NodeId,
@@ -521,6 +615,8 @@ fn spawn_chat_client(
     });
     set_node_types(NodeType::ChatClient, n_clients, id);
 }
+
+/// Spawns a web browser instance
 #[allow(dead_code)]
 fn spawn_web_browser(
     id: NodeId,
@@ -549,42 +645,50 @@ fn spawn_web_browser(
     });
     set_node_types(NodeType::WebBrowser, n_clients, id);
 }
+
+/// Let the GUI know about the difference between types of Clients and Server
 fn set_node_types(node_type: NodeType, n: usize, id: NodeId){
     if let Ok(mut state) = SHARED_STATE.write() {
         match node_type{
             NodeType::WebBrowser=>{
+                // Update client count and add web browser to list
                 state.n_clients=n;
                 state.client_types.push((NodeType::WebBrowser, id));
                 state.is_updated=true;
             },
             NodeType::ChatClient=>{
+                // Update client count and add chat client to list
                 state.n_clients=n;
                 state.client_types.push((NodeType::ChatClient, id));
                 state.is_updated=true;
             },
             NodeType::TextServer=>{
+                // Update server count and add text server to list
                 state.n_servers=n;
                 state.server_types.push((NodeType::TextServer, id));
                 state.is_updated=true;
-
-
             },
             NodeType::MediaServer=> {
+                // Update server count and add media server to list
                 state.n_servers = n;
                 state.server_types.push((NodeType::MediaServer, id));
                 state.is_updated = true;
             },
             NodeType::ChatServer=> {
+                // Update server count and add chat server to list
                 state.n_servers = n;
                 state.server_types.push((NodeType::ChatServer, id));
                 state.is_updated = true;
             },
             NodeType::Drone=> {
+                // Drones are handled differently, no action needed
             }
         }
     }
 }
 
+/// Updates the simulation controller with all the initialized components
+/// Transfers ownership of channels and maps to the controller
 fn update_simulation_controller(
     simulation_controller: &mut SimulationController,
     node_event_send: Sender<DroneEvent>,
@@ -599,10 +703,13 @@ fn update_simulation_controller(
     chat_servers: HashMap<NodeId, Sender<ServerCommands>>,
     background_flooding : HashMap<NodeId, Sender<BackGroundFlood>>
 ) {
+    // Extract only the sender channels from packet_channel
     let sender_channels: HashMap<NodeId, Sender<Packet>> = packet_channel
         .into_iter()
         .map(|(node_id, (sender, _receiver))| (node_id, sender))
         .collect();
+
+    // Update all fields in the simulation controller
     simulation_controller.node_event_send = node_event_send.clone();
     simulation_controller.drones = controller_drones;
     simulation_controller.node_event_recv = node_event_recv;
@@ -616,6 +723,8 @@ fn update_simulation_controller(
     simulation_controller.background_flooding= background_flooding;
 }
 
+/// Creates a new simulation controller instance with all necessary components
+/// This controller will manage the entire simulation lifecycle
 fn create_simulation_controller(
     node_event_send: Sender<DroneEvent>,
     simulation_controller: ResMut<SimulationController>,
@@ -643,9 +752,11 @@ fn create_simulation_controller(
         background_flooding: simulation_controller.background_flooding.clone(),
         chat_active,
         web_active,
-        rustafarian_ids
+        rustafarian_ids //SC needs to know Rustafarian_ids since they follow a different paradigm to send nacks
     }
 }
+
+/// Spawns servers for the "max" configuration
 #[allow(dead_code)]
 fn spawn_servers_max(
     config: &Config,
@@ -661,76 +772,84 @@ fn spawn_servers_max(
     let n_servers = config.server.len();
 
     for (i, cfg_server) in config.server.iter().cloned().enumerate() {
-
+        // Set up channels for this server
         let rcv = packet_channels[&cfg_server.id].1.clone();
         let packet_send = cfg_server.connected_drone_ids.iter()
             .map(|nid| (*nid, packet_channels[nid].0.clone()))
-            .collect::<HashMap<_,_>>();
-        let rcv_flood= background_flood[&cfg_server.id].1.clone();
+            .collect::<HashMap<_, _>>();
+        let rcv_flood = background_flood[&cfg_server.id].1.clone();
         flooding.insert(cfg_server.id, background_flood[&cfg_server.id].0.clone());
 
         let rcv_command = server_commands[&cfg_server.id].1.clone();
 
+        // Spawn different server types based on client/server configuration
         match (n_clients, n_servers) {
             (1, 1) => {
+                // Single client, single server: text server
                 spawn_text_server_max(cfg_server.id, rcv, packet_send, rcv_flood, rcv_command,
-                                  server_event_send.clone(), text_servers, server_commands,
-                                  "assets/multimedia/path_max/max_server.txt", n_servers);
+                                      server_event_send.clone(), text_servers, server_commands,
+                                      "assets/multimedia/path_max/max_server.txt", n_servers);
             },
             (2, 1) => {
+                // Two clients, one server: chat server
                 spawn_chat_server_max(cfg_server.id, rcv, packet_send, rcv_flood, rcv_command,
-                                  server_event_send.clone(), chat_servers, server_commands, n_servers);
+                                      server_event_send.clone(), chat_servers, server_commands, n_servers);
             },
             (2, 2) => {
+                // Two clients, two servers: both chat servers
                 spawn_chat_server_max(cfg_server.id, rcv, packet_send, rcv_flood, rcv_command,
-                                  server_event_send.clone(), chat_servers, server_commands, n_servers);
+                                      server_event_send.clone(), chat_servers, server_commands, n_servers);
             },
             (3, 1) => {
+                // Three clients, one server: chat server
                 spawn_chat_server_max(cfg_server.id, rcv, packet_send, rcv_flood, rcv_command,
-                                  server_event_send.clone(), chat_servers, server_commands, n_servers);
+                                      server_event_send.clone(), chat_servers, server_commands, n_servers);
             },
             (3, 2) => {
+                // Three clients, two servers: chat and text
                 match i {
                     0 => spawn_chat_server_max(cfg_server.id, rcv, packet_send, rcv_flood, rcv_command,
-                                           server_event_send.clone(), chat_servers, server_commands, n_servers),
+                                               server_event_send.clone(), chat_servers, server_commands, n_servers),
                     1 => spawn_text_server_max(cfg_server.id, rcv, packet_send, rcv_flood, rcv_command,
-                                           server_event_send.clone(), text_servers, server_commands,
+                                               server_event_send.clone(), text_servers, server_commands,
                                                "assets/multimedia/path_max/max_server.txt", n_servers),
                     _ => unreachable!()
                 }
             },
             (1, 3) => {
+                // One client, three servers: all text servers with different content
                 match i {
-                    1=> spawn_text_server_max(cfg_server.id, rcv, packet_send, rcv_flood, rcv_command,
-                                              server_event_send.clone(), text_servers, server_commands,
-                                              "assets/multimedia/path_max/max_server.txt", n_servers),
+                    1 => spawn_text_server_max(cfg_server.id, rcv, packet_send, rcv_flood, rcv_command,
+                                               server_event_send.clone(), text_servers, server_commands,
+                                               "assets/multimedia/path_max/max_server.txt", n_servers),
                     _ => spawn_text_server_max(cfg_server.id, rcv, packet_send, rcv_flood, rcv_command,
-                                           server_event_send.clone(), text_servers, server_commands,
+                                               server_event_send.clone(), text_servers, server_commands,
                                                "assets/multimedia/path_max/max_server2.txt", n_servers),
-
                 }
             },
             _ => {
+                // Default configuration for 3+ servers
                 if n_servers >= 3 {
-                    match i  {
+                    match i {
                         0 => spawn_chat_server_max(cfg_server.id, rcv, packet_send, rcv_flood, rcv_command,
-                                               server_event_send.clone(), chat_servers, server_commands, n_servers),
-                        1=> spawn_text_server_max(cfg_server.id, rcv, packet_send, rcv_flood, rcv_command,
-                                               server_event_send.clone(), text_servers, server_commands,
-                                                  "assets/multimedia/path_max/max_server.txt", n_servers),
-                        _=> spawn_text_server_max(cfg_server.id, rcv, packet_send, rcv_flood, rcv_command,
-                                                  server_event_send.clone(), text_servers, server_commands,
-                                                  "assets/multimedia/path_max/max_server2.txt", n_servers),
-
+                                                   server_event_send.clone(), chat_servers, server_commands, n_servers),
+                        1 => spawn_text_server_max(cfg_server.id, rcv, packet_send, rcv_flood, rcv_command,
+                                                   server_event_send.clone(), text_servers, server_commands,
+                                                   "assets/multimedia/path_max/max_server.txt", n_servers),
+                        _ => spawn_text_server_max(cfg_server.id, rcv, packet_send, rcv_flood, rcv_command,
+                                                   server_event_send.clone(), text_servers, server_commands,
+                                                   "assets/multimedia/path_max/max_server2.txt", n_servers),
                     }
                 } else {
+                    // Fallback to chat server
                     spawn_chat_server_max(cfg_server.id, rcv, packet_send, rcv_flood, rcv_command,
-                                      server_event_send.clone(), chat_servers, server_commands, n_servers);
+                                          server_event_send.clone(), chat_servers, server_commands, n_servers);
                 }
             }
         }
     }
 }
+/// Spawns a "max" ChatServer instance
 #[allow(dead_code)]
 fn spawn_chat_server_max(
     id: NodeId,
@@ -750,6 +869,7 @@ fn spawn_chat_server_max(
     chat_servers.insert(id, server_commands[&id].0.clone());
     set_node_types(NodeType::ChatServer, n_servers, id);
 }
+/// Spawns a "max" TextServer instance
 #[allow(dead_code)]
 fn spawn_text_server_max(
     id: NodeId,
@@ -772,7 +892,7 @@ fn spawn_text_server_max(
 }
 
 
-
+///Useful because it allows to use some of the checks done when updating nodes' connection at simulation startup
 pub fn convert_to_config(
     config: Config,
     nodes_cat: HashMap<NodeId,NodeCategory>
