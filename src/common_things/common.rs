@@ -48,7 +48,8 @@ pub enum RequestEvent{
 pub enum ServerCommands{
     SendTopologyGraph,
     AddSender(NodeId, Sender<Packet>),
-    RemoveSender(NodeId)
+    RemoveSender(NodeId),
+    PdrChanged(NodeId)
 }
 
 //pub enum ServerEvent{
