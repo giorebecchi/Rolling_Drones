@@ -61,7 +61,7 @@ cargo run --release --features "full,max"
 
 ## 🏗️ Architecture Highlights
 
-### 🧵 **Multi-Threading Mastery**
+### 🧵 **Multi-Threading**
 Every component runs in its own thread:
 - **Clients**: Independent request generators
 - **Servers**: Concurrent request handlers
